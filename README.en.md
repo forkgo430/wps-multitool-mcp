@@ -192,7 +192,7 @@ Every row below cites `file:line` so you can check it yourself. Line numbers mat
 <!-- AUTO:tool-stats:start -->
 - **284 tools** (8 built-in + 276 specialized); **only 40 listed by default** (essential ∩ live-verified, load on demand — see `scripts/manual/basic-tier-verify.js`)
 - Distribution (by tool group, built-ins counted in their app group): Common 27 (incl. core) / Word 67 / Excel 89 / PPT 101
-- Annotations (measured): read-only 51 / destructive 35 / non-idempotent 107 — coverage 284/284
+- Annotations (measured): read-only 51 / destructive 35 / non-idempotent 108 — coverage 284/284
 <!-- AUTO:tool-stats:end -->
 
 <a id="requirements"></a>
@@ -336,7 +336,7 @@ into the sidebar. Pure-CLI tools usually have no such layer.
 **What it is**: a WPS add-in (`manifest.xml` + `ribbon.xml` + a task pane page). The ribbon has
 9 buttons in 4 groups; the sidebar panel re-reads bridge status every 2 seconds.
 
-**What it does — read-only status, it does not modify documents**:
+**What it does — status view, plus five action buttons**:
 
 | What the panel shows | Where it comes from |
 |---|---|
@@ -344,9 +344,11 @@ into the sidebar. Pure-CLI tools usually have no such layer.
 | Whether there's an active document | Same |
 | Recent calls | Summaries the bridge records on the named pipe (**no document body**) |
 
-⚠️ **The panel is read-only.** It shows state; it **cannot change documents** — that goes
-through the MCP server side. The "basic tier, 40 tools" text in the panel is hard-coded copy
-(the bridge can't reach the MCP server's registry).
+⚠️ **The panel is NOT read-only**: it has **Save / Undo / Export PDF / Snapshot / Unstick**
+buttons that change document state directly, and its manifest requests write access
+(`document.write`). **Only the status endpoint above is read-only.** The main document-editing
+tools remain on the MCP server side. The "basic tier, 40 tools" text in the panel is hard-coded
+copy (the bridge can't reach the MCP server's registry).
 
 **It shares the same bridge as the MCP server.** That's why the two don't fight: both entry
 points connect to the same named pipe with the same credentials, in any order.

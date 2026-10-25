@@ -3,7 +3,7 @@
 > 本文件由 `wps-multitool-mcp/scripts/manual/gen-tools-doc.js` 从**运行时注册表**生成，请勿手改。
 > 改完工具跑一次 `node scripts/manual/gen-tools-doc.js`；CI 会重跑并 `git diff --exit-code`，对不上就红。
 
-**284 个工具**（8 内置 + 276 专业/组工具）· 默认列出 40 个 · 注解覆盖 284/284 · 真机验证 200/284
+**284 个工具**（8 内置 + 276 专业/组工具）· 默认列出 40 个 · 注解覆盖 284/284 · 真机验证 201/284
 
 | 标记 | 含义 |
 |---|---|
@@ -38,7 +38,7 @@
 | `wps_common_batch` |  | DN | live | 一次执行 1~3 个操作，省掉逐个调用的往返。 |
 | `wps_common_get_app_info` |  | R | live | 获取WPS应用的基本信息。<br><sub>别名：获取应用信息 / 读取应用信息 / 查看应用信息</sub> |
 | `wps_common_get_selected_text` |  | R | live | 获取当前文档中选中的文本内容。<br><sub>别名：获取选中文本 / 读取选中文本 / 查看选中文本</sub> |
-| `wps_common_quit` |  | DN | static | 结束 WPS（Word / Excel / PPT 全部）。<br><sub>别名：退出</sub> |
+| `wps_common_quit` |  | DN | live | 结束 WPS（Word / Excel / PPT 全部）。<br><sub>别名：退出</sub> |
 | `wps_common_repair` |  | — | live | 诊断并在【有限范围内】修复 WPS 自动化常见问题。<br><sub>别名：修复 / 卡死了 / 自救</sub> |
 | `wps_common_set_selected_text` |  | — | live | 替换当前文档中选中的文本内容。<br><sub>别名：设置选中文本 / 设定选中文本 / 选中</sub> |
 | `wps_common_snapshot_create` |  | N | live | 给当前文档存一份快照（复制磁盘文件到 ~/.wps-multitool-mcp/snapshots）。<br><sub>别名：snapshot创建 / 创建 / 新建</sub> |
@@ -87,7 +87,7 @@
 | `wps_word_get_table_data` |  | R | live | 读整张表格的内容（二维文本，按序号定位）。<br><sub>别名：读表格 / 表格内容 / 表里有什么</sub> |
 | `wps_word_get_tables` |  | R | live | 列出文档里所有表格：序号、行数、列数、第一行预览。<br><sub>别名：有几个表 / 表格列表 / 文档里的表格</sub> |
 | `wps_word_get_track_changes_status` |  | R | live | 获取当前文档的修订模式状态。<br><sub>别名：获取跟踪更改状态 / 读取跟踪更改状态 / 查看跟踪更改状态</sub> |
-| `wps_word_index` |  | — | live | 给文字编索引条目，或在光标处插入索引目录。<br><sub>别名：索引 / 关键词索引 / 索引表</sub> |
+| `wps_word_index` |  | N | live | 给文字编索引条目，或在光标处插入索引目录。<br><sub>别名：索引 / 关键词索引 / 索引表</sub> |
 | `wps_word_insert_bookmark` |  | N | live | 在当前光标位置或选中区域插入书签。<br><sub>别名：插入书签 / 新增书签 / 加入书签</sub> |
 | `wps_word_insert_comment` |  | N | live | 在Word文档选中内容处插入批注<br><sub>别名：加批注 / 插入批注 / 评论</sub> |
 | `wps_word_insert_footer` |  | N | live | 设置页脚内容。<br><sub>别名：插入页脚 / 新增页脚 / 加入页脚</sub> |

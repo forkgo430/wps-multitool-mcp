@@ -16,7 +16,7 @@ export const TOOL_VERIFICATION: Readonly<Record<string, ToolVerification>> = {
   "wps_common_batch": "live",
   "wps_common_get_app_info": "live",
   "wps_common_get_selected_text": "live",
-  "wps_common_quit": "static",
+  "wps_common_quit": "live",
   "wps_common_repair": "live",
   "wps_common_save": "live",
   "wps_common_save_as": "live",
@@ -297,4 +297,4 @@ export const TOOL_VERIFICATION: Readonly<Record<string, ToolVerification>> = {
 };
 
 /** 生成时的总量，供自检/文档使用（别手写这些数字） */
-export const VERIFICATION_TOTALS = { live: 200, static: 84, total: 284 } as const;
+export const VERIFICATION_TOTALS = { live: 201, static: 83, total: 284 } as const;

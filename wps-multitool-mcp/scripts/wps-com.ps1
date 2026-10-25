@@ -1428,7 +1428,7 @@ switch ($Action) {
             $app = $script:SandboxWordApp
             $killed = @()
             if ($null -ne $app) {
-                try { $app.DisplayAlerts = 0 } catch {}
+                try { $app.DisplayAlerts = 0 } catch {} # 吞错有据：抑制弹窗失败不影响退出，残留由 PID 收尾兜底
                 # 第 2 期第 2 章轮 2 真机实测：沙箱里有未保存文档时，$app.Quit() 会卡在
                 # 「是否保存」对话框上（无人值守 = 挂死，实测 300 秒超时，而且桥会因此
                 # 杀掉整个 word 子进程）。沙箱里的文档本来就是可丢的，先逐个标 Saved 再关。
@@ -1438,10 +1438,10 @@ switch ($Action) {
                             $dd = $app.Documents.Item($di)
                             $dd.Saved = $true
                             $dd.Close(0)   # wdDoNotSaveChanges
-                        } catch {}
+                        } catch {} # 吞错有据：沙箱文档关闭失败由下方 Stop-Process 按 PID 兜底
                     }
-                } catch {}
-                try { $app.Quit() } catch {}
+                } catch {} # 吞错有据：同上，PID 收尾兜底
+                try { $app.Quit() } catch {} # 吞错有据：同上，PID 收尾兜底
             }
             Start-Sleep -Milliseconds 700
             # 按创建时记下的 PID 收尸：Quit 之后 WPS 常常还留着几个进程（DECISION §2 实测）
@@ -1453,7 +1453,7 @@ switch ($Action) {
                         Stop-Process -Id $procId -Force -ErrorAction SilentlyContinue
                         $killed += $procId
                     }
-                } catch {}
+                } catch {} # 吞错有据：收尸失败不计入 killed，结果如实反映
             }
             $script:SandboxWordApp = $null
             $script:SandboxWordPids = @()
@@ -1472,18 +1472,20 @@ switch ($Action) {
         # 先数未保存的文档：直接 Quit 会因 DisplayAlerts=0 把未保存改动静默丢掉，
         # 而这里退出影响的是用户开着的全部 WPS —— 所以未保存时默认拒绝，confirm=true 才放行。
         $unsaved = @()
+        $guardSkipped = @()
         foreach ($progId in @('Kwps.Application','Ket.Application','Kwpp.Application')) {
             $app = Get-ActiveWpsApp $progId
             if ($null -eq $app) { continue }
             $kind = switch ($progId) { 'Kwps.Application' { '文档' } 'Ket.Application' { '工作簿' } default { '演示文稿' } }
             $coll = $null
-            try { $coll = $app.Documents } catch {}
-            if (-not $coll) { try { $coll = $app.Workbooks } catch {} }
-            if (-not $coll) { try { $coll = $app.Presentations } catch {} }
-            if ($null -eq $coll) { continue }
+            try { $coll = $app.Documents } catch { $guardSkipped += "$kind 枚举失败：$($_.Exception.Message)" }
+            if (-not $coll) { try { $coll = $app.Workbooks } catch { $guardSkipped += "$kind 枚举失败：$($_.Exception.Message)" } }
+            if (-not $coll) { try { $coll = $app.Presentations } catch { $guardSkipped += "$kind 枚举失败：$($_.Exception.Message)" } }
+            if ($null -eq $coll) { $guardSkipped += "$kind 集合不可读，该应用的未保存检查跳过"; continue }
             foreach ($item in $coll) {
-                $saved = $true
-                try { $saved = [bool]$item.Saved } catch {}
+                # 读不到 Saved 按"未保存"处理（保守方向）：宁可护栏多拦一次，不可漏拦
+                $saved = $false
+                try { $saved = [bool]$item.Saved } catch { $guardSkipped += "$kind 文档 Saved 状态不可读，按未保存计入" }
                 if (-not $saved) {
                     $name = ''
                     try { $name = $item.Name } catch {}
@@ -1500,9 +1502,9 @@ switch ($Action) {
         foreach ($progId in @('Kwps.Application','Ket.Application','Kwpp.Application')) {
             $app = Get-ActiveWpsApp $progId
             if ($null -ne $app) {
-                try { $app.DisplayAlerts = 0 } catch {}
-                try { $app.Quit() } catch {}
-                $quit += $progId
+                try { $app.DisplayAlerts = 0 } catch { $guardSkipped += "$progId 抑制弹窗失败：$($_.Exception.Message)" }
+                # 只有 Quit 真正成功才计入"优雅退出"，失败如实进 guardSkipped
+                try { $app.Quit(); $quit += $progId } catch { $guardSkipped += "$progId 优雅退出失败：$($_.Exception.Message)" }
             }
         }
         Start-Sleep -Milliseconds 900
@@ -1512,12 +1514,18 @@ switch ($Action) {
         # 不做全量 taskkill：Quit 之后的残留多半是用户自己开的其它 WPS 实例
         # （ROT 每个 ProgID 只能激活一个，COM 够不着的那几个 /IM 一杀就误杀）。
         # 列出剩余进程交给用户决定，wpscloudsvr 是 WPS 自己的云服务，从来不该杀。
-        $leftovers = @(Get-Process -Name wps -ErrorAction SilentlyContinue | ForEach-Object {
-            @{ pid = $_.Id; title = $_.MainWindowTitle }
-        })
-        $left = $leftovers.Count
-        $msg = if ($left -eq 0) { "WPS 已退出" } else { "本会话连接的 WPS 已退出；另有 $left 个 WPS 进程在运行（多为用户自己打开的实例，未强行关闭）" }
-        Output-Json @{ success = $true; data = @{ quit = $quit; forced = $false; ownKilled = $ownKilled; remaining = $left; leftovers = $leftovers; message = $msg } }
+        $leftovers = @(Get-Process -Name wps -ErrorAction SilentlyContinue)
+        # remaining 只数"有窗口的实例"：用户关心的是"还有没有 WPS 窗口没关"，
+        # wpscloudsvr / 无窗口组件是 WPS 的服务进程，算进去会让"明明退干净了"报成残留。
+        $leftVisible = @($leftovers | Where-Object { $_.MainWindowHandle -ne 0 })
+        $leftBackground = @($leftovers | Where-Object { $_.MainWindowHandle -eq 0 })
+        $left = $leftVisible.Count
+        $msg = if ($left -eq 0) {
+            "WPS 已退出" + $(if ($leftBackground.Count) { "（另有 $($leftBackground.Count) 个无窗口服务进程由 WPS 自管，不影响使用）" } else { '' })
+        } else {
+            "本会话连接的 WPS 已退出；另有 $left 个有窗口的 WPS 实例在运行（多为用户自己打开的，未强行关闭）"
+        }
+        Output-Json @{ success = $true; data = @{ quit = $quit; forced = $false; ownKilled = $ownKilled; remaining = $left; remainingBackground = $leftBackground.Count; leftovers = @($leftovers | ForEach-Object { @{ pid = $_.Id; title = $_.MainWindowTitle } }); message = $msg } }
     }
 
     "wireCheck" {
@@ -1685,13 +1693,13 @@ switch ($Action) {
         $resolveSavedPath = {
             param($obj, $requested)
             $actual = ''
-            try { $actual = [string]$obj.Path } catch {}
+            try { $actual = [string]$obj.Path } catch {} # 吞错有据：读不到按未验证处理，下游 verified=false 如实上报
             if ([string]::IsNullOrEmpty($actual)) {
                 return @{ path = $requested; requestedPath = $requested; verified = $false
                           note = "保存后没读到文档路径（可能是 WPS 有延迟），按你给的路径回报；落盘前请自行确认" }
             }
             $same = $false
-            try { $same = ([IO.Path]::GetFullPath($actual) -ieq [IO.Path]::GetFullPath($requested)) } catch {}
+            try { $same = ([IO.Path]::GetFullPath($actual) -ieq [IO.Path]::GetFullPath($requested)) } catch {} # 吞错有据：比较失败按未验证处理，不静默判成一致
             return @{ path = $actual; requestedPath = $requested; verified = $same }
         }
 
@@ -3951,7 +3959,7 @@ switch ($Action) {
         # 所以这里不猜、不硬关：明确报错让调用方先 save_as，或显式 saveChanges=false。
         if ($saveChanges) {
             $hasPath = $false
-            try { $hasPath = -not [string]::IsNullOrEmpty([string]$wb.Path) } catch {}
+            try { $hasPath = -not [string]::IsNullOrEmpty([string]$wb.Path) } catch {} # 吞错有据：读不到 Path 按"从未保存"处理（保守方向，护栏会拦）
             if (-not $hasPath) {
                 Output-Json @{ success = $false; error = "[勿重试·先另存为] 工作簿「$name」从未保存过，直接关闭会弹出「另存为」对话框卡住通道（120 秒）。请先另存为（wps_excel_save_as），或显式传 save=false 放弃保存" }
                 return
@@ -4083,7 +4091,7 @@ switch ($Action) {
         # 所以这里不猜、不硬关：明确报错让调用方先 save_as，或显式 saveChanges=false。
         if ($saveChanges) {
             $hasPath = $false
-            try { $hasPath = -not [string]::IsNullOrEmpty([string]$docItem.Path) } catch {}
+            try { $hasPath = -not [string]::IsNullOrEmpty([string]$docItem.Path) } catch {} # 吞错有据：读不到 Path 按"从未保存"处理（保守方向，护栏会拦）
             if (-not $hasPath) {
                 # 第 1 期第 2 章第 4 轮（B3）：提示里原来写的是 saveChanges=false —— 那是【PS 动作】的
                 # 参数名，不是【工具】的。wps_word_close_document 的公开 schema 参数叫 save；
@@ -4162,7 +4170,7 @@ switch ($Action) {
         $doc = $(Resolve-Doc $word $p)
         if ($null -eq $doc) { Output-Json @{ success = $false; error = "No active document" }; return }
         $n = 0
-        try { $n = [int]$doc.Comments.Count } catch {}
+        try { $n = [int]$doc.Comments.Count } catch {} # 吞错有据：读不到按 0 处理，走"没有批注"路径（不会误删）
         if ($n -le 0) { Output-Json @{ success = $false; error = "文档里没有批注" }; return }
         $target = $null
         if ($null -ne $p.index) {
@@ -4174,7 +4182,7 @@ switch ($Action) {
                 $c = $null
                 try { $c = $doc.Comments.Item($i) } catch { continue }
                 $t = ""
-                try { $t = [string]$c.Range.Text } catch {}
+                try { $t = [string]$c.Range.Text } catch {} # 吞错有据：读不到文本按空串处理，该项匹配跳过
                 if ($t -like "*$($p.text)*") { $target = $c; break }
             }
             if ($null -eq $target) { Output-Json @{ success = $false; error = "没有找到包含「$($p.text)」的批注" }; return }
@@ -4182,10 +4190,10 @@ switch ($Action) {
             Output-Json @{ success = $false; error = "需要 index（序号）或 text（批注内容片段）之一" }; return
         }
         $before = ""
-        try { $before = [string]$target.Range.Text } catch {}
+        try { $before = [string]$target.Range.Text } catch {} # 吞错有据：展示用的删除前文本，读不到不影响删除本身
         $target.Delete()
         $n1 = 0
-        try { $n1 = [int]$doc.Comments.Count } catch {}
+        try { $n1 = [int]$doc.Comments.Count } catch {} # 吞错有据：剩余计数读不到按 0 展示
         Output-Json @{ success = $true; data = @{ deleted = $before; remaining = $n1 } }
     }
 
@@ -4313,7 +4321,7 @@ switch ($Action) {
             Output-Json @{ success = $false; error = "表格转文本失败: $(Get-CallError $_)" }; return
         }
         $left = 0
-        try { $left = [int]$doc.Tables.Count } catch {}
+        try { $left = [int]$doc.Tables.Count } catch {} # 吞错有据：剩余表格计数读不到按 0 展示
         Output-Json @{ success = $true; data = @{ tableIndex = $idx; separator = $sep; remainingTables = $left } }
     }
 
@@ -4323,14 +4331,21 @@ switch ($Action) {
         # 这个在【临时文档】上探新接口，探完原样关闭（不保存），不碰用户任何文档。
         $word = Get-WpsWord
         if ($null -eq $word) { Output-Json @{ success = $false; error = "WPS Word not running" }; return }
-        $doc = $null
-        try {
-            $doc = $word.Documents.Add()
-            # 等文档就绪（同 createDocument 的教训：零等待会拿到空壳）
-            for ($i = 0; $i -lt 20; $i++) {
-                Start-Sleep -Milliseconds 150
-                try { $cur = $word.Documents.Item($word.Documents.Count); if (Test-DocHealthy $cur) { $doc = $cur; break } } catch {}
-            }
+            $doc = $null
+            try {
+                $doc = $word.Documents.Add()
+                # 等文档就绪（同 createDocument 的教训：零等待会拿到空壳）
+                for ($i = 0; $i -lt 20; $i++) {
+                    Start-Sleep -Milliseconds 150
+                    try { $cur = $word.Documents.Item($word.Documents.Count); if (Test-DocHealthy $cur) { $doc = $cur; break } } catch {}
+                }
+                # 空壳判空（2026-10-25 补）：文档没就绪就往下走，第一个能力项就会抛
+                # "不能对值为 Null 的表达式调用方法"，把"环境没就绪"伪装成"能力不支持"。
+                # 这里显式失败，让门禁把它当 FAIL 而不是当成探测结果。
+                if ($null -eq $doc) {
+                    Output-Json @{ success = $false; error = "探测失败：临时文档未就绪（Documents.Add 返回空壳，等待 3 秒仍不可用）" }
+                    return
+                }
             # 铺探测素材：一段文字 + 一张 2x2 表 + 一个书签
             try { $null = $doc.Content.InsertAfter("__probe__ 内容") } catch {}
             try { $null = $doc.Tables.Add($doc.Range($doc.Content.End - 1, $doc.Content.End - 1), 2, 2) } catch {}
@@ -4941,7 +4956,7 @@ switch ($Action) {
         $saveChanges = if ($null -ne $p.saveChanges) { [bool]$p.saveChanges } else { $true }
         if ($saveChanges) {
             $hasPath = $false
-            try { $hasPath = -not [string]::IsNullOrEmpty([string]$pres.Path) } catch {}
+            try { $hasPath = -not [string]::IsNullOrEmpty([string]$pres.Path) } catch {} # 吞错有据：读不到 Path 按"从未保存"处理（保守方向，护栏会拦）
             if (-not $hasPath) {
                 Output-Json @{ success = $false; error = "[勿重试·先另存为] 演示文稿「$name」从未保存过，直接关闭会弹出「另存为」对话框卡住通道（120 秒）。请先另存为（wps_ppt_save_as），或显式传 save=false 放弃保存" }
                 return
@@ -5554,10 +5569,10 @@ switch ($Action) {
         $old = $slide.Shapes.Item($sel)
         $l = $old.Left; $t = $old.Top; $w = $old.Width; $h = $old.Height
         $rot = 0
-        try { $rot = $old.Rotation } catch {}
+        try { $rot = $old.Rotation } catch {} # 吞错有据：旋转角读不到按 0 处理
         $old.Delete()
         $pic = $slide.Shapes.AddPicture($newPath, $false, $true, $l, $t, $w, $h)
-        try { $pic.Rotation = $rot } catch {}
+        try { $pic.Rotation = $rot } catch {} # 吞错有据：旋转角写不回按原样放置
         Output-Json @{ success = $true; data = @{ name = $pic.Name; left = $l; top = $t; width = $w; height = $h; path = $newPath } }
     }
 
@@ -8319,7 +8334,7 @@ switch ($Action) {
         if ($null -eq $doc) { Output-Json @{ success = $false; error = "No active document" }; return }
         $mode = [string]$p.mode
         $before = 0
-        try { $before = [int]$doc.Revisions.Count } catch {}
+        try { $before = [int]$doc.Revisions.Count } catch {} # 吞错有据：读不到按 0 处理，走"没有修订"路径（不会误删）
         if ($before -eq 0) {
             Output-Json @{ success = $true; data = @{ mode = $mode; count = 0; handled = 0; note = "文档里没有修订" } }
             return

@@ -109,6 +109,11 @@ const STATIC_ACTIONS = {
   // 写分支（acceptAll / rejectAll / acceptOne / rejectOne → handleRevisions）观测不到。
   // 只登记 listRevisions 曾把整个工具标成只读 —— "接受所有修订"既不建快照也不弹确认。
   wps_word_revisions: ['listRevisions', 'handleRevisions'],
+  // 2026-10-25：fail-closed 扫描器（本文件 §2.6）首批战果。两个多分支工具的写分支
+  // 探测看不到（setLayout 带必填参数到不了出口；index 的 insert/count 走非默认分支），
+  // 此前从未登记 —— 与 revisions 同病。
+  wps_word_index: ['markIndexEntry', 'insertIndex'],
+  wps_word_page_number: ['addPageNumber', 'setHeaderFooterLayout'],
 };
 /** 观测值与静态表不一致的工具（漂移线索，只告警不退出） */
 const drift = [];
@@ -288,6 +293,62 @@ wpsClient.invokeAction = async (action, params, appKey) => {
         '    ① TS 侧改调 ps1 里已存在的等价动作（如 autoSum → setFormula）；\n' +
         '    ② 给 wps-com.ps1 加 case（先查重名、case 独占一行），再重跑本脚本 + gen-action-routes.js。\n' +
         '  注意：嵌套 switch 的分支标签（trim/placeholder/acceptOne…）不是动作，别往 ps1 里加同名 case 糊过去。'
+    );
+    process.exit(1);
+  }
+
+  // ---- 2.6 fail-closed：反向扫描 handler 源码里所有"发给 PS 的动作名字面量" ----
+  // 空参探测只走默认分支（2026-10-25 revisions 事故：handleRevisions 分支观测不到，
+  // 整个工具被标成只读）。这里把 src/tools 与 src/server 里 call/exec/invoke
+  // （含泛型）的首参字符串字面量全部扫出来，要求：
+  //   ① 动作名必须在 ps1 顶层 switch 里存在（抓"调了不存在的动作"）；
+  //   ② 必须出现在至少一个工具的 TOOL_ACTIONS 里（抓"写分支漏登记"）。
+  // 违反任意一条 → 非 0 退出。--selftest 自证能红。
+  // 已知边界：动作名是运行期变量的（batch 逃生舱等）扫不到，靠探测与手写表兜底；
+  // 换行后才出现首参字面量的调用也扫不到（现状没有这种写法）。
+  const scanLiterals = new Map(); // action -> ['file:line', ...]
+  const CALL_RE = /\b(?:call|exec|invoke|executeMethod|invokeAction)(?:<[^()>]*>)?\(\s*'([A-Za-z_][A-Za-z0-9_]*)'/g;
+  const walkSrc = (d) => {
+    for (const e of fs.readdirSync(path.join(ROOT, d), { withFileTypes: true })) {
+      const rel = `${d}/${e.name}`;
+      if (e.isDirectory()) { walkSrc(rel); continue; }
+      if (!e.name.endsWith('.ts') || e.name.endsWith('.generated.ts') || e.name.endsWith('.d.ts')) continue;
+      const text = fs.readFileSync(path.join(ROOT, rel), 'utf8');
+      text.split(/\r?\n/).forEach((line, i) => {
+        const t = line.trim();
+        if (t.startsWith('//') || t.startsWith('*') || t.startsWith('/*')) return; // 跳注释行
+        CALL_RE.lastIndex = 0;
+        let m;
+        while ((m = CALL_RE.exec(line)) !== null) {
+          const act = m[1];
+          if (!scanLiterals.has(act)) scanLiterals.set(act, []);
+          scanLiterals.get(act).push(`${rel}:${i + 1}`);
+        }
+      });
+    }
+  };
+  walkSrc('src/tools');
+  walkSrc('src/server');
+  const registeredActions = new Set(Object.values(map).flat());
+  const scanBad = [];
+  for (const [act, where] of scanLiterals) {
+    if (!realActions.has(act)) scanBad.push(`  - ${act}（ps1 顶层无此 case）← ${where[0]}`);
+    else if (!registeredActions.has(act)) scanBad.push(`  - ${act}（没有任何工具的 TOOL_ACTIONS 登记它，探测也看不到这个分支）← ${where[0]}`);
+  }
+  if (process.argv.includes('--selftest')) {
+    const fake = '__selftest_missing__';
+    if (realActions.has(fake) || registeredActions.has(fake)) {
+      console.error('✗ selftest 失效：假动作竟然通过了检查');
+      process.exit(1);
+    }
+    console.log(`✓ 扫描器自检通过（假动作会被拦；本次共扫描 ${scanLiterals.size} 个动作名字面量）`);
+  }
+  if (scanBad.length) {
+    console.error(`✗ fail-closed 扫描：${scanBad.length} 个源码动作名没通过校验：`);
+    for (const b of scanBad) console.error(b);
+    console.error(
+      '  修法：改对动作名；多分支工具把全部分支登记进 STATIC_ACTIONS\n' +
+        '  （登记后重跑本脚本，注解才会把写分支算进去）。'
     );
     process.exit(1);
   }

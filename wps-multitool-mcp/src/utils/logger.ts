@@ -148,13 +148,36 @@ export const log = {
 };
 
 /**
+ * 参数摘要：只记键名与大小，不记值。
+ * params 里是单元格数据、文档正文这类用户内容，整份写盘属于隐私泄漏
+ * （2026-10-25 外部评审 P1：日志"可能含文档路径"的说法低估了实际风险）。
+ * 排障要完整参数时设 WPS_LOG_PARAMS=1。
+ */
+const summarizeParams = (params?: Record<string, unknown>): Record<string, unknown> | undefined => {
+  if (!params) return undefined;
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(params)) {
+    if (v === undefined || v === null) { out[k] = String(v); continue; }
+    if (typeof v === 'string') out[k] = `str(${v.length})`;
+    else if (typeof v === 'number' || typeof v === 'boolean') out[k] = v;
+    else if (Array.isArray(v)) out[k] = `arr(${v.length})`;
+    else out[k] = `obj(${JSON.stringify(v).length})`;
+  }
+  return out;
+};
+
+/**
  * 请求日志中间件风格的函数
  */
 export const logRequest = (
   method: string,
   params?: Record<string, unknown>
 ): void => {
-  logger.info(`[REQUEST] ${method}`, { params });
+  if (isEnvTrue(process.env.WPS_LOG_PARAMS)) {
+    logger.info(`[REQUEST] ${method}`, { params });
+    return;
+  }
+  logger.info(`[REQUEST] ${method}`, { params: summarizeParams(params) });
 };
 
 /**

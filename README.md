@@ -49,6 +49,9 @@ npx -y wps-multitool-mcp
 irm https://cdn.jsdelivr.net/gh/forkgo430/wps-multitool-mcp@main/scripts/install.ps1 | iex
 ```
 
+> 担心管道执行远程脚本？可以先把脚本下载下来，用 `Get-FileHash .\install.ps1 -Algorithm SHA256`
+> 与 Release 页公布的校验值比对后再运行；锁定某个版本把地址里的 `@main` 换成 `@<tag>`。
+
 <a id="能力一览"></a>
 
 ## 它能干什么
@@ -181,7 +184,7 @@ Windows 上用 WPS 干活、并且要动"眼前这份"文档的人。
 <!-- AUTO:tool-stats:start -->
 - **284 个工具**（8 个内置 + 276 个专业/组工具）；**默认只列 40 个**（基础档 ∩ 真机验证，按需加载 —— 口径与校验见 `scripts/manual/basic-tier-verify.js`）
 - 分布（按工具组，内置计入对应组）：通用 27（含 core）/ Word 67 / Excel 89 / PPT 101
-- 注解（实测）：只读 51 / 破坏性 35 / 非幂等 107，覆盖 284/284
+- 注解（实测）：只读 51 / 破坏性 35 / 非幂等 108，覆盖 284/284
 <!-- AUTO:tool-stats:end -->
 
 ## 安装
@@ -317,7 +320,7 @@ wps-multitool-mcp install
 **它是什么**：一个 WPS 加载项（`manifest.xml` + `ribbon.xml` + 任务窗格页面）。
 功能区有 9 个按钮分 4 组，侧边栏面板每 2 秒读一次桥的状态。
 
-**能干什么 —— 只读状态，不改文档**：
+**能干什么 —— 看状态，外加五个动作按钮**：
 
 | 面板显示 | 来源 |
 |---|---|
@@ -325,7 +328,9 @@ wps-multitool-mcp install
 | 有没有活动文档 | 同上 |
 | 最近调用 | 桥在命名管道上记录的**摘要**（不记文档正文） |
 
-⚠️ **面板是只读的**。它显示状态，**不能改文档** —— 改文档走 MCP Server 那边。
+⚠️ **面板不是只读的**：它有 **保存 / 撤销 / 导出 PDF / 建快照 / 解除卡死** 五个动作按钮，
+会直接改变文档状态，manifest 也申请了写权限（`document.write`）。
+**只读的只有上面的状态查询端点**。改文档的主力工具仍在 MCP Server 那边。
 面板里的「工具组 基础 40」是写死的说明文字（桥拿不到 MCP server 的注册表）。
 
 **和 MCP Server 共用同一个桥**。这是它俩不互相打架的原因：两个入口连同一个命名管道、

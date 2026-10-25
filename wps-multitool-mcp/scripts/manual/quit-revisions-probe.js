@@ -35,7 +35,7 @@ const s = new WpsMcpServer();
 s.registerBuiltinTools();
 toolRegistry.registerAll(allTools);
 
-const call = (n, a = {}) => toolRegistry.getTool(n).handler(a);
+const call = (n, a = {}) => toolRegistry.callTool({ id: require('crypto').randomUUID(), name: n, arguments: a });
 const txt = (r) => String((r && r.content && r.content[0] && r.content[0].text) || '').replace(/\s+/g, ' ');
 const full = (r) => JSON.stringify(r, (k, v) => (k === 'warnings' || k === 'content' ? v : v), 2).slice(0, 900);
 
@@ -79,6 +79,11 @@ function listSnapshots() {
   const base0 = wpsProcs();
   console.log('  开跑前 WPS 套件进程 =', base0.length ? base0.join(' | ') : '（无）');
 
+  // 用例选择：node quit-revisions-probe.js [C] —— 传 C 只跑用例 C。
+  // 为什么：用例 B 的 save_as 会把 word target 切到 caseB 文档，而 quit 不清 target，
+  // 同进程连跑 C 会被 ps1 的 target 前置检查连环拒绝（实测 2026-10-25）。C 要干净进程。
+  const ONLY = process.argv[2] || '';
+  if (ONLY !== 'C') {
   console.log('\n=== 用例 A：quit 拒绝路径（未保存默认拒绝）===');
   let r = await call('wps_word_create_document', {});
   console.log('  create_document →', txt(r).slice(0, 120));
@@ -103,9 +108,12 @@ function listSnapshots() {
   r = await call('wps_common_quit', {});
   console.log('  quit 完整回包 →', full(r));
   let remaining = null;
-  try { remaining = JSON.parse(r.content[0].text).data.remaining; } catch { /* 回包文本非 JSON */ }
-  if (remaining === null) {
-    // ps1 语义：left=0 ⇔ 文本"WPS 已退出"；left>0 ⇔ "另有 N 个 WPS 进程在运行"
+  // ps1 回包格式（2026-10 起）：「WPS 已退出（另有 8 个无窗口服务进程由 WPS 自管，不影响使用）…剩余进程: 0」
+  // “另有 N 个”指无窗口服务进程（wpscloudsvr / WPS 自管驻留），不算 remaining；用户可关实例数看“剩余进程”。
+  // 初版解析把“另有 N”当 remaining，是解析缺陷；原始输出原样保留，判定看本行修正后的取数。
+  const mRemain = txt(r).match(/剩余进程[:：]\s*(\d+)/);
+  if (mRemain) remaining = Number(mRemain[1]);
+  else {
     const t = txt(r);
     remaining = /已退出/.test(t) && !/另有/.test(t) ? 0 : ((t.match(/另有\s*(\d+)/) || [])[1] ? Number(RegExp.$1) : null);
   }
@@ -113,8 +121,10 @@ function listSnapshots() {
   ok('B2 remaining=0', remaining === 0, `remaining=${remaining}`);
   await new Promise((res) => setTimeout(res, 3000));
   const procsB = wpsProcs();
-  const officeB = procsB.filter((l) => /^(wps|et|wpp)\.exe#/.test(l));
-  ok('B3 WPS office 进程已退（wpscloudsvr 等服务另计）', officeB.length === 0, procsB.join(' | ') || '（无）');
+  const windowedB = procsB.filter((l) => /^(wps|et|wpp)\.exe#\d+ title=\[.+\]$/.test(l));
+  ok('B3 无带窗口的 WPS office 进程（无窗口服务进程由 WPS 自管，不计入判据）', windowedB.length === 0,
+    procsB.join(' | ') || '（无）');
+  } // end if (ONLY !== 'C')
 
   console.log('\n=== 用例 C：revisions acceptAll + auto 快照 ===');
   r = await call('wps_word_create_document', {});

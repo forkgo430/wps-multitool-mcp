@@ -27,6 +27,7 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { createHash } from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 import {
   ToolDefinition,
@@ -170,7 +171,9 @@ function stamp(): string {
 function snapshotFileName(state: DocState): string {
   const base = path.basename(state.fullName);
   const safe = base.replace(/[\\/:*?"<>|]/g, '_');
-  const hash = Buffer.from(state.fullName.toLowerCase(), 'utf8').toString('hex').slice(0, 8);
+  // sha256 截 12 位 hex（2026-10-25 评审 P1：旧算法取小写 hex 前 8 字符 = 4 字节，
+  // 路径共享前缀时碰撞概率不低）。旧 hash 命名的历史快照不迁移，随保留策略自然老化。
+  const hash = createHash('sha256').update(state.fullName.toLowerCase(), 'utf8').digest('hex').slice(0, 12);
   return `${stamp()}_${state.app}_${hash}_${safe}`;
 }
 

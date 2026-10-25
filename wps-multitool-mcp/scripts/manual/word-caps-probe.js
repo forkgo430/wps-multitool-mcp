@@ -75,11 +75,21 @@ const MUST_VERIFY = ['wps_word_create_document'];
     if (!r.success) throw new Error(r.error);
   } catch (e) {
     const msg = e && e.message ? e.message : String(e);
-    console.log(`  ⚠ 探测未执行：${msg}`);
-    console.log('    （需要 WPS 文字可访问。这一项本轮不判失败，但也不算数 ——');
-    console.log('     意味着这批新接口在真机上【未验证】。）');
-    console.log(`\n汇总：${pass} 通过 / ${fail} 失败（真机探测跳过）`);
-    process.exit(fail === 0 ? 0 : 1);
+    // 环境不可用（没开 WPS / 临时文档没就绪）→ 跳过不判失败；
+    // 其它失败（探测跑一半崩了）→ 按 FAIL 算，不让坏结果披着"跳过"的外衣溜走
+    // （2026-10-25 补：此前一律跳过，pwsh7 宿主回归被当成"环境没就绪"漏过一次）。
+    const envUnavailable = /WPS Word not running|临时文档未就绪/.test(msg);
+    if (envUnavailable) {
+      console.log(`  ⚠ 探测未执行：${msg}`);
+      console.log('    （需要 WPS 文字可访问。这一项本轮不判失败，但也不算数 ——');
+      console.log('     意味着这批新接口在真机上【未验证】。）');
+      console.log(`\n汇总：${pass} 通过 / ${fail} 失败（真机探测跳过）`);
+      process.exit(fail === 0 ? 0 : 1);
+    }
+    fail++;
+    console.log(`  ✗ 真机探测失败：${msg}`);
+    console.log(`\n汇总：${pass} 通过 / ${fail} 失败`);
+    process.exit(1);
   }
 
   const supported = probe.supported || [];
