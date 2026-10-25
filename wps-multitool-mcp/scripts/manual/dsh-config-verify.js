@@ -1,5 +1,5 @@
 /**
- * Input: 本仓库的工具定义（src/tools/**）与 dsh 配置片段（docs/agents/dsh/cordis.wps.patch.yml）
+ * Input: 本仓库的工具定义（src/tools/**）与 dsh 配置片段（scripts/manual/fixtures/cordis.wps.patch.yml）
  * Output: 一份静态校验报告；有 FAIL 则 exit 1
  * Pos: dsh 适配的门禁。改工具名 / 改 dsh 片段 / 改桥超时之前先跑它。
  *
@@ -13,6 +13,9 @@
  * 校验的是【静态定义】，不是运行时 tools/list。运行时的权威名单靠真机 dsh 看，
  * 这里只保证"不会因为命名/超时这种硬约束翻车"。
  *
+ * 片段原先放在 docs/（gitignored）——2026-10-25 Linux 云端测试抓出：任何干净检出
+ * （CI、Linux 源码测试）这门禁必红。已迁入 fixtures/（进 git），docs/ 里的旧副本仅作本地参考。
+ *
  * 用法：node scripts/manual/dsh-config-verify.js
  */
 
@@ -21,10 +24,11 @@ const path = require('path');
 
 /** 包根：src/ 与 dist/ 所在处 */
 const ROOT = path.resolve(__dirname, '..', '..');
-/** 仓库根：docs/agents 在这里（包根是仓库的子目录，别算错一层） */
+/** 仓库根：dsh-bundle/ 在这里（包根是仓库的子目录，别算错一层） */
 const REPO_ROOT = path.resolve(ROOT, '..');
 const TOOLS_DIR = path.join(ROOT, 'src', 'tools');
-const PATCH = path.join(REPO_ROOT, 'docs', 'agents', 'dsh', 'cordis.wps.patch.yml');
+/** dsh 配置样例：迁入 fixtures/（进 git）——原 docs/ 路径被 gitignore，干净检出必红（Linux 云端测试发现） */
+const PATCH = path.join(__dirname, 'fixtures', 'cordis.wps.patch.yml');
 
 const DSH_NAME_MAX = 64;
 const SERVER_NAME_RE = /^[A-Za-z0-9_-]{1,32}$/;

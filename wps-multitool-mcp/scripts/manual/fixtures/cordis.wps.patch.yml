@@ -1,0 +1,36 @@
+# DeepSeek Harness (dsh) 接入 wps-multitool-mcp 的配置片段
+#
+# 放哪儿（二选一，不要覆盖已有文件，只合并这条 insert）：
+#   $DSH_HOME/profiles/<profile>/cordis.patch.yml   只对某个 profile 生效
+#   $DSH_HOME/cordis.patch.yml                      全机器所有 profile
+# 或临时试：dsh web --patch <这个文件的路径>
+#
+# 三处为什么这么写（改之前先看 DECISION 里的说明，别顺手"优化"）：
+#   1) command 用 node + 绝对路径，不用 npx
+#      dsh 的 stdio 参数是直接透传、不过 shell 插值；Windows 上 npx 实际是 npx.cmd，
+#      按 npx 去 spawn 会 ENOENT。node 走 CreateProcess 会自动补 .exe，是稳的。
+#   2) toolCallTimeoutMs 必须 ≥ 桥的 WPS_DAEMON_TIMEOUT（默认 120000）
+#      dsh 默认 60000 会先掐断，而桥那边动作还在跑 → "客户端报失败、WPS 已改完"。
+#      这类"静默不一致"是本项目最贵的一类 bug（见 applyTransitionToAll 那次）。
+#   3) failOnStartupError: true
+#      dsh 默认 false —— 连不上就静默降级成"零工具"，用户只会觉得"AI 不会用 WPS"。
+#      宁可启动即报错。
+
+- insert:
+    - id: mcp-wps
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        # 工具名会变成 mcp__wps__<原名>；serverName 只能用 [A-Za-z0-9_-]，≤32 字符
+        serverName: wps
+        transport: stdio
+        command: node
+        args:
+          # 换成你机器上的真实路径：npm i -g wps-multitool-mcp → dist/index.js
+          - C:\Users\REPLACE_ME\AppData\Roaming\npm\node_modules\wps-multitool-mcp\dist\index.js
+        cwd: !!js process.cwd()
+        toolCallTimeoutMs: 130000
+        failOnStartupError: true
+        env:
+          # 保持默认档（essential）：dsh 会把工具定义塞进【每一次】请求，276 个全量会很贵
+          WPS_TOOL_TIER: essential
+          WPS_USE_DAEMON: '1'
