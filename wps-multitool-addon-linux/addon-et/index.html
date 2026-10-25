@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8"/>
+    <title>MCP · Linux 加载项通道（et 型）</title>
+    <!--
+      Input: 无
+      Output: 加载项宿主页（et 型）
+      Pos: Linux 加载项（et 型）入口页。一旦我被修改，请更新我的头部注释，以及所属文件夹的md。
+      说明：B2 骨架页只负责把共享通道客户端和本型 boot.js 加载起来，并显示通道状态。
+      服务端地址/令牌优先从 URL query 传（?server=…&token=…），测试时也可在
+      window.WPS_ADDON_CONFIG 里内联；两者都没有则用默认 127.0.0.1:27740（令牌须由
+      boot 前的某个环节提供，服务端会在启动日志打随机令牌）。
+    -->
+</head>
+<body>
+    <h3>MCP · Linux 加载项通道</h3>
+    <p>型别：et（表格）</p>
+    <pre id="channel-state">尚未启动</pre>
+    <script src="../js/channel-client.js"></script>
+    <script src="js/boot.js"></script>
+    <script>
+        setInterval(function () {
+            var s = window.WpsAddonChannel && window.WpsAddonChannel.state();
+            document.getElementById('channel-state').textContent = JSON.stringify(s, null, 2);
+        }, 1000);
+    </script>
+</body>
+</html>

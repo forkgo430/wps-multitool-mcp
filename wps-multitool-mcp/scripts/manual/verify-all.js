@@ -55,6 +55,7 @@ const FAST = [
   ['dsh-config-verify.js', 'dsh 适配约束（命名/超时）'],
   ['windows-path-frozen.js', 'Windows 链路冻结门禁（C1）'],
   ['backend-selector-test.js', '平台识别决策链（Linux B0）'],
+  ['addon-channel-test.js', '加载项通道骨架（Linux B2：握手三态/端口绑定/路由/失败语义/轮询闭环）'],
 ];
 
 /** 要起子进程 / 真跑 PowerShell 的重测。第三列 = 仅 Windows 能跑（Linux 上跳过不判失败，B8） */

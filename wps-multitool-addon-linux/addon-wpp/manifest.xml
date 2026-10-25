@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Input: 加载项清单配置 -->
+<!-- Output: WPS Linux 加载项注册元数据（wpp 型 = 演示） -->
+<!-- Pos: Linux 加载项（wpp 型）清单入口，骨架照 wps-multitool-addon/manifest.xml 改型。一旦我被修改，请更新我的头部注释，以及所属文件夹的md。 -->
+<!--
+    WPS 多面手 MCP - Linux 加载项（wps 型 · 文字）
+
+    与 Windows 版（wps-multitool-addon/）的关系：C2 物理分开 —— Windows 面板走 27731 只读 +
+    COM 桥；Linux 版走 27740 执行通道（jsaddons 反连 Node）。S1 实测三型对象模型互相看不见，
+    必须 wps/et/wpp 三型各部署一份（本目录的姊妹目录 addon-et / addon-wpp）。
+    不要改 wps-multitool-addon/（那是 Windows 面板，冻结面）。
+-->
+<manifest xmlns="http://schemas.wps.cn/oaassist/2019/manifest"
+          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+
+    <id>wps-multitool-linux-wpp</id>
+    <version>0.1.0</version>
+    <name>MCP 工具 · Linux 演示</name>
+    <description>MCP（Model Context Protocol）加载项通道客户端（wpp 型）：通过长轮询反连本机 Node 服务，执行演示侧动作。B2 骨架：通道闭环 + ping/wireCheck。</description>
+    <author>wps-skills 协作组</author>
+
+    <!-- 本加载项只在 wpp 型宿主里启用（S1 实测：只有 wpp 型拿得到 Presentations）（S1 实测：跨类型拿不到对象模型，属性不存在） -->
+    <hosts>
+        <host name="wpp"/>
+    </hosts>
+
+    <!-- 权限声明 -->
+    <permissions>
+        <permission name="document.read"/>
+        <permission name="document.write"/>
+    </permissions>
+
+    <!-- 功能区配置 -->
+    <ribbon src="ribbon.xml"/>
+
+    <!-- 脚本入口：共享通道客户端 + 本型启动脚本（jsaddons 每目录独立，共享文件按相对路径引用） -->
+    <scripts>
+        <script src="../js/channel-client.js"/>
+        <script src="js/boot.js"/>
+    </scripts>
+
+</manifest>
