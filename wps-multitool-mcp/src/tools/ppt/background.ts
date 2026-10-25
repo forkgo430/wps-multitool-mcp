@@ -457,7 +457,7 @@ export const setShapeZOrderHandler: ToolHandler = async (
 /**
  * 导出所有背景、页面信息、高级形状相关的Tools
  */
-export const backgroundTools: RegisteredTool[] = [
+export const backgroundTools: RegisteredTool[] = [
   { definition: setSlideNumberDefinition, handler: setSlideNumberHandler },
   { definition: setPptFooterDefinition, handler: setPptFooterHandler },
   { definition: setPptDateTimeDefinition, handler: setPptDateTimeHandler },
