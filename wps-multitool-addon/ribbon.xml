@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Input: 功能区 UI 定义 -->
+<!-- Output: WPS 功能区按钮布局 -->
+<!-- Pos: Windows 加载项功能区配置。一旦我被修改，请更新我的头部注释，以及所属文件夹的md。 -->
+<!--
+  多面手 MCP 功能区（v2.4）
+
+  v2.4 改动：
+  - 「导出本页」「另存副本」彻底移除（赢容要求）：功能区按钮、面板按钮、
+    act() 分支、main.js 里的注释残留，全部清掉。顺带修掉一处文案断裂 ——
+    快照功能在未存盘时提示「请先用「另存副本」保存一份」，但那个按钮已不存在，
+    现改为指向 Ctrl+S / wps_common_save。
+  - 修正一条错误注释：早期写"WPS JS 加载项没有侧边栏 API，面板是对话框"，
+    那是没验证就下的结论。实际 wps.CreateTaskPane 可用，面板是真任务窗格。
+
+  v2.3 改动：
+  - imageMso 只用在 WPS 上实测可用的：Info / Undo / Redo / PrintPreview。
+    试过 11 个"语义对应"名，其余 7 个显示问号方块 —— 猜名字比统一用 Info 更难看。
+
+  关于「面板」：打开右侧任务窗格（panel.html），那才是主界面。
+  功能区只留高频入口：置于前台 / 面板 / 快照三件 / 撤销 / 导出 / 状态 / 关于。
+-->
+<customUI xmlns="http://schemas.microsoft.com/office/2006/01/customui" onLoad="OnAddinLoad">
+    <ribbon startFromScratch="false">
+        <tabs>
+            <tab id="tabMcp" label="多面手 MCP">
+                <group id="grpWindow" label="窗口">
+                    <button id="btnShowWindow" onAction="ribbonShowWindow" label="置于前台" imageMso="Info" size="large"/>
+                    <button id="btnPanel" onAction="ribbonPanel" label="面板" imageMso="PrintPreview" size="large"/>
+                </group>
+                <group id="grpSnapshot" label="快照">
+                    <button id="btnSnapSave" onAction="ribbonSnapshotSave" label="保存快照" imageMso="Info" size="large"/>
+                    <button id="btnSnapRestore" onAction="ribbonSnapshotRestore" label="还原快照" imageMso="Redo" size="large"/>
+                    <button id="btnUndo" onAction="ribbonUndo" label="撤销改动" imageMso="Undo" size="large"/>
+                </group>
+                <group id="grpOutput" label="输出">
+                    <button id="btnExportPdf" onAction="ribbonExportPdf" label="导出 PDF" imageMso="Info" size="large"/>
+                </group>
+                <group id="grpMaintain" label="维护">
+                    <button id="btnRefresh" onAction="ribbonRefresh" label="刷新状态" imageMso="Info" size="large"/>
+                    <button id="btnUnstick" onAction="ribbonUnstick" label="解除卡死" imageMso="Info" size="large"/>
+                    <button id="btnAbout" onAction="ribbonAbout" label="关于" imageMso="Info" size="large"/>
+                </group>
+            </tab>
+        </tabs>
+    </ribbon>
+</customUI>

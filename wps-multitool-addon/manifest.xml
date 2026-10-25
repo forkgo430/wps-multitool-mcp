@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Input: 加载项清单配置 -->
+<!-- Output: WPS 加载项注册元数据 -->
+<!-- Pos: Windows 加载项清单入口。一旦我被修改，请更新我的头部注释，以及所属文件夹的md。 -->
+<!--
+    WPS 多面手 MCP - 加载项清单配置 (COM桥接版)
+    MCP Server通过常驻桥进程 + PowerShell COM接口直接操作WPS，无需HTTP服务
+
+    当前维护者：赢容
+-->
+<manifest xmlns="http://schemas.wps.cn/oaassist/2019/manifest"
+          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+
+    <id>wps-claude-addon</id>
+    <version>1.0.1</version>
+    <name>MCP 工具</name>
+    <description>MCP（Model Context Protocol）工具集：让 AI 助手通过 PowerShell COM 桥接直接操控 WPS Office 的文字、表格与演示。</description>
+    <author>赢容</author>
+
+    <!-- 支持的WPS应用类型 -->
+    <hosts>
+        <host name="wps"/>
+        <host name="et"/>
+        <host name="wpp"/>
+    </hosts>
+
+    <!-- 权限声明 -->
+    <permissions>
+        <permission name="document.read"/>
+        <permission name="document.write"/>
+    </permissions>
+
+    <!-- 功能区配置 -->
+    <ribbon src="ribbon.xml"/>
+
+    <!-- 脚本入口 - COM模式只需要main.js -->
+    <scripts>
+        <script src="js/main.js"/>
+    </scripts>
+
+</manifest>

@@ -1,0 +1,38 @@
+{
+  "name": "dsh-multitool",
+  "version": "0.0.1",
+  "description": "WPS Office 多面手 MCP 的 DeepSeek Harness 组合包 —— 让 AI 直接操控你正开着的 WPS 文字/表格/演示。常驻桥进程（每次调用 2~3ms）· Windows only · 一条命令同时装上 40 个工具和一份教 AI 怎么用它们的技能 · 作者赢容",
+  "type": "module",
+  "files": [
+    "cordis.patch.yml",
+    "assets",
+    "README.md"
+  ],
+  "dependencies": {
+    "wps-multitool-mcp": "^1.0.2"
+  },
+  "engines": {
+    "dsh": ">=0.2.0 <0.3.0"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "keywords": [
+    "dsh-plugin",
+    "deepseek-harness",
+    "dsh",
+    "mcp",
+    "wps",
+    "office",
+    "skill"
+  ],
+  "author": "赢容",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/forkgo430/wps-multitool-mcp.git",
+    "directory": "dsh-bundle"
+  }
+}
