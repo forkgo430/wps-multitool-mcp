@@ -103,7 +103,7 @@ export const ESSENTIAL_BY_GROUP: Readonly<Record<string, number>> = ESSENTIAL_TO
 );
 
 /** core 组的工具数（在 toolgroups.ts 里定义，这里只标注预期值，用于自检） */
-export const CORE_GROUP_TOOL_COUNT = 4;
+export const CORE_GROUP_TOOL_COUNT = 5;
 
 /** 当前档位：默认 essential，WPS_TOOL_TIER=full 关闭基础档过滤 */
 export function isEssentialTier(): boolean {

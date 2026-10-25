@@ -218,6 +218,8 @@ panel = panel.replace(
   /(<span class="k">版本<\/span><span>)\d+\.\d+\.\d+(<\/span>)/,
   `$1${ver}$2`
 );
+// v-group 状态行（2026-10-25 评审：这行此前是手写数字，"40 / 270"双双漂移还没人发现）
+panel = panel.replace(/'基础 \d+ \/ 共 \d+ /, `'基础 ${listed} / 共 ${total} `);
 if (panel !== panelBefore) {
   fs.writeFileSync(PANEL, panel, 'utf8');
   console.log(`已更新 panel.html（工具数 / 版本 → ${ver}）`);

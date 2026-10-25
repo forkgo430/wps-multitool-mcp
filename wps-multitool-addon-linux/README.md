@@ -28,7 +28,7 @@ wpp 只有 Presentations），一个加载项只能拿一种应用的对象模�
 
 ## 动作分发器（B2 骨架约定）
 
-`js/channel-client.js` 的 `dispatch()`：只有 `ping` / `wireCheck` 真实现（回显，不碰 JSAPI），
+`js/channel-client.js` 的 `dispatch()`：ping/wireCheck 真实现，另有 word 5 + ppt 15 共 20 个动作已实现（S0/S1 验证过的集合，见 B2.5）；其余动作显式 unsupported，
 **其余动作一律回 `{ ok:false, unsupported:'B3' }`** —— B3 才填 20+ 动作的 JSAPI 实现
 （S1 覆盖率：支持 199 / 部分支持 45，适配器与实现顺序按 B4 结论）。
 显式拒绝、绝不静默成功（计划 §6 D3 的精神）。

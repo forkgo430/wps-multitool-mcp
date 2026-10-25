@@ -85,6 +85,7 @@ jobs:
           git diff --exit-code -- ../TOOLS.md ../README.md ../README.en.md ../wps-multitool-addon/panel.html src/server/tool-verification.generated.ts
 
       - name: Version PR / Publish
+        id: changesets
         uses: changesets/action@v1
         with:
           # 这个仓库的 npm 包在【子目录】wps-multitool-mcp/ 里（仓库根是同名目录，
@@ -105,3 +106,12 @@ jobs:
           # OIDC 走 id-token；NPM_TOKEN 只是没绑定 Trusted Publisher 时的兜底
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           NPM_CONFIG_PROVENANCE: 'true'
+
+      # 评审 P1-5 闭环：发布成功后把 install.ps1 的 SHA256 写进对应 Release 正文，
+      # 让 README 里的"与 Release 页校验值比对"成为可执行的步骤（2026-10-25）
+      - name: 安装脚本校验值写入 Release
+        if: steps.changesets.outputs.published == 'true'
+        working-directory: wps-multitool-mcp
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/manual/attach-install-hash.js

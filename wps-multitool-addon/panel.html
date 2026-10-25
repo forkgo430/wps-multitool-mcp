@@ -229,7 +229,7 @@ function render(d) {
   q.className = 'v' + ((d.queued || 0) >= d.queueMax ? ' err' : ((d.queued || 0) > 0 ? ' warn' : ' ok'));
 
   // 工具组数在桥侧拿不到（那是 MCP server 的注册表），这里显示说明
-  $('v-group').innerHTML = '基础 40 / 共 270 <span style="color:var(--dim);font-size:11px">（按需加载）</span>';
+  $('v-group').innerHTML = '基础 40 / 共 284 <span style="color:var(--dim);font-size:11px">（按需加载）</span>';
 
   // 最近改动
   var recent = d.recent || [];
