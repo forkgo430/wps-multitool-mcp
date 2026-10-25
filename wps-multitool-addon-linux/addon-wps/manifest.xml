@@ -36,6 +36,7 @@
     <!-- 脚本入口：共享通道客户端 + 本型启动脚本（jsaddons 每目录独立，共享文件按相对路径引用） -->
     <scripts>
         <script src="../js/channel-client.js"/>
+        <script src="../js/actions/word.js"/>
         <script src="js/boot.js"/>
     </scripts>
 
