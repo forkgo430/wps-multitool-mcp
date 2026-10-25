@@ -1,0 +1,15 @@
+{
+  "_note": [
+    "C1 冻结门禁基线。这些文件是 Windows COM 链路——为 Linux 改它们门禁就红。",
+    "Windows 自身修 bug 需要改时：node scripts/manual/windows-path-frozen.js --update 重立基线，",
+    "并在同一提交里写明理由。wps-com.ps1 不进本表（持续演进的 COM 真相源，保护靠纪律 + B5 parity 门禁）。",
+    "基线建立：2026-10-25 第五任（pwsh7 兼容与退出护栏已包含在内）。"
+  ],
+  "files": {
+    "src/bridge/index.ts": "0613696e33865d75304b7f34af0bbb8a0bc0e681e6aafa4a79d7e22a87afa2bb",
+    "src/bridge/ps-child.ts": "752c05e0cee5ab9b772ac8ad66c2f81e3d87ad41953e86a030f5620fbd69a29e",
+    "src/bridge/cancellable.ts": "47c859a552bc4dc0e4dc72bb2de0734f038c7858e75457b5d6bd00af551db285",
+    "src/client/ps-daemon.ts": "0e4913662e2c7331f7d187f0a68e51ff41e934b232c79d37898c50a75653f8d4",
+    "scripts/wps-comd.ps1": "88834d03c6a2275173964fc1aed911537ddd40fca24210c385012a1ba7682dbf"
+  }
+}

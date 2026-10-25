@@ -32,6 +32,7 @@ import { applyWordTarget } from '../tools/word/target';
  */
 const INSTANCE_SCOPED_ACTIONS = new Set(['quitWps', 'showWps', 'getSelectedText', 'setSelectedText']);
 import { currentSignal } from '../server/cancel-context';
+import { backendDecision } from '../server/backend-selector';
 import { currentTarget } from '../server/target-context';
 import { CancelError } from '../bridge/cancellable';
 import { ToolWarning } from '../types/tools';
@@ -273,6 +274,17 @@ async function execWpsAction(
   app: AppKey = 'common',
   instance: string = 'user'
 ): Promise<unknown> {
+  // Linux/macOS 分流（计划 §4.2 的"唯一改动"）：判定模块内缓存一次，Windows 上
+  // 恒为 com、这两行分支永远不进（C4 零开销）。addon 通道本体属 B2，这里只留转发点。
+  const decision = backendDecision();
+  if (decision.backend === 'addon') {
+    const addonChannel = require('./addon-channel') as { call: Function };
+    return addonChannel.call(action, params, app, instance);
+  }
+  if (decision.backend === 'off') {
+    throw new Error('WPS_BACKEND=off：后端已被明确禁用（backend-selector）');
+  }
+
   const kind = pickTransport();
   if (kind === 'direct') {
     return runTransport('direct', action, params, app, instance);

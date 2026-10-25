@@ -53,17 +53,19 @@ const FAST = [
   ['install-verify.js', 'install 子命令（合并/备份/幂等）'],
   ['skill-verify.js', 'skill 包规范'],
   ['dsh-config-verify.js', 'dsh 适配约束（命名/超时）'],
+  ['windows-path-frozen.js', 'Windows 链路冻结门禁（C1）'],
+  ['backend-selector-test.js', '平台识别决策链（Linux B0）'],
 ];
 
-/** 要起子进程 / 真跑 PowerShell 的重测 */
+/** 要起子进程 / 真跑 PowerShell 的重测。第三列 = 仅 Windows 能跑（Linux 上跳过不判失败，B8） */
 const HEAVY = [
-  ['excel-caps-probe.js', 'Excel 能力探测（需 WPS）'],
-  ['word-caps-probe.js', 'Word 能力探测（需 WPS）'],
-  ['snapshot-verify.js', '快照 / 恢复（需 WPS）'],
-  ['ppt-caps-probe.js', 'PPT 基础档（需 WPS 演示）'],
+  ['excel-caps-probe.js', 'Excel 能力探测（需 WPS）', true],
+  ['word-caps-probe.js', 'Word 能力探测（需 WPS）', true],
+  ['snapshot-verify.js', '快照 / 恢复（需 WPS）', true],
+  ['ppt-caps-probe.js', 'PPT 基础档（需 WPS 演示）', true],
   ['annotation-e2e.js', '注解端到端（真起 stdio server）'],
-  ['bridge-test.js', '桥进程'],
-  ['cancel-verify.js', '取消机制（真跑 PowerShell）'],
+  ['bridge-test.js', '桥进程', true],
+  ['cancel-verify.js', '取消机制（真跑 PowerShell）', true],
 ];
 
 const list = [...FAST, ...(ALL ? HEAVY : [])];
@@ -71,7 +73,14 @@ const list = [...FAST, ...(ALL ? HEAVY : [])];
 console.log(`\n═══ 验证门禁（共 ${list.length} 项${ALL ? '，含重测' : '，快测档'}）═══\n`);
 
 const results = [];
-for (const [file, label] of list) {
+const skipped = [];
+for (const [file, label, windowsOnly] of list) {
+  // B8：Windows-only 门禁在非 Windows 平台显式跳过（不判失败），Linux 上 npm test 才能跑完
+  if (windowsOnly && process.platform !== 'win32') {
+    skipped.push(file);
+    console.log(` 跳过  ${label} —— 仅 Windows（Linux 门禁）`);
+    continue;
+  }
   const started = Date.now();
   process.stdout.write(`  ${label.padEnd(28, ' ')} …`);
   const r = spawnSync(process.execPath, [path.join(DIR, file)], {
@@ -98,7 +107,8 @@ for (const [file, label] of list) {
 }
 
 const bad = results.filter((r) => !r.ok);
-console.log(`\n═══ 结果：${results.length - bad.length}/${results.length} 通过 ═══`);
+const skipNote = skipped.length ? `，跳过 ${skipped.length}（仅 Windows）` : '';
+console.log(`\n═══ 结果：${results.length - bad.length}/${results.length} 通过${skipNote} ═══`);
 if (bad.length) {
   console.log(`失败项：${bad.map((b) => b.file).join(', ')}`);
   console.log('\n门禁不通过 —— 别绕过它，先看失败原因。');
