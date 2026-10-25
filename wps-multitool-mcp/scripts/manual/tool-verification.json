@@ -1,0 +1,59 @@
+{
+  "_note": [
+    "真机验证清单 —— 唯一真相源。gen-tool-verification.js 读它生成 src/server/tool-verification.generated.ts。",
+    "",
+    "状态只有两档，别加第三档（第三档最后一定会被当成'差不多能用'）：",
+    "  live   = 有【真机】证据：在装了 WPS 的 Windows 上跑过探测脚本/端到端，观察过实际结果",
+    "  static = 只有静态证据：类型检查、生成器、注解对账、CI 门禁，但没在真机上跑过",
+    "",
+    "口径必须写死在证据里：'live' 目前是【组级覆盖】—— 该组有探测脚本跑过，不等于组内每个工具都有专用用例。",
+    "PPT 是例外：整组仍按 static 计，只有 tools 里逐条点名的那几个工具是真机跑通过的。",
+    "第 10 轮起：ppt 组的真机覆盖已大幅上量（见 evidence.ppt），但组级仍记 static ——",
+    "因为矩阵里仍有 5 条是【有据可查地跳过】的（有实测原因，不是漏跑）。宁可写 static：把没验过的说成验过，是在拿用户的文档赌。",
+    "SKILL.md 里凡是写分组验证结论的句子，都由 skill-verify.js 拿这份台账逐条对账，对不上就红。",
+    "想给单个工具升 live，就在 tools 里加一条，并在 evidence 里写清脚本名与日期。"
+  ],
+  "groups": {
+    "core": "live",
+    "common": "live",
+    "word": "live",
+    "excel": "live",
+    "ppt": "static"
+  },
+  "tools": {
+    "wps_common_quit": "static",
+    "wps_ppt_create_presentation": "live",
+    "wps_ppt_add_slide": "live",
+    "wps_ppt_get_slide_count": "live",
+    "wps_ppt_set_slide_title": "live",
+    "wps_ppt_add_speaker_notes": "live",
+    "wps_ppt_insert_image": "live",
+    "wps_ppt_export_slide_as_image": "live",
+    "wps_ppt_get_open_presentations": "live",
+    "wps_ppt_add_shape": "live",
+    "wps_ppt_set_shape_text": "live",
+    "wps_ppt_align_objects": "live",
+    "wps_ppt_insert_table": "live",
+    "wps_ppt_set_table_cell": "live",
+    "wps_ppt_insert_ppt_chart": "live",
+    "wps_ppt_set_shape_fill": "live",
+    "wps_ppt_set_table_row_style": "live",
+    "wps_ppt_set_ppt_chart_style": "live",
+    "wps_ppt_set_ppt_chart_data": "live",
+
+    "wps_excel_auto_sum": "live",
+    "wps_excel_set_zoom": "live",
+    "wps_word_insert_section_break": "live",
+
+    "wps_excel_evaluate_formula": "live",
+    "wps_excel_write_range": "live",
+    "wps_excel_set_cell_value": "live"
+  },
+  "evidence": {
+    "core": "verify-all 快测档（tool-groups-test / search-meta-verify）真跑注册表",
+    "common": "verify-all 的 annotation-e2e / warnings-batch-verify 真起 stdio server 跑通。【2026-10-24：wps_common_quit 降回 static——退出行为大改（未保存内容默认拒绝 + confirm 放行 + 移除全量 taskkill），旧行为的真机证据不覆盖新行为，待下轮真机复核后升回】",
+    "word": "scripts/manual/word-caps-probe.js + p01-smoke.js（真机，修订/表格/样式/交叉引用/索引）",
+    "excel": "scripts/manual/excel-caps-probe.js（真机，公式/图表/透视表/格式）。2026-10-20 第 2 章第 3 轮：scripts/manual/r3-verify-fixes.js 真机复核 4 个修复（走 callTool 真入口）。wps_excel_auto_sum / wps_excel_set_zoom / wps_word_insert_section_break 真机通过 → 逐条 live。wps_excel_evaluate_formula 显式降为 static：算值正确，但给 cell 的落盘路径失败（setRangeData 传数字抛 Int32→String，见 STATE.md 的 B1）。wps_excel_write_range 同样降 static：它走同一个 setRangeData，而 description 的示例 [[\"姓名\",\"年龄\"],[\"张三\",25]] 本身带数字 → 照示例调用必失败。两条都是「组级 live 不等于组内每个工具都对」的反例。另实测：全字符串写入后 SUM 能算进去（WPS 把 \"25\" 存成数值），所以 [string] 化是可行修法之一，但会破坏 \"007\"/\"1e5\"/日期串——见 STATE.md B1 的修法候选。【2026-10-22 第 2 章第 4 轮：B1 已修，这两条改回 live】根因查清了：不是\"值是数字\"，是【值的来源】——daemon 里 $p 来自 ConvertFrom-Json，取出来的元素是 PSObject 包着的，COM 绑定器接不住这种包装，退回去按 String 转换，数字就转不过去。daemon 内 52 组对照实测：原样赋值 Int32 过 / Double 抛 / String 抛；显式强转后四种全过。但直接 [string] 化会毁形状（\"007\"→7、\"2024-01-15\"→日期序列号 45306），所以按类型分派：数字写数字（General 格式，SUM 能算）、文本按文本格式('@')写（形状保住）、布尔写布尔、null 清空。修在 wps-com.ps1 的 setRangeData 与 setCellValue 两处（同一个雷的第二处，一并修了）。真机复核 scripts/manual/excel-writedata-probe.js（2026-10-22，23/23 通过）：混合写、纯数字写、纯文本写都不报错；读回独立 PowerShell 进程挂 COM 验类型与数字格式——数字 25 读回 Double/General、SUM 得 7.5、小数 1.5 没被截断、算式结果 3 落盘为 Double；\"007\"/\"1e5\"/\"2024-01-15\" 三个读回仍是原样的文本（Type=String、Fmt=@）。同轮还修了 B3：Word 侧护栏的提示里写的是 saveChanges=false（PS 动作的参数名），而 wps_word_close_document 的公开参数叫 save，照提示传【关不掉】——scripts/manual/word-close-param-probe.js 实测：传 saveChanges=false 文档仍在，传 save=false 一次就关掉了。提示已改成工具真收的名字。",
+    "ppt": "2026-10-19 scripts/manual/ppt-isolated-verify.js 真机逐条跑通，全部通过。矩阵行数=103（多出的行是旧名别名）执行条数=98 跳过条数=5（各有实测原因，不是漏跑）；PPT组工具数=100；逐条live数=18（见 tools）。2026-10-18 ppt-caps-probe.js 18/18。组级仍记 static：跳过的 5 条是 set_slide_theme / set_shape_shadow / add_ppt_hyperlink / remove_ppt_hyperlink / start_slide_show"
+  }
+}
