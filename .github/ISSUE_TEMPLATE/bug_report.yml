@@ -1,0 +1,73 @@
+name: Bug 报告
+description: 工具报错、结果不对、连接不上
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        先做两件事，能省掉一半往返：
+        1. 跑 `wps_common_status`，把返回贴上来（桥通不通、WPS 在不在、有没有活动文档，三态分开看）。
+        2. 确认不是「组没加载」：先在错误信息里找方括号前缀，`[可重试]` / `[勿重试…]` 的含义写在 README 的「设计取舍」里。
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: 发生了什么
+      description: 你让 AI 做什么、实际发生了什么、期望是什么
+      placeholder: |
+        我让 AI「把 A 表的销售额按地区汇总并画柱状图」，调的是 wps_excel_...
+        结果报错 / 结果不对：...
+    validations:
+      required: true
+
+  - type: textarea
+    id: error-text
+    attributes:
+      label: 错误原文（含方括号前缀，别截断）
+      render: text
+      placeholder: "[勿重试·可能已执行一半] ..."
+    validations:
+      required: true
+
+  - type: input
+    id: tool
+    attributes:
+      label: 涉及的工具名
+      placeholder: wps_word_get_tables
+    validations:
+      required: false
+
+  - type: input
+    id: wps-version
+    attributes:
+      label: WPS 版本
+      description: WPS 里「关于」看，或运行 `wps_common_status`
+      placeholder: 12.1.0.28505
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: Windows 版本 + Node 版本
+      placeholder: Windows 11 23H2 / Node 22.22.2
+    validations:
+      required: true
+
+  - type: input
+    id: client
+    attributes:
+      label: 用的哪个 MCP 客户端
+      placeholder: Claude Code / Cursor / Codex CLI / CodeBuddy / WorkBuddy / 其他
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: 自查
+      options:
+        - label: 已重启 WPS（加载项只在启动时加载）
+        - label: 已确认 `wps-multitool-mcp/dist/index.js` 存在（构建过）
+        - label: 已在 `issues` 里搜过同类问题

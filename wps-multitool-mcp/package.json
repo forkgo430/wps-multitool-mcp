@@ -1,0 +1,70 @@
+{
+  "name": "wps-multitool-mcp",
+  "version": "1.0.2",
+  "description": "WPS Office 多面手 MCP —— 让 AI 直接操控你正开着的 WPS 文字/表格/演示。常驻桥进程（每次调用 2~3ms）· Windows only · 支持 DeepSeek Harness / Claude Code / Cursor 等任意 MCP 客户端 · 作者赢容",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "wps-multitool-mcp": "dist/index.js"
+  },
+  "files": [
+    "dist",
+    "scripts/wps-com.ps1",
+    "scripts/wps-comd.ps1",
+    "skills"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "ts-node src/index.ts",
+    "watch": "tsc -w",
+    "clean": "rimraf dist",
+    "lint": "eslint src/**/*.ts",
+    "verify": "node scripts/manual/verify-all.js",
+    "verify:all": "node scripts/manual/verify-all.js --all",
+    "gen:annotations": "node scripts/manual/gen-tool-annotations.js",
+    "gen:docs": "node scripts/manual/gen-tool-verification.js && node scripts/manual/gen-doc-stats.js && node scripts/manual/gen-tools-doc.js",
+    "changeset": "changeset",
+    "version": "changeset version && node scripts/manual/gen-doc-stats.js",
+    "release": "npm run build && changeset publish",
+    "test": "node scripts/manual/verify-all.js --all"
+  },
+  "keywords": [
+    "mcp",
+    "wps",
+    "office",
+    "ai",
+    "automation",
+    "deepseek-harness",
+    "dsh",
+    "wps-mcp",
+    "office-automation"
+  ],
+  "author": "赢容",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/forkgo430/wps-multitool-mcp.git"
+  },
+  "homepage": "https://github.com/forkgo430/wps-multitool-mcp#readme",
+  "bugs": {
+    "url": "https://github.com/forkgo430/wps-multitool-mcp/issues"
+  },
+  "contributors": [],
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "uuid": "^9.0.0",
+    "winston": "^3.11.0"
+  },
+  "devDependencies": {
+    "@changesets/cli": "^3.0.3",
+    "@types/node": "^20.10.0",
+    "@types/uuid": "^9.0.0",
+    "rimraf": "^5.0.0",
+    "ts-node": "^10.9.0",
+    "typescript": "^5.3.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

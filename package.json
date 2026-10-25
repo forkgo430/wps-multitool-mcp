@@ -1,0 +1,30 @@
+{
+  "name": "wps-multitool-mcp",
+  "version": "1.0.1",
+  "description": "WPS Office 多面手 MCP —— 让 AI 直接操控你正开着的 WPS 文字/表格/演示。",
+  "author": "赢容",
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "build": "cd wps-multitool-mcp && npm run build",
+    "test": "cd wps-multitool-mcp && npm test",
+    "start": "cd wps-multitool-mcp && npm start",
+    "install:all": "cd wps-multitool-mcp && npm install",
+    "clean": "cd wps-multitool-mcp && rm -rf dist node_modules"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/forkgo430/wps-multitool-mcp.git"
+  },
+  "keywords": [
+    "wps",
+    "office",
+    "mcp",
+    "claude",
+    "ai",
+    "automation"
+  ],
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
