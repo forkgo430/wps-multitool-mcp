@@ -1,6 +1,6 @@
 {
   "name": "wps-multitool-mcp",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "WPS Office 多面手 MCP —— 让 AI 直接操控你正开着的 WPS 文字/表格/演示。常驻桥进程（每次调用 2~3ms）· Windows only · 支持 DeepSeek Harness / Claude Code / Cursor 等任意 MCP 客户端 · 作者赢容",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
