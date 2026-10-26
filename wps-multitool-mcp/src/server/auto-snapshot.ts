@@ -83,7 +83,10 @@ function disabledByEnv(): boolean {
 export function snapshotRiskOf(toolName: string): string {
   if (SELF_MANAGED.has(toolName)) return '';
   const a = getToolAnnotations(toolName);
-  if (!a || a.readOnlyHint) return '';
+  // fail-closed（2026-10-26 评审 P0-3）：没有注解的工具按破坏性处理，宁可多快照不可漏。
+  // 之前 fail-open：!a 直接 return ''，新增多分支工具漏登记一个就静默失去回滚点（revisions 事故）。
+  if (!a) return `${toolName} 未注解（fail-closed 按破坏性处理）`;
+  if (a.readOnlyHint) return '';
   if (a.destructiveHint) return `${toolName} 破坏性`;
   if (a.idempotentHint === false) return `${toolName} 非幂等`;
   return '';

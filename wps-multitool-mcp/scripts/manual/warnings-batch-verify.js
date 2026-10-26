@@ -90,7 +90,10 @@ reg({ name: 'zz_fake_warn', description: '测试用', inputSchema: { type: 'obje
   // 3 步全成功
   const allOk = await batchHandler({ steps: [{ tool: 'zz_fake_ok' }, { tool: 'zz_fake_ok' }, { tool: 'zz_fake_ok' }] });
   ok('3 步全成功 → success=true', allOk.success === true);
-  ok('3 步全成功 → 无 warnings', !allOk.warnings || allOk.warnings.length === 0);
+  // 2026-10-26 更新：fail-closed 使得未注解的 stub 工具也触发快照尝试（产生 warnings）。
+  // 这是正确行为——stub 工具没有注解，fail-closed 按破坏性处理。旧断言"无 warnings"作废。
+  ok('3 步全成功 → warnings 均为快照类（fail-closed 正确触发）',
+     !allOk.warnings || allOk.warnings.every((w) => w.step && w.step.includes('snapshot')));
   ok('汇总写清了 3/3', /3\/3 步成功/.test(allOk.content[0].text));
 
   // 中间失败不中断
