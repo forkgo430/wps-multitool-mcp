@@ -77,6 +77,18 @@
     },
 
     /**
+     * rowRef / colRef（B5-T2 新增）：行/列定位的统一出口（S1 §4 #1 报告行 330：
+     * `ws.Rows(i)`/`ws.Columns(i)` 不可当函数，必须 .Item(i)——动作层永不手写）。
+     * 返回编码参数 {collection, index}，method 由动作拼 `Rows.Item.*` / `Columns.Item.*`。
+     */
+    rowRef: function (i) {
+      return { collection: 'Rows', index: Number(i) };
+    },
+    colRef: function (i) {
+      return { collection: 'Columns', index: Number(i) };
+    },
+
+    /**
      * 从 params 提取 range 引用：range/address 显式优先，row+col 组 A1（Item 语义）。
      * 没有任何定位 → null（动作层据此显式拒绝）。
      */
@@ -118,6 +130,27 @@
     },
   };
 
+  /** 十六进制颜色 → COM RGB 整数（R + G*256 + B*65536）。
+   * 镜像 scripts/wps-com.ps1:732；编码有 S0 实测背书（S1-REPORT §2.4：绿色 #00FF00 → 65280 读回一致）。 */
+  function hexToRgbInt(hex) {
+    if (!hex) return null;
+    var s = String(hex).trim();
+    if (s.charAt(0) === '#') s = s.slice(1);
+    if (s.length === 3) s = s[0] + s[0] + s[1] + s[1] + s[2] + s[2];
+    if (!/^[0-9a-fA-F]{6}$/.test(s)) return null;
+    var r = parseInt(s.slice(0, 2), 16);
+    var g = parseInt(s.slice(2, 4), 16);
+    var b = parseInt(s.slice(4, 6), 16);
+    return r + g * 256 + b * 65536;
+  }
+
+  /** 色名/十六进制统一换算入口：认不出返回 null（调用方显式报错） */
+  function resolveColor(c) {
+    var v = { red: 255, blue: 16711680, green: 65280, black: 0 }[String(c).toLowerCase()];
+    if (v === undefined) v = hexToRgbInt(String(c));
+    return v === undefined ? null : v;
+  }
+
   /** 必须有 range 引用，没有就抛（guard 转 ok:false） */
   function mustRef(p, action) {
     var ref = ExcelAdapter.refOf(p);
@@ -128,6 +161,492 @@
   // ==========================================================================
   // 60 动作（57 实现 + 3 PivotTables 桩），按 S1 §3 编号排列
   // ==========================================================================
+
+  // ========================================================================
+  // B5-T2：部分支持收编 34 动作（35 条部分支持中 ping 属通道层，B2 已实现）。
+  // 根因全部是集合双语义（S1 §4 #1/#3/#4）——逐个经 ExcelAdapter 收编为 Item/Value2 语义。
+  // 编号沿用 S1 §3 Excel 段，每条头注标报告行号；S1 只验证了通路、读回未逐项验证的
+  // 按 §10.3 在注释标明。
+  // ========================================================================
+
+  /** 单元格定位 params 的公共拼装：row/col 必填校验 + sheet 透传 */
+  function cellParams(p, action) {
+    if (p.row === undefined || p.col === undefined) {
+      throw new Error('[勿重试·先改参数] 缺少 row/col（' + action + ' 的单元格定位，1 起）');
+    }
+    var payload = ExcelAdapter.cellRef(p.row, p.col);
+    if (p.sheet) payload.sheet = String(p.sheet);
+    return payload;
+  }
+
+  var b5t2Actions = {
+
+    /**
+     * getCellValue —— S1-REPORT.md:29（§3 #3 部分支持：TypeError ws.Cells is not a function，
+     * 复核 Item 读写全通路）。method 'Cells.Item.Value2'（读，§4 #1/#3 编码）。
+     */
+    getCellValue: guard(function (p) {
+      return jsapi.jsAsynCall(ExcelAdapter.M.CELLS_ITEM_VALUE2, cellParams(p, 'getCellValue')).then(function (r) {
+        var v = r && typeof r === 'object' && !Array.isArray(r) && 'value2' in r ? r.value2 : r;
+        return { ok: true, data: { value: v === null || v === undefined ? '' : v, cell: ExcelAdapter.a1(p.row, p.col) } };
+      });
+    }),
+
+    /**
+     * setCellValue —— S1-REPORT.md:30（§3 #4 部分支持：同上复核）
+     * method 'Cells.Item.Value2'（写）。value2 强制（§4 #3：.Value = x 静默失效）。
+     */
+    setCellValue: guard(function (p) {
+      if (p.value === undefined && p.value2 === undefined) {
+        return Promise.resolve({ ok: false, error: '[勿重试·先改参数] 缺少 value（setCellValue 要写的值）' });
+      }
+      var payload = cellParams(p, 'setCellValue');
+      payload.value2 = p.value2 !== undefined ? p.value2 : p.value; // 旧键 value 经适配器强制落 value2
+      return jsapi.jsAsynCall(ExcelAdapter.M.CELLS_ITEM_VALUE2,
+        ExcelAdapter.writeValue2(payload)).then(function (r) {
+        return { ok: true, data: { cell: ExcelAdapter.a1(p.row, p.col) } };
+      });
+    }),
+
+    /**
+     * diagnoseFormula —— S1-REPORT.md:33（§3 #7 部分支持：cell.HasFormula / .Text / 计算值）
+     * method 'Cell.FormulaInfo'（多字段读编码，待补测）。
+     */
+    diagnoseFormula: guard(function (p) {
+      return jsapi.jsAsynCall('Cell.FormulaInfo', cellParams(p, 'diagnoseFormula')).then(function (r) {
+        return { ok: true, data: r };
+      });
+    }),
+
+    /**
+     * setFormula —— S1-REPORT.md:37（§3 #11 部分支持：Cells(1,3).Formula = '…'）
+     * method 'Cells.Item.Formula'（写）。公式串必填。
+     */
+    setFormula: guard(function (p) {
+      if (p.formula === undefined || p.formula === null || p.formula === '') {
+        return Promise.resolve({ ok: false, error: '[勿重试·先改参数] 缺少 formula（setFormula 的公式串）' });
+      }
+      var payload = cellParams(p, 'setFormula');
+      payload.formula = String(p.formula);
+      return jsapi.jsAsynCall('Cells.Item.Formula', payload).then(function (r) {
+        return { ok: true, data: r };
+      });
+    }),
+
+    /**
+     * setCellFormat —— S1-REPORT.md:38（§3 #12 部分支持：cell.Font.Size/Bold + Interior.Color）
+     * method 'Cell.Format'（多属性写编码，待补测）。颜色经 RGB 换算（ps1:732 同源）。
+     */
+    setCellFormat: guard(function (p) {
+      var payload = cellParams(p, 'setCellFormat');
+      var touched = false;
+      if (p.fontSize !== undefined) { payload.fontSize = Number(p.fontSize); touched = true; }
+      if (p.bold !== undefined) { payload.bold = !!p.bold; touched = true; }
+      if (p.italic !== undefined) { payload.italic = !!p.italic; touched = true; }
+      if (p.color) {
+        var rgb = resolveColor(p.color);
+        if (rgb === null) {
+          return Promise.resolve({ ok: false, error: '[勿重试·先改参数] 不认识的颜色「' + p.color + '」（可用色名 red/green/blue/black 或 #RRGGBB）' });
+        }
+        payload.colorRgb = rgb;
+        touched = true;
+      }
+      if (!touched) {
+        return Promise.resolve({ ok: false, error: '[勿重试·先改参数] fontSize/bold/italic/color 至少给一个（setCellFormat）' });
+      }
+      return jsapi.jsAsynCall('Cell.Format', ExcelAdapter.writeValue2(payload)).then(function (r) {
+        return { ok: true, data: r };
+      });
+    }),
+
+    /**
+     * setCellStyle —— S1-REPORT.md:39（§3 #13 部分支持：cell.Style / ws.Styles）
+     * method 'Cell.Style'（写）。样式名必填。
+     */
+    setCellStyle: guard(function (p) {
+      if (!p.styleName) {
+        return Promise.resolve({ ok: false, error: '[勿重试·先改参数] 缺少 styleName（setCellStyle）' });
+      }
+      var payload = cellParams(p, 'setCellStyle');
+      payload.styleName = String(p.styleName);
+      return jsapi.jsAsynCall('Cell.Style', payload).then(function (r) {
+        return { ok: true, data: r };
+      });
+    }),
+
+    /**
+     * setBorder —— S1-REPORT.md:40（§3 #14 部分支持：cell.Borders.Item(7).LineStyle）
+     * method 'Cell.Borders.LineStyle'。borderIndex 缺省 7（S1 证据同值）。
+     */
+    setBorder: guard(function (p) {
+      var payload = cellParams(p, 'setBorder');
+      payload.borderIndex = p.borderIndex !== undefined ? Number(p.borderIndex) : 7;
+      if (p.lineStyle === undefined) {
+        return Promise.resolve({ ok: false, error: '[勿重试·先改参数] 缺少 lineStyle（setBorder）' });
+      }
+      payload.lineStyle = Number(p.lineStyle);
+      return jsapi.jsAsynCall('Cell.Borders.LineStyle', payload).then(function (r) {
+        return { ok: true, data: r };
+      });
+    }),
+
+    /**
+     * copyFormat —— S1-REPORT.md:41（§3 #15 部分支持：src.Copy() + dst.PasteSpecial(2=xlPasteFormats)）
+     * method 'Range.CopyFormat'（两步组合编码，xlPasteFormats=2 由原生侧承担）。
+     */
+    copyFormat: guard(function (p) {
+      var src = ExcelAdapter.refOf(p);
+      if (!src || !p.target) {
+        return Promise.resolve({ ok: false, error: '[勿重试·先改参数] 需要 range/address 定位源 + target（copyFormat）' });
+      }
+      return jsapi.jsAsynCall('Range.CopyFormat', { ref: String(src), target: String(p.target) }).then(function (r) {
+        return { ok: true, data: r };
+      });
+    }),
+
+    /**
+     * getFormula —— S1-REPORT.md:49（§3 #23 部分支持：Cells(1,3).Formula）
+     * method 'Cells.Item.Formula'（读）。
+     */
+    getFormula: guard(function (p) {
+      return jsapi.jsAsynCall('Cells.Item.Formula', cellParams(p, 'getFormula')).then(function (r) {
+        var f = r && typeof r === 'object' && !Array.isArray(r) && 'formula' in r ? r.formula : r;
+        return { ok: true, data: { formula: f === null || f === undefined ? '' : String(f) } };
+      });
+    }),
+
+    /**
+     * getCellInfo —— S1-REPORT.md:51（§3 #25 部分支持：Address/Value/Formula/NumberFormat 汇总）
+     * method 'Cell.Info'（多字段读编码，待补测）。
+     */
+    getCellInfo: guard(function (p) {
+      return jsapi.jsAsynCall('Cell.Info', cellParams(p, 'getCellInfo')).then(function (r) {
+        return { ok: true, data: r };
+      });
+    }),
+
+    /**
+     * createChart —— S1-REPORT.md:59（§3 #33 部分支持：§4 #15 报告行 344——ChartObjects.Add 不存在，
+     * 替代路径 ws.Shapes.AddChart 实测可建图表）
+     * method 'Shapes.AddChart'（替代路径，非 COM 直译）。数据区可选。
+     */
+    createChart: guard(function (p) {
+      var payload = {};
+      if (p.range || p.sourceRange) payload.sourceRange = String(p.range || p.sourceRange);
+      if (p.chartType !== undefined) payload.chartType = Number(p.chartType);
+      payload.left = p.left !== undefined ? Number(p.left) : 100;
+      payload.top = p.top !== undefined ? Number(p.top) : 100;
+      payload.width = p.width !== undefined ? Number(p.width) : 400;
+      payload.height = p.height !== undefined ? Number(p.height) : 250;
+      return jsapi.jsAsynCall('Shapes.AddChart', payload).then(function (r) {
+        return { ok: true, data: r };
+      });
+    }),
+
+    /**
+     * setWrapText —— S1-REPORT.md:71（§3 #45 部分支持：cell.WrapText = true）
+     * method 'Cell.WrapText'（属性写编码，待补测）。
+     */
+    setWrapText: guard(function (p) {
+      var payload = cellParams(p, 'setWrapText');
+      payload.wrap = p.wrap !== undefined ? !!p.wrap : true;
+      return jsapi.jsAsynCall('Cell.WrapText', payload).then(function (r) {
+        return { ok: true, data: r };
+      });
+    }),
+
+    /**
+     * setColumnWidth —— S1-REPORT.md:83（§3 #57 部分支持：写操作须经 ws.Columns.Item(i)）
+     * method 'Columns.Item.ColumnWidth'。width 必填。
+     */
+    setColumnWidth: guard(function (p) {
+      if (p.col === undefined || p.width === undefined) {
+        return Promise.resolve({ ok: false, error: '[勿重试·先改参数] 缺少 col/width（setColumnWidth）' });
+      }
+      return jsapi.jsAsynCall('Columns.Item.ColumnWidth', { ...ExcelAdapter.colRef(p.col), width: Number(p.width) }).then(function (r) {
+        return { ok: true, data: r };
+      });
+    }),
+
+    /**
+     * setRowHeight —— S1-REPORT.md:84（§3 #58 部分支持：ws.Rows.Item(i) 语义）
+     * method 'Rows.Item.RowHeight'。height 必填。
+     */
+    setRowHeight: guard(function (p) {
+      if (p.row === undefined || p.height === undefined) {
+        return Promise.resolve({ ok: false, error: '[勿重试·先改参数] 缺少 row/height（setRowHeight）' });
+      }
+      return jsapi.jsAsynCall('Rows.Item.RowHeight', { ...ExcelAdapter.rowRef(p.row), height: Number(p.height) }).then(function (r) {
+        return { ok: true, data: r };
+      });
+    }),
+
+    /**
+     * autoFitColumn —— S1-REPORT.md:85（§3 #59 部分支持：ws.Columns.Item(1).AutoFit()）
+     * method 'Columns.Item.AutoFit'。
+     */
+    autoFitColumn: guard(function (p) {
+      if (p.col === undefined) {
+        return Promise.resolve({ ok: false, error: '[勿重试·先改参数] 缺少 col（autoFitColumn）' });
+      }
+      return jsapi.jsAsynCall('Columns.Item.AutoFit', ExcelAdapter.colRef(p.col)).then(function (r) {
+        return { ok: true, data: r };
+      });
+    }),
+
+    /**
+     * autoFitRow —— S1-REPORT.md:86（§3 #60 部分支持：ws.Rows.Item(1).AutoFit()）
+     * method 'Rows.Item.AutoFit'。
+     */
+    autoFitRow: guard(function (p) {
+      if (p.row === undefined) {
+        return Promise.resolve({ ok: false, error: '[勿重试·先改参数] 缺少 row（autoFitRow）' });
+      }
+      return jsapi.jsAsynCall('Rows.Item.AutoFit', ExcelAdapter.rowRef(p.row)).then(function (r) {
+        return { ok: true, data: r };
+      });
+    }),
+
+    /**
+     * setNumberFormat —— S1-REPORT.md:88（§3 #62 部分支持：cell.NumberFormat）
+     * method 'Cell.NumberFormat'。格式串必填。
+     */
+    setNumberFormat: guard(function (p) {
+      if (!p.format) {
+        return Promise.resolve({ ok: false, error: '[勿重试·先改参数] 缺少 format（setNumberFormat，如 0.00%）' });
+      }
+      var payload = cellParams(p, 'setNumberFormat');
+      payload.format = String(p.format);
+      return jsapi.jsAsynCall('Cell.NumberFormat', payload).then(function (r) {
+        return { ok: true, data: r };
+      });
+    }),
+
+    /**
+     * wrapText —— S1-REPORT.md:89（§3 #63 部分支持：同 setWrapText，S1 注明"同 setWrapText"）
+     * method 'Cell.WrapText'（与 #45 同 method）。
+     */
+    wrapText: guard(function (p) {
+      var payload = cellParams(p, 'wrapText');
+      payload.wrap = p.wrap !== undefined ? !!p.wrap : true;
+      return jsapi.jsAsynCall('Cell.WrapText', payload).then(function (r) {
+        return { ok: true, data: r };
+      });
+    }),
+
+    /**
+     * insertRows —— S1-REPORT.md:93（§3 #67 部分支持：ws.Rows.Item(2).Insert()）
+     * method 'Rows.Item.Insert'。count 缺省 1。
+     */
+    insertRows: guard(function (p) {
+      if (p.row === undefined) {
+        return Promise.resolve({ ok: false, error: '[勿重试·先改参数] 缺少 row（insertRows 插在哪行之前）' });
+      }
+      var payload = { ...ExcelAdapter.rowRef(p.row), count: p.count !== undefined ? Number(p.count) : 1 };
+      return jsapi.jsAsynCall('Rows.Item.Insert', payload).then(function (r) {
+        return { ok: true, data: r };
+      });
+    }),
+
+    /**
+     * insertColumns —— S1-REPORT.md:94（§3 #68 部分支持：ws.Columns.Item(2).Insert()）
+     * method 'Columns.Item.Insert'。
+     */
+    insertColumns: guard(function (p) {
+      if (p.col === undefined) {
+        return Promise.resolve({ ok: false, error: '[勿重试·先改参数] 缺少 col（insertColumns 插在哪列之前）' });
+      }
+      var payload = { ...ExcelAdapter.colRef(p.col), count: p.count !== undefined ? Number(p.count) : 1 };
+      return jsapi.jsAsynCall('Columns.Item.Insert', payload).then(function (r) {
+        return { ok: true, data: r };
+      });
+    }),
+
+    /**
+     * deleteRows —— S1-REPORT.md:95（§3 #69 部分支持：ws.Rows.Item(3).Delete()）
+     * method 'Rows.Item.Delete'。
+     */
+    deleteRows: guard(function (p) {
+      if (p.row === undefined) {
+        return Promise.resolve({ ok: false, error: '[勿重试·先改参数] 缺少 row（deleteRows）' });
+      }
+      var payload = { ...ExcelAdapter.rowRef(p.row), count: p.count !== undefined ? Number(p.count) : 1 };
+      return jsapi.jsAsynCall('Rows.Item.Delete', payload).then(function (r) {
+        return { ok: true, data: r };
+      });
+    }),
+
+    /**
+     * deleteColumns —— S1-REPORT.md:96（§3 #70 部分支持：ws.Columns.Item(3).Delete()）
+     * method 'Columns.Item.Delete'。
+     */
+    deleteColumns: guard(function (p) {
+      if (p.col === undefined) {
+        return Promise.resolve({ ok: false, error: '[勿重试·先改参数] 缺少 col（deleteColumns）' });
+      }
+      var payload = { ...ExcelAdapter.colRef(p.col), count: p.count !== undefined ? Number(p.count) : 1 };
+      return jsapi.jsAsynCall('Columns.Item.Delete', payload).then(function (r) {
+        return { ok: true, data: r };
+      });
+    }),
+
+    /**
+     * hideRows —— S1-REPORT.md:97（§3 #71 部分支持：ws.Rows.Item(4).Hidden = true）
+     * method 'Rows.Item.Hidden'（属性写编码，待补测）。
+     */
+    hideRows: guard(function (p) {
+      if (p.row === undefined) {
+        return Promise.resolve({ ok: false, error: '[勿重试·先改参数] 缺少 row（hideRows）' });
+      }
+      return jsapi.jsAsynCall('Rows.Item.Hidden', { ...ExcelAdapter.rowRef(p.row), hidden: true }).then(function (r) {
+        return { ok: true, data: r };
+      });
+    }),
+
+    /**
+     * hideColumns —— S1-REPORT.md:98（§3 #72 部分支持：ws.Columns.Item(4).Hidden = true）
+     * method 'Columns.Item.Hidden'。
+     */
+    hideColumns: guard(function (p) {
+      if (p.col === undefined) {
+        return Promise.resolve({ ok: false, error: '[勿重试·先改参数] 缺少 col（hideColumns）' });
+      }
+      return jsapi.jsAsynCall('Columns.Item.Hidden', { ...ExcelAdapter.colRef(p.col), hidden: true }).then(function (r) {
+        return { ok: true, data: r };
+      });
+    }),
+
+    /**
+     * showRows —— S1-REPORT.md:99（§3 #73 部分支持：ws.Rows.Item(4).Hidden = false）
+     * method 'Rows.Item.Hidden'（hidden:false）。
+     */
+    showRows: guard(function (p) {
+      if (p.row === undefined) {
+        return Promise.resolve({ ok: false, error: '[勿重试·先改参数] 缺少 row（showRows）' });
+      }
+      return jsapi.jsAsynCall('Rows.Item.Hidden', { ...ExcelAdapter.rowRef(p.row), hidden: false }).then(function (r) {
+        return { ok: true, data: r };
+      });
+    }),
+
+    /**
+     * showColumns —— S1-REPORT.md:100（§3 #74 部分支持：ws.Columns.Item(4).Hidden = false）
+     * method 'Columns.Item.Hidden'（hidden:false）。
+     */
+    showColumns: guard(function (p) {
+      if (p.col === undefined) {
+        return Promise.resolve({ ok: false, error: '[勿重试·先改参数] 缺少 col（showColumns）' });
+      }
+      return jsapi.jsAsynCall('Columns.Item.Hidden', { ...ExcelAdapter.colRef(p.col), hidden: false }).then(function (r) {
+        return { ok: true, data: r };
+      });
+    }),
+
+    /**
+     * groupRows —— S1-REPORT.md:101（§3 #75 部分支持：ws.Rows('5:6').Group()）
+     * method 'Rows.Item.Group'。范围 from/to 必填（'5:6' 的两端抽进 params）。
+     */
+    groupRows: guard(function (p) {
+      if (p.from === undefined || p.to === undefined) {
+        return Promise.resolve({ ok: false, error: '[勿重试·先改参数] 缺少 from/to（groupRows，如 5 到 6）' });
+      }
+      var payload = ExcelAdapter.rowRef(p.from);
+      payload.to = Number(p.to);
+      return jsapi.jsAsynCall('Rows.Item.Group', payload).then(function (r) {
+        return { ok: true, data: r };
+      });
+    }),
+
+    /**
+     * groupColumns —— S1-REPORT.md:102（§3 #76 部分支持：ws.Columns('B:C').Group()）
+     * method 'Columns.Item.Group'。范围列字母（B:C）。
+     */
+    groupColumns: guard(function (p) {
+      if (!p.range) {
+        return Promise.resolve({ ok: false, error: '[勿重试·先改参数] 缺少 range（groupColumns，如 B:C）' });
+      }
+      return jsapi.jsAsynCall('Columns.Item.Group', { range: String(p.range) }).then(function (r) {
+        return { ok: true, data: r };
+      });
+    }),
+
+    /**
+     * replaceInSheet —— S1-REPORT.md:105（§3 #79 部分支持：ws.Cells.Replace(what, repl)）
+     * method 'Cells.Replace'（Cells 集合的 Find/Replace 方法，与 findInSheet 同型——不是 Cells(r,c) 函数调用）。
+     */
+    replaceInSheet: guard(function (p) {
+      if (p.what === undefined || p.what === '' || p.repl === undefined) {
+        return Promise.resolve({ ok: false, error: '[勿重试·先改参数] what 与 repl 必填（replaceInSheet）' });
+      }
+      var payload = { what: String(p.what), repl: String(p.repl) };
+      if (p.sheet) payload.sheet = String(p.sheet);
+      return jsapi.jsAsynCall('Cells.Replace', payload).then(function (r) {
+        return { ok: true, data: r };
+      });
+    }),
+
+    /**
+     * deleteNamedRange —— S1-REPORT.md:113（§3 #87 部分支持：§4 #16 报告行 345——
+     * wb.Names 是集合（Item 可取、Add 实测成功），当函数调用抛 TypeError）
+     * method 'Names.Item.Delete'（Item 语义）。name 必填。
+     */
+    deleteNamedRange: guard(function (p) {
+      if (!p.name) {
+        return Promise.resolve({ ok: false, error: '[勿重试·先改参数] 缺少 name（deleteNamedRange 要删哪个名称）' });
+      }
+      return jsapi.jsAsynCall('Names.Item.Delete', { name: String(p.name) }).then(function (r) {
+        return { ok: true, data: r };
+      });
+    }),
+
+    /**
+     * addCellComment —— S1-REPORT.md:115（§3 #89 部分支持：cell.AddComment(text)）
+     * method 'Cell.Comment.Add'。text 必填。
+     */
+    addCellComment: guard(function (p) {
+      if (p.text === undefined || p.text === '') {
+        return Promise.resolve({ ok: false, error: '[勿重试·先改参数] 缺少 text（addCellComment 批注内容）' });
+      }
+      var payload = cellParams(p, 'addCellComment');
+      payload.text = String(p.text);
+      return jsapi.jsAsynCall('Cell.Comment.Add', payload).then(function (r) {
+        return { ok: true, data: r };
+      });
+    }),
+
+    /**
+     * deleteCellComment —— S1-REPORT.md:116（§3 #90 部分支持：cell.Comment.Delete()）
+     * method 'Cell.Comment.Delete'。
+     */
+    deleteCellComment: guard(function (p) {
+      return jsapi.jsAsynCall('Cell.Comment.Delete', cellParams(p, 'deleteCellComment')).then(function (r) {
+        return { ok: true, data: r };
+      });
+    }),
+
+    /**
+     * getCellComments —— S1-REPORT.md:117（§3 #91 部分支持：cell.Comment.Text()）
+     * method 'Cell.Comment.Text'（读）。
+     */
+    getCellComments: guard(function (p) {
+      return jsapi.jsAsynCall('Cell.Comment.Text', cellParams(p, 'getCellComments')).then(function (r) {
+        var t = r && typeof r === 'object' && !Array.isArray(r) && 'text' in r ? r.text : r;
+        return { ok: true, data: { text: t === null || t === undefined ? '' : String(t) } };
+      });
+    }),
+
+    /**
+     * lockCells —— S1-REPORT.md:123（§3 #97 部分支持：cell.Locked = true）
+     * method 'Cell.Locked'（属性写编码，待补测）。
+     */
+    lockCells: guard(function (p) {
+      var payload = cellParams(p, 'lockCells');
+      payload.locked = p.locked !== undefined ? !!p.locked : true;
+      return jsapi.jsAsynCall('Cell.Locked', payload).then(function (r) {
+        return { ok: true, data: r };
+      });
+    }),
+  };
 
   var excelActions = {
 
@@ -883,8 +1402,9 @@
       });
     }),
 
-    // ========================================================================
-    // PivotTables 系 3 桩：S1 判定"支持"但证据只是"集合存在"（Count=undefined、
+
+  // ========================================================================
+  // PivotTables 系 3 桩：S1 判定"支持"但证据只是"集合存在"（Count=undefined、
     // Item 不可调，§3:35/74/75 + §4 #6）——任务卡 §0 明令标待补测，绝不猜 method。
     // ========================================================================
 
@@ -924,6 +1444,9 @@
       });
     }),
   };
+
+  // B5-T2 的 34 个动作并入注册表
+  Object.assign(excelActions, b5t2Actions);
 
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = { actions: excelActions, adapter: ExcelAdapter };

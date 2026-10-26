@@ -581,6 +581,115 @@ const lastSent = (sent) => sent[sent.length - 1];
       uninstallCefQuery();
     }
 
+    // ---- B5-T2：部分支持收编 34 动作（Item/Value2 双语义适配）----
+    console.log('\n=== Excel B5-T2：部分支持 34 动作收编（表驱动，断 Item/Value2 语义）===');
+    {
+      const b5t2Cases = [
+        ['getCellValue', { row: 1, col: 1 }, 'Cells.Item.Value2', { row: 1, col: 1 }],
+        ['setCellValue', { row: 1, col: 1, value: 42 }, 'Cells.Item.Value2', { row: 1, col: 1, value2: 42 }],
+        ['diagnoseFormula', { row: 2, col: 3 }, 'Cell.FormulaInfo', { row: 2, col: 3 }],
+        ['setFormula', { row: 1, col: 3, formula: '=A1&"x"' }, 'Cells.Item.Formula', { row: 1, col: 3, formula: '=A1&"x"' }],
+        ['setCellFormat', { row: 1, col: 1, fontSize: 14, color: '#FF0000' }, 'Cell.Format', { row: 1, col: 1, fontSize: 14, colorRgb: 255 }],
+        ['setCellStyle', { row: 1, col: 1, styleName: '标题' }, 'Cell.Style', { row: 1, col: 1, styleName: '标题' }],
+        ['setBorder', { row: 1, col: 1, lineStyle: 1 }, 'Cell.Borders.LineStyle', { row: 1, col: 1, borderIndex: 7, lineStyle: 1 }],
+        ['copyFormat', { range: 'A1', target: 'B1' }, 'Range.CopyFormat', { ref: 'A1', target: 'B1' }],
+        ['getFormula', { row: 1, col: 3 }, 'Cells.Item.Formula', { row: 1, col: 3 }],
+        ['getCellInfo', { row: 1, col: 1 }, 'Cell.Info', { row: 1, col: 1 }],
+        ['createChart', { range: 'A1:B9', chartType: 51 }, 'Shapes.AddChart', { sourceRange: 'A1:B9', chartType: 51 }],
+        ['setWrapText', { row: 1, col: 1, wrap: true }, 'Cell.WrapText', { row: 1, col: 1, wrap: true }],
+        ['setColumnWidth', { col: 1, width: 20 }, 'Columns.Item.ColumnWidth', { collection: 'Columns', index: 1, width: 20 }],
+        ['setRowHeight', { row: 1, height: 30 }, 'Rows.Item.RowHeight', { collection: 'Rows', index: 1, height: 30 }],
+        ['autoFitColumn', { col: 2 }, 'Columns.Item.AutoFit', { collection: 'Columns', index: 2 }],
+        ['autoFitRow', { row: 2 }, 'Rows.Item.AutoFit', { collection: 'Rows', index: 2 }],
+        ['setNumberFormat', { row: 1, col: 1, format: '0.00%' }, 'Cell.NumberFormat', { row: 1, col: 1, format: '0.00%' }],
+        ['wrapText', { row: 2, col: 2, wrap: false }, 'Cell.WrapText', { row: 2, col: 2, wrap: false }],
+        ['insertRows', { row: 3, count: 2 }, 'Rows.Item.Insert', { collection: 'Rows', index: 3, count: 2 }],
+        ['insertColumns', { col: 3 }, 'Columns.Item.Insert', { collection: 'Columns', index: 3, count: 1 }],
+        ['deleteRows', { row: 4 }, 'Rows.Item.Delete', { collection: 'Rows', index: 4, count: 1 }],
+        ['deleteColumns', { col: 4 }, 'Columns.Item.Delete', { collection: 'Columns', index: 4, count: 1 }],
+        ['hideRows', { row: 5 }, 'Rows.Item.Hidden', { collection: 'Rows', index: 5, hidden: true }],
+        ['hideColumns', { col: 5 }, 'Columns.Item.Hidden', { collection: 'Columns', index: 5, hidden: true }],
+        ['showRows', { row: 5 }, 'Rows.Item.Hidden', { collection: 'Rows', index: 5, hidden: false }],
+        ['showColumns', { col: 5 }, 'Columns.Item.Hidden', { collection: 'Columns', index: 5, hidden: false }],
+        ['groupRows', { from: 5, to: 6 }, 'Rows.Item.Group', { collection: 'Rows', index: 5, to: 6 }],
+        ['groupColumns', { range: 'B:C' }, 'Columns.Item.Group', { range: 'B:C' }],
+        ['replaceInSheet', { what: '旧值', repl: '新值' }, 'Cells.Replace', { what: '旧值', repl: '新值' }],
+        ['deleteNamedRange', { name: '探针名' }, 'Names.Item.Delete', { name: '探针名' }],
+        ['addCellComment', { row: 1, col: 1, text: '批注' }, 'Cell.Comment.Add', { row: 1, col: 1, text: '批注' }],
+        ['deleteCellComment', { row: 1, col: 1 }, 'Cell.Comment.Delete', { row: 1, col: 1 }],
+        ['getCellComments', { row: 1, col: 1 }, 'Cell.Comment.Text', { row: 1, col: 1 }],
+        ['lockCells', { row: 1, col: 1, locked: true }, 'Cell.Locked', { row: 1, col: 1, locked: true }],
+      ];
+      for (const [action, input, method, wantParams] of b5t2Cases) {
+        const sent = installCefQuery({});
+        let r;
+        try { r = await A[action](input); } catch (e) { r = { ok: false, error: String(e) }; }
+        ok(`B5T2 ${action} 正路 ok:true`, r && r.ok === true, r && r.error);
+        const hits = sentOf(sent, method);
+        ok(`B5T2 ${action} 恰好发一条 method=${method}`, hits.length === 1,
+          hits.length ? JSON.stringify(hits[0].params).slice(0, 90) : `实际：${sent.map((x) => x.method).join(',') || '（无）'}`);
+        for (const [k, v] of Object.entries(wantParams)) {
+          eq(`B5T2 ${action} params.${k}`, hits.length ? hits[0].params[k] : undefined, v);
+        }
+        uninstallCefQuery();
+      }
+
+      // Item/Value2 语义专项：禁止 VBA 直调式、禁止 .Value 写值的编码级证明
+      {
+        const sent = installCefQuery({});
+        await A.setCellValue({ row: 1, col: 1, value: 7 });
+        const s = lastSent(sent);
+        ok('setCellValue 旧键 value 经适配器落 value2（§4 #3 静默失效的编码层改道）',
+          s.method === 'Cells.Item.Value2' && s.params.value2 === 7 && !('value' in s.params), JSON.stringify(s.params));
+        ok('全部 34 动作的发送里没有任何 VBA 直调式/裸 Value 痕迹（method 只含 Item/Value2 合法形态）',
+          sent.every((x) => !/\.Cells\(|\.Rows\(|\.Columns\(/.test(x.method)));
+        uninstallCefQuery();
+      }
+
+      // 错误路（校验拒绝 + 零发送）
+      const b5t2ErrCases = [
+        ['getCellValue', {}, /row\/col/],
+        ['setCellValue', { row: 1, col: 1 }, /缺少 value/],
+        ['setFormula', { row: 1, col: 1 }, /缺少 formula/],
+        ['setCellFormat', { row: 1, col: 1 }, /至少给一个/],
+        ['setCellFormat', { row: 1, col: 1, color: 'purple' }, /不认识的颜色/],
+        ['setCellStyle', { row: 1, col: 1 }, /styleName/],
+        ['setBorder', { row: 1, col: 1 }, /lineStyle/],
+        ['copyFormat', { range: 'A1' }, /target/],
+        ['setColumnWidth', { col: 1 }, /col\/width/],
+        ['setRowHeight', { row: 1 }, /row\/height/],
+        ['autoFitColumn', {}, /col/],
+        ['autoFitRow', {}, /row/],
+        ['setNumberFormat', { row: 1, col: 1 }, /format/],
+        ['insertRows', {}, /row/],
+        ['insertColumns', {}, /col/],
+        ['deleteRows', {}, /row/],
+        ['deleteColumns', {}, /col/],
+        ['hideRows', {}, /row/],
+        ['hideColumns', {}, /col/],
+        ['showRows', {}, /row/],
+        ['showColumns', {}, /col/],
+        ['groupRows', {}, /from\/to/],
+        ['groupColumns', {}, /range/],
+        ['replaceInSheet', { what: 'x' }, /what 与 repl/],
+        ['deleteNamedRange', {}, /缺少 name/],
+        ['addCellComment', { row: 1, col: 1 }, /text/],
+        ['lockCells', {}, /row\/col/],
+      ];
+      for (const [action, input, match] of b5t2ErrCases) {
+        const sent = installCefQuery({});
+        const r = await A[action](input);
+        ok(`B5T2 ${action} 错误路 → ok:false 且匹配「${match.source.slice(0, 26)}」`,
+          r && r.ok === false && match.test(r.error || ''), (r && r.error || '').slice(0, 55));
+        ok(`B5T2 ${action} 错误路零发送`, sent.length === 0, `实际 ${sent.length}`);
+        uninstallCefQuery();
+      }
+
+      // ExcelAdapter 新增方法直测
+      eq('rowRef：Rows.Item 语义编码', JSON.stringify(AD.rowRef(3)), JSON.stringify({ collection: 'Rows', index: 3 }));
+      eq('colRef：Columns.Item 语义编码', JSON.stringify(AD.colRef(4)), JSON.stringify({ collection: 'Columns', index: 4 }));
+    }
+
     // ---- 分发器接线：excel 表命中（et 型动作经 channel-client 分发）----
     clientJs.WpsAddonActionsExcel = A;
     installCefQuery({ responses: { 'Slides.Count': { count: 9 } } });
@@ -591,8 +700,8 @@ const lastSent = (sent) => sent[sent.length - 1];
     const viaExcel = await clientJs.WpsAddonChannel.dispatch('createWorkbook', {}, 'excel');
     ok('分发器接线：excel 动作表已注册（createWorkbook 走通道）',
       viaExcel.ok === true && !viaExcel.unsupported, JSON.stringify(viaExcel.data).slice(0, 60));
-    const ghost = await clientJs.WpsAddonChannel.dispatch('setCellValue', { row: 1, col: 1 }, 'excel');
-    ok('部分支持的动作（setCellValue）本批未实现 → 仍回落 unsupported:B3（不越批）',
+    const ghost = await clientJs.WpsAddonChannel.dispatch('cleanData', { range: 'A1:B2' }, 'excel');
+    ok('S1 判不支持的动作（cleanData）本批仍未实现 → 仍回落 unsupported:B3（不越批）',
       ghost.ok === false && ghost.unsupported === 'B3');
     uninstallCefQuery();
   }
