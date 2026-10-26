@@ -1,0 +1,24 @@
+# 行尾策略（2026-10-25 钉死）
+# 背景：无本文件时，Windows 检出 CRLF / 仓库 LF 混用，生成器重跑后
+# "文档统计与注册表一致"对账门禁在 CI 上假红（评审复测轮踩实）。
+# 原则：文本文件入库一律 LF，检出也 LF（本仓库主要在 Windows 的
+# Git Bash / VSCode / CI 下工作，LF 全兼容）；ps1 有 UTF-8 BOM 且被
+# 冻结门禁按字节哈希，保持不做转换（-text）。
+
+* text=auto
+*.ps1 -text
+*.md text eol=lf
+*.html text eol=lf
+*.json text eol=lf
+*.ts text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.xml text eol=lf
+
+# 二进制
+*.tgz binary
+*.7z binary
+*.png binary
+*.jpg binary
+*.ico binary
+*.woff binary

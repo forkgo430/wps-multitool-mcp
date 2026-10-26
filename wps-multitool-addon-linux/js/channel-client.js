@@ -97,42 +97,40 @@
 
   /* ---- 动作分发器（B2 骨架）----
    * 真实现：ping / wireCheck（回显，不碰 JSAPI —— 通道闭环验证用）。
-   * B2.5 起：word/ppt 的动作注册表（actions/word.js、actions/ppt.js 按型加载，见各 manifest）
-   * 接管真实现；注册表里没有的才回落 unsupported:'B3'（显式拒绝，绝不静默成功，计划 §6 D3）。 */
-  function hostApp() {
-    // 插件宿主内的 Application 对象。S1 实测：入口是 window.Application，
-    // 部分宿主形态挂 wps.Application —— 两个都试，拿不到就如实报（B3 真机复核点）。
-    try {
-      if (typeof window !== 'undefined' && window.Application) return window.Application;
-      if (typeof wps !== 'undefined' && wps && wps.Application) return wps.Application;
-    } catch (e) { /* 宿主沙箱可能禁访问 */ }
-    return null;
-  }
-
+   * B4 起：JSAPI 模型为异步 jsAsynCall（js/jsapi.js 封装 cefQuery，B3 §3.3）——动作不再需要
+   * 宿主 Application 对象（B2.5 的同步 COM 门面在真机宿主无对象可调），签名 (params) → Promise；
+   * word/ppt 的动作注册表（actions/word.js、actions/ppt.js）接管真实现；
+   * 注册表里没有的才回落 unsupported:'B3'（显式拒绝，绝不静默成功，计划 §6 D3）。 */
   function dispatch(action, params, app) {
     if (action === 'ping') {
-      return { ok: true, data: { pong: true, app: app, type: state.type, addonVersion: ADDON_VERSION, ts: Date.now() } };
+      return Promise.resolve({ ok: true, data: { pong: true, app: app, type: state.type, addonVersion: ADDON_VERSION, ts: Date.now() } });
     }
     if (action === 'wireCheck') {
-      return { ok: true, data: { message: 'WPS MCP 加载项通道已连接（' + state.type + ' 型，B2.5 动作层）' } };
+      return Promise.resolve({ ok: true, data: { message: 'WPS MCP 加载项通道已连接（' + state.type + ' 型，B4 异步动作层）' } });
     }
     var registries = [];
     if (global.WpsAddonActionsWord) registries.push(global.WpsAddonActionsWord);
     if (global.WpsAddonActionsPpt) registries.push(global.WpsAddonActionsPpt);
     for (var i = 0; i < registries.length; i++) {
       if (Object.prototype.hasOwnProperty.call(registries[i], action)) {
-        var host = hostApp();
-        if (!host) {
-          return { ok: false, error: '拿不到宿主 Application 对象（window.Application / wps.Application 都不存在）——B3 真机联调第一件事' };
-        }
         try {
-          return registries[i][action](host, params || {});
+          return Promise.resolve(registries[i][action](params || {})).then(
+            function (out) {
+              if (!out || typeof out.ok !== 'boolean') {
+                return { ok: false, error: '动作 ' + action + ' 返回结构不合法（缺 ok 布尔）——动作层 bug，如实上报' };
+              }
+              return out;
+            },
+            function (e) {
+              return { ok: false, error: '动作 ' + action + ' 执行异常：' + String(e && e.message ? e.message : e) };
+            }
+          );
         } catch (e) {
-          return { ok: false, error: '动作 ' + action + ' 执行异常：' + String(e && e.message ? e.message : e) };
+          return Promise.resolve({ ok: false, error: '动作 ' + action + ' 执行异常：' + String(e && e.message ? e.message : e) });
         }
       }
     }
-    return { ok: false, unsupported: 'B3', error: '动作 ' + action + ' 在加载项通道尚未实现（B3 填 JSAPI）' };
+    return Promise.resolve({ ok: false, unsupported: 'B3', error: '动作 ' + action + ' 在加载项通道尚未实现（B3 填 JSAPI）' });
   }
 
   function handshake() {
@@ -180,23 +178,31 @@
         setTimeout(pollOnce, 0); // 长轮询到点回 idle：立即再来
         return;
       }
-      var out;
-      try {
-        out = dispatch(frame.action, frame.params, frame.app);
-      } catch (e) {
-        out = { ok: false, error: '分发器异常：' + String(e && e.message ? e.message : e) };
-      }
+      // B4：动作是异步的（jsAsynCall → Promise），dispatch 统一返回 Promise，
+      // 等动作 settle 后再回 /result（轮询链在 result 回包后继续，不会堆积并发 poll）
       state.handled += 1;
-      var payload = { sessionId: state.sessionId, id: frame.id, ok: out.ok === true };
-      if (out.ok) {
-        payload.data = out.data;
-      } else {
-        payload.error = out.error || '动作执行失败';
-        if (out.unsupported) payload.unsupported = out.unsupported;
-      }
-      xhr('POST', '/result', payload, function () {
-        setTimeout(pollOnce, 0);
-      });
+      dispatch(frame.action, frame.params, frame.app)
+        .then(function (out) {
+          var payload = { sessionId: state.sessionId, id: frame.id, ok: out.ok === true };
+          if (out.ok) {
+            payload.data = out.data;
+          } else {
+            payload.error = out.error || '动作执行失败';
+            if (out.unsupported) payload.unsupported = out.unsupported;
+          }
+          xhr('POST', '/result', payload, function () {
+            setTimeout(pollOnce, 0);
+          });
+        })
+        .catch(function (e) {
+          // dispatch 理论上不会 reject（内部已兜），这里兜底防轮询链断
+          xhr('POST', '/result', {
+            sessionId: state.sessionId, id: frame.id, ok: false,
+            error: '分发器异常：' + String(e && e.message ? e.message : e),
+          }, function () {
+            setTimeout(pollOnce, 0);
+          });
+        });
     });
   }
 

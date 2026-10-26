@@ -1,19 +1,27 @@
 /**
- * 加载项动作分发器的 mock 单测（Linux B2.5 验收项）
- * 原则：不起真 WPS —— 造一个会录像的 mock app 对象，断言每个动作【调用了什么 JSAPI 方法、
- * 赋了什么属性、参数换算对不对】，而不是断言"返回了 mock 值"——防"永远绿"的假测试。
- * 语义依据：docs/agents/linux/S1-REPORT.md §3（逐条明细）/§4（语义差异）/§5（枚举映射），
- * 每段断言前的注释都标了 S1 行号。跑法：node scripts/manual/actions-dispatcher-test.js
- * （verify-all FAST 档包含它）。
+ * 加载项动作分发器的 mock 单测（Linux B4 验收项，异步 jsAsynCall 形态）
+ * 原则：不起真 WPS —— mock 全局 cefQuery（B3 §3.3：webview 唯一原生桥），断言每个动作
+ * 【发了什么 method、什么 params】而不是"返回了什么 mock 值"——防假测试的规矩不变。
+ * B3 抓包范式（kwebpack_api_invoker.js）：request = "jsAsynCall('" + JSON + "')"，
+ * 原生侧回调全局 jsCallbackN(result)。
+ *
+ * 断言保留策略：B2.5 的 79 条语义等价迁移（COM 属性赋值断言 → params 键值断言），
+ * 新增：超时 reject、回调清理（无残留全局）、并发两调用不串线、cefQuery onFailure 原文。
+ * 语义依据：docs/agents/linux/S1-REPORT.md §3/§5（method 出处见各断言标签与动作头注）。
+ * 跑法：node scripts/manual/actions-dispatcher-test.js（verify-all FAST 档包含它）。
  */
 
 const path = require('path');
 
 const ROOT = path.resolve(__dirname, '..', '..');
 const ADDON = path.resolve(ROOT, '..', 'wps-multitool-addon-linux');
+const jsapi = require(path.join(ADDON, 'js', 'jsapi.js'));
 const wordActions = require(path.join(ADDON, 'js', 'actions', 'word.js'));
 const pptActions = require(path.join(ADDON, 'js', 'actions', 'ppt.js'));
 const clientJs = require(path.join(ADDON, 'js', 'channel-client.js'));
+
+// 超时收紧：超时用例不用等 30s（jsapi 每次调用时重读 env）
+process.env.WPS_JSAPI_TIMEOUT = '120';
 
 let pass = 0;
 let fail = 0;
@@ -24,482 +32,411 @@ const ok = (label, cond, extra) => {
 const eq = (label, got, want) => ok(`${label} = ${JSON.stringify(want)}`, JSON.stringify(got) === JSON.stringify(want),
   `got ${JSON.stringify(got)}`);
 
-/** 属性赋值/读取录像：把 obj 的指定字段包上 getter/setter，读写都进 log */
-function watched(obj, fields, log, prefix) {
-  const store = {};
-  fields.forEach((f) => {
-    store[f] = obj[f];
-    Object.defineProperty(obj, f, {
-      get() { log.push(`${prefix}.${f} (read)`); return store[f]; },
-      set(v) { log.push(`${prefix}.${f}=${JSON.stringify(v)}`); store[f] = v; },
-      configurable: true,
-    });
-  });
-  return obj;
-}
-
-/** 方法调用录像 */
-function recording(obj, name, log, prefix, impl) {
-  obj[name] = function (...args) {
-    log.push(`${prefix}.${name}(${args.map((a) => JSON.stringify(a)).join(', ')})`);
-    return impl ? impl(...args) : undefined;
-  };
-  return obj;
-}
-
-const inLog = (log, needle) => log.some((l) => l.includes(needle));
-
-/* ============================================================
- * Word mock（wps 型）
- * ============================================================ */
-function makeWordMock(opts) {
+/**
+ * mock 全局 cefQuery：解析 jsAsynCall 请求，记录 {method, params, callback}，
+ * 按 responses[method]（或默认响应）异步回调全局 jsCallbackN。
+ * onCall(payload) 可覆盖默认响应；throw 则走"不回调"（供超时用例）。
+ */
+function installCefQuery(opts) {
   opts = opts || {};
-  const log = [];
-  const font = watched({ Name: '宋体', Size: 12, Bold: false, Italic: false, Underline: false, Color: 0 },
-    ['Name', 'Size', 'Bold', 'Italic', 'Underline', 'Color'], log, 'Font');
-  const selFont = watched({ Name: '宋体', Size: 12, Bold: false, Italic: false, Underline: false, Color: 0 },
-    ['Name', 'Size', 'Bold', 'Italic', 'Underline', 'Color'], log, 'SelFont');
-  const contentFont = watched({ Name: '宋体', Size: 12, Bold: false, Italic: false, Underline: false, Color: 0 },
-    ['Name', 'Size', 'Bold', 'Italic', 'Underline', 'Color'], log, 'ContentFont');
-  const rangeText = { text: '旧文字' };
-  const range = {};
-  Object.defineProperty(range, 'Text', {
-    get() { log.push('Range.Text (read)'); return rangeText.text; },
-    set(v) { log.push(`Range.Text=${JSON.stringify(v)}`); rangeText.text = v; },
-  });
-  const doc = {
-    Name: opts.noDoc ? undefined : 'Doc1',
-    FullName: '/tmp/Doc1.docx',
-    Path: '/tmp',
-    Saved: false,
-    ReadOnly: false,
-    Content: { Font: contentFont },
-    Range: (a, b) => { log.push(`ActiveDocument.Range(${JSON.stringify(a)}, ${JSON.stringify(b)})`); return range; },
+  const sent = [];
+  global.cefQuery = function (req) {
+    const m = /^jsAsynCall\('(.*)'\)$/.exec(req.request);
+    if (!m) { sent.push({ method: '<解析失败>', params: { raw: req.request } }); return; }
+    const payload = JSON.parse(m[1]);
+    const { method, callback, ...params } = payload;
+    sent.push({ method, callback, params });
+    const delay = opts.delay !== undefined ? opts.delay : 5;
+    setTimeout(() => {
+      if (opts.onFailureOnce && !opts.onFailureOnce.done) {
+        opts.onFailureOnce.done = true;
+        req.onFailure('JSAPI: 原生侧失败（mock）');
+        return;
+      }
+      const cb = global[payload.callback];
+      if (typeof cb !== 'function') { if (opts.onMissingCallback) opts.onMissingCallback(payload); return; }
+      if (opts.onCall) {
+        try {
+          const r = opts.onCall(payload);
+          cb(typeof r === 'string' ? r : JSON.stringify(r));
+        } catch (e) { /* onCall 抛错 = 不回调（超时用例路径） */ }
+        return;
+      }
+      const def = (opts.responses && opts.responses[payload.method]) !== undefined
+        ? opts.responses[payload.method]
+        : { success: true };
+      cb(JSON.stringify(def));
+    }, delay);
   };
-  const selection = { Text: '选中文字', Font: selFont };
-  const documents = {};
-  recording(documents, 'Open', log, 'Documents', (p) => {
-    if (opts.openThrows) throw new Error('JSAPI: Open 炸了（mock）');
-    return doc;
-  });
-  const app = {
-    ActiveDocument: opts.noDoc ? null : doc,
-    Documents: documents,
-    Selection: opts.noSelection ? undefined : selection,
-  };
-  if (opts.selectionTextThrows) {
-    Object.defineProperty(app, 'Selection', {
-      get() { throw new Error('JSAPI: Selection 炸了（mock）'); },
-      configurable: true,
+  return sent;
+}
+
+function uninstallCefQuery() { delete global.cefQuery; }
+const sentOf = (sent, method) => sent.filter((s) => s.method === method);
+const lastSent = (sent) => sent[sent.length - 1];
+
+(async () => {
+  console.log('\n=== Word（wps 型）5 动作（异步 jsAsynCall）===');
+
+  console.log('\n--- openDocument（S1:134 §3#108，method Documents.Open）---');
+  {
+    const sent = installCefQuery({ responses: { 'Documents.Open': { documentName: 'Doc1' } } });
+    const r1 = await wordActions.openDocument({ filePath: '/tmp/a.docx', path: '/tmp/a.docx' });
+    ok('正路 ok:true', r1.ok === true);
+    const s1 = sentOf(sent, 'Documents.Open');
+    eq('发了 method=Documents.Open 且 params.path 正确', s1.length === 1 && s1[0].params.path, '/tmp/a.docx');
+    eq('回包透传原生结果', r1.data && r1.data.documentName, 'Doc1');
+    const r2 = await wordActions.openDocument({});
+    ok('缺 path → ok:false 且不再发送', r2.ok === false && sentOf(sent, 'Documents.Open').length === 1, r2.error);
+    uninstallCefQuery();
+    const r3 = await wordActions.openDocument({ path: '/tmp/a.docx' });
+    ok('宿主无 cefQuery → ok:false 且 error 是原文（等价原"JSAPI 抛错原文"）',
+      r3.ok === false && /cefQuery/.test(r3.error || ''), (r3.error || '').slice(0, 70));
+  }
+
+  console.log('\n--- getActiveDocumentState（S1:129 §3#103，method ActiveDocument）---');
+  {
+    const sent = installCefQuery({ responses: { ActiveDocument: { name: 'Doc1', hasPath: true, saved: false } } });
+    const r1 = await wordActions.getActiveDocumentState({ app: 'word' });
+    ok('正路 ok:true 且透传原生字段', r1.ok === true && r1.data.name === 'Doc1' && r1.data.hasPath === true, JSON.stringify(r1.data).slice(0, 80));
+    eq('method=ActiveDocument', lastSent(sent).method, 'ActiveDocument');
+    const m2 = installCefQuery({ responses: {} });
+    const r2 = await wordActions.getActiveDocumentState({});
+    ok('响应无字段 → 仍 ok（透传语义，数据以真机为准）', r2.ok === true, JSON.stringify(r2.data).slice(0, 60));
+    uninstallCefQuery(); uninstallCefQuery();
+  }
+
+  console.log('\n--- getSelectedText（S1:303 §3#277，method Selection.Text）---');
+  {
+    const sent = installCefQuery({ responses: { 'Selection.Text': { text: '选中文字' } } });
+    const r1 = await wordActions.getSelectedText({});
+    eq('正路取回选区文本（响应 text 键优先）', r1.ok && r1.data && r1.data.text, '选中文字');
+    eq('method=Selection.Text', lastSent(sent).method, 'Selection.Text');
+    uninstallCefQuery();
+    const m2 = installCefQuery({ responses: { 'Selection.Text': '裸文本' } });
+    const r2 = await wordActions.getSelectedText({});
+    eq('响应是裸字符串也能取出', r2.ok && r2.data.text, '裸文本');
+    uninstallCefQuery();
+  }
+
+  console.log('\n--- replaceRange（S1:163 §3#137，method Range.Text）---');
+  {
+    const sent = installCefQuery({});
+    const r1 = await wordActions.replaceRange({ startPos: 1, endPos: 3, text: '新文字' });
+    ok('正路 ok:true', r1.ok === true);
+    const s = lastSent(sent);
+    ok('method=Range.Text 且 params 三键换算正确',
+      s.method === 'Range.Text' && s.params.startPos === 1 && s.params.endPos === 3 && s.params.text === '新文字',
+      JSON.stringify(s.params));
+    const r2 = await wordActions.replaceRange({ startPos: 1, endPos: 3 });
+    ok('缺 text → ok:false 且不重复发送', r2.ok === false && sent.filter((x) => x.method === 'Range.Text').length === 1, r2.error);
+    const r3 = await wordActions.replaceRange({ text: 'x' });
+    ok('缺坐标 → ok:false', r3.ok === false && sent.filter((x) => x.method === 'Range.Text').length === 1, r3.error);
+    uninstallCefQuery();
+  }
+
+  console.log('\n--- setFont（S1:145 §3#119，method Font；换算在 JS 侧）---');
+  {
+    const sent = installCefQuery({});
+    const r1 = await wordActions.setFont({ fontName: 'SimSun', fontSize: 24, bold: true, color: '#00FF00' });
+    ok('正路 ok:true 且回包带 settings', r1.ok === true && r1.data.settings.colorRgb === 65280);
+    const s1 = lastSent(sent);
+    ok('params：fontName/fontSize/bold 正确', s1.params.fontName === 'SimSun' && s1.params.fontSize === 24 && s1.params.bold === true);
+    ok('#00FF00 → params.colorRgb=65280（COM RGB 编码，S0 #18 背书）', s1.params.colorRgb === 65280);
+    ok("缺省 range='selection'", s1.params.range === 'selection');
+    const r2 = await wordActions.setFont({ fontName: 'KaiTi', range: 'all' });
+    ok("range='all' → params.range='all'（走 Content 语义）", r2.ok === true && lastSent(sent).params.range === 'all');
+    const r3 = await wordActions.setFont({ fontName: 'X', documentName: 'Doc1' });
+    ok('钉文档+选区范围 → 拒绝（ps1 同款护栏）且不发送', r3.ok === false && /改到别人/.test(r3.error || '') && sent.filter((x) => x.method === 'Font').length === 2, r3.error);
+    const r4 = await wordActions.setFont({ color: 'purple' });
+    ok('非法色名 → ok:false 且未发送', r4.ok === false && sent.filter((x) => x.method === 'Font').length === 2, r4.error);
+    uninstallCefQuery();
+  }
+
+  console.log('\n=== PPT（wpp 型）15 动作（异步 jsAsynCall）===');
+
+  console.log('\n--- createPresentation（S1:309 §3#283，method Presentations.Add）---');
+  {
+    const sent = installCefQuery({ responses: { 'Presentations.Add': { name: 'Presentation2' } } });
+    const r1 = await pptActions.createPresentation({});
+    ok('正路 ok:true 且调 Presentations.Add', r1.ok === true && sentOf(sent, 'Presentations.Add').length === 1);
+    eq('回包带新演示名', r1.data && r1.data.name, 'Presentation2');
+    uninstallCefQuery();
+    const r2 = await pptActions.createPresentation({});
+    ok('宿主无 cefQuery → ok:false 原文', r2.ok === false && /cefQuery/.test(r2.error || ''), (r2.error || '').slice(0, 60));
+  }
+
+  console.log('\n--- getSlideCount（S1:202 §3#176，method Slides.Count）---');
+  {
+    const sent = installCefQuery({ responses: { 'Slides.Count': { count: 7 } } });
+    const r1 = await pptActions.getSlideCount({});
+    ok('正路回数字 count=7', r1.ok === true && r1.data.count === 7 && sentOf(sent, 'Slides.Count').length === 1);
+    uninstallCefQuery();
+    const m2 = installCefQuery({ responses: { 'Slides.Count': 3 } });
+    const r2 = await pptActions.getSlideCount({});
+    ok('响应是裸数字也取出', r2.ok === true && r2.data.count === 3);
+    uninstallCefQuery();
+  }
+
+  console.log('\n--- addSlide（S1:210 §3#184，method Slides.Add；layout 编号换算在 JS 侧）---');
+  {
+    const sent = installCefQuery({ responses: { 'Slides.Add': { slideIndex: 4 } } });
+    const r1 = await pptActions.addSlide({ layout: 'blank', title: 'T', content: 'C' });
+    ok('正路 ok:true', r1.ok === true, JSON.stringify(r1.data));
+    const s1 = lastSent(sent);
+    ok("'blank' → params.layout=12（ps1 $layouts 表）", s1.params.layout === 12);
+    ok('title/content 原样下发', s1.params.title === 'T' && s1.params.content === 'C');
+    eq('回包 slideIndex 用原生回传', r1.data && r1.data.slideIndex, 4);
+    const r2b = await pptActions.addSlide({ layout: 'title_content', content: '第二页' });
+    const s2 = sentOf(sent, 'Slides.Add')[1];
+    ok('缺省布局路径：显式 title_content → 2 且 content 下发',
+      !!s2 && s2.params.layout === 2 && s2.params.content === '第二页', s2 ? JSON.stringify(s2.params) : '（没有第二次发送）');
+    const r3 = await pptActions.addSlide({ layout: '不存在的版式' });
+    ok('认不出的版式回落 2（ps1 同款）', r3.ok === true && lastSent(sent).params.layout === 2);
+    uninstallCefQuery();
+  }
+
+  console.log('\n--- deleteSlide（S1:198 §3#172，method Slides.Delete）---');
+  {
+    const sent = installCefQuery({});
+    const r1 = await pptActions.deleteSlide({ slideIndex: 2 });
+    ok('正路发 method=Slides.Delete 且 params.index=2',
+      r1.ok === true && sentOf(sent, 'Slides.Delete').length === 1 && lastSent(sent).params.index === 2);
+    const r2 = await pptActions.deleteSlide({});
+    ok('缺 slideIndex → ok:false 且不再发送', r2.ok === false && sentOf(sent, 'Slides.Delete').length === 1, r2.error);
+    uninstallCefQuery();
+  }
+
+  console.log('\n--- getShapes（S1:222 §3#196，method Slide.Shapes）---');
+  {
+    const sent = installCefQuery({ responses: { 'Slide.Shapes': [{ name: 'TextBox 1', index: 1 }] } });
+    const r1 = await pptActions.getShapes({ slideIndex: 2 });
+    ok('正路透传原生形状数组', r1.ok === true && r1.data.shapes.length === 1 && r1.data.shapes[0].name === 'TextBox 1');
+    eq('params.slideIndex 正确', lastSent(sent).params.slideIndex, 2);
+    uninstallCefQuery();
+    const m2 = installCefQuery({ responses: {} });
+    const r2 = await pptActions.getShapes({ slideIndex: 1 });
+    ok('响应缺省也 ok（透传）', r2.ok === true);
+    uninstallCefQuery();
+  }
+
+  console.log('\n--- setShapeText（S1:226 §3#200，method Shape.TextFrame.TextRange.Text）---');
+  {
+    const sent = installCefQuery({});
+    const r1 = await pptActions.setShapeText({ slideIndex: 1, shapeIndex: 1, text: '新形状文字' });
+    ok('正路 method 正确且 params 带 text/shapeIndex',
+      r1.ok === true && lastSent(sent).method === 'Shape.TextFrame.TextRange.Text' &&
+      lastSent(sent).params.text === '新形状文字' && lastSent(sent).params.shapeIndex === 1);
+    const r2 = await pptActions.setShapeText({ slideIndex: 1 });
+    ok('缺 text → ok:false 且不发送', r2.ok === false && sent.filter((x) => x.method === 'Shape.TextFrame.TextRange.Text').length === 1, r2.error);
+    const r3 = await pptActions.setShapeText({ slideIndex: 1, text: 'x' });
+    ok('形状没给 → ok:false（ps1 坏对象坑：Item(null) 毁整页）且不发送',
+      r3.ok === false && /找不到目标形状/.test(r3.error || '') && sent.filter((x) => x.method === 'Shape.TextFrame.TextRange.Text').length === 1);
+    uninstallCefQuery();
+  }
+
+  console.log('\n--- addTextBox（S1:211 §3#185，method Shapes.AddTextbox；缺省镜像 ps1）---');
+  {
+    const sent = installCefQuery({});
+    const r1 = await pptActions.addTextBox({ slideIndex: 1, text: '框内容', fontSize: 20 });
+    const s1 = lastSent(sent);
+    ok('orientation=1 + 缺省 100/100/400/50（ps1 同款）',
+      s1.method === 'Shapes.AddTextbox' && s1.params.orientation === 1 &&
+      s1.params.left === 100 && s1.params.top === 100 && s1.params.width === 400 && s1.params.height === 50,
+      JSON.stringify(s1.params));
+    ok('text/fontSize 进 params', s1.params.text === '框内容' && s1.params.fontSize === 20);
+    const r2 = await pptActions.addTextBox({ slideIndex: 1, left: 10, top: 20, width: 30, height: 40 });
+    const s2 = lastSent(sent);
+    ok('显式坐标直传', s2.params.left === 10 && s2.params.top === 20 && s2.params.width === 30 && s2.params.height === 40);
+    const r3 = await pptActions.addTextBox({ slideIndex: 1 });
+    ok('不传 text 也不炸（文本可选）', r3.ok === true && !('text' in lastSent(sent).params));
+    uninstallCefQuery();
+  }
+
+  console.log('\n--- setShapePosition（S1:227 §3#201，method Shape.Position）---');
+  {
+    const sent = installCefQuery({});
+    const r1 = await pptActions.setShapePosition({ slideIndex: 1, shapeIndex: 1, left: 300, top: 250 });
+    const s1 = lastSent(sent);
+    ok('只下发给出的维度：left/top 在 params', s1.params.left === 300 && s1.params.top === 250);
+    ok('width/height 不在 params（没给就不发）', !('width' in s1.params) && !('height' in s1.params));
+    const r2 = await pptActions.setShapePosition({ slideIndex: 1, left: 1 });
+    ok('形状没给 → ok:false', r2.ok === false, (r2.error || '').slice(0, 60));
+    const r3 = await pptActions.setShapePosition({ slideIndex: 1, shapeIndex: 1 });
+    ok('一个维度都没给 → ok:false', r3.ok === false && /至少给一个/.test(r3.error || ''), (r3.error || '').slice(0, 60));
+    uninstallCefQuery();
+  }
+
+  console.log('\n--- insertPptTable（S1:233 §3#207，method Shapes.AddTable）---');
+  {
+    const sent = installCefQuery({ responses: { 'Shapes.AddTable': { name: 'Table 4', tableIndex: 2 } } });
+    const r1 = await pptActions.insertPptTable({ slideIndex: 1, rows: 4, cols: 2, left: 5, top: 6 });
+    const s1 = lastSent(sent);
+    ok('AddTable(4,2,5,6,400,200)（缺省尺寸 ps1 同款）',
+      s1.params.rows === 4 && s1.params.cols === 2 && s1.params.left === 5 && s1.params.top === 6 &&
+      s1.params.width === 400 && s1.params.height === 200, JSON.stringify(s1.params));
+    eq('tableIndex 透传原生回传', r1.data && r1.data.tableIndex, 2);
+    uninstallCefQuery();
+    const m2 = installCefQuery({});
+    const r2 = await pptActions.insertPptTable({ slideIndex: 1 });
+    ok('全缺省 → 3×3 @ 100/100/400/200', r2.ok === true &&
+      lastSent(m2).params.rows === 3 && lastSent(m2).params.height === 200);
+    uninstallCefQuery();
+  }
+
+  console.log('\n--- getPptTableCell / setPptTableCell（S1:235/234 §3#209/#208，method Table.Cell.Text）---');
+  {
+    const sent = installCefQuery({ responses: { 'Table.Cell.Text': { text: '旧内容2,3' } } });
+    const r1 = await pptActions.getPptTableCell({ slideIndex: 1, tableIndex: 1, row: 2, col: 3 });
+    const s1 = lastSent(sent);
+    ok('读路 method/params（tableIndex 缺省 1）', s1.method === 'Table.Cell.Text' && s1.params.row === 2 && s1.params.col === 3);
+    eq('读回 value/text 双键', r1.data && r1.data.value, '旧内容2,3');
+    const r3 = await pptActions.setPptTableCell({ slideIndex: 1, tableIndex: 2, row: 1, col: 1, text: '新格值' });
+    const s3 = lastSent(sent);
+    ok('写路 params 带 text 与 tableIndex', s3.params.text === '新格值' && s3.params.tableIndex === 2);
+    const r4 = await pptActions.setPptTableCell({ slideIndex: 1, row: 1, col: 1 });
+    ok('缺 text → ok:false 且不发送', r4.ok === false && sent.filter((x) => x.method === 'Table.Cell.Text').length === 2, r4.error);
+    uninstallCefQuery();
+  }
+
+  console.log('\n--- addAnimation（S1:252/271/272 §3#226/#245/#246 + §5 行 355；只做加铁律）---');
+  {
+    const sent = installCefQuery({});
+    const r1 = await pptActions.addAnimation({ slideIndex: 1, shapeIndex: 1, effect: 'fadeIn' });
+    const s1 = lastSent(sent);
+    ok("effect 'fadeIn' → params.effectId=10（映射表抄 ps1）+ level 恒 0",
+      s1.method === 'TimeLine.MainSequence.AddEffect' && s1.params.effectId === 10 && s1.params.level === 0,
+      JSON.stringify(s1.params));
+    ok('回包没有 count 字段（S1 §5：读侧不稳，异步模型下同样绝不发起读侧调用）',
+      r1.ok === true && !('count' in (r1.data || {})));
+    ok('发送列表里没有任何动画读侧 method（无 Count/Delete/MoveTo）',
+      !sent.some((x) => /Count|Delete|MoveTo/.test(x.method)));
+    const r2 = await pptActions.addAnimation({ slideIndex: 1, shapeIndex: 1, effect: 29 });
+    ok('数字 effect 直通 → params.effectId=29（S1 §5 编号恒等）',
+      r2.ok === true && lastSent(sent).params.effectId === 29 && lastSent(sent).params.level === 0);
+    const r3 = await pptActions.addAnimation({ slideIndex: 1, shapeIndex: 1, effect: 'magicFly' });
+    ok('认不出的效果名 → 明确报错（ps1 同款，不猜）且不发送',
+      r3.ok === false && /不认识的 effect/.test(r3.error || '') && sent.filter((x) => x.method === 'TimeLine.MainSequence.AddEffect').length === 2);
+    const r4 = await pptActions.addAnimation({ slideIndex: 1, effect: 'fadeIn' });
+    ok('形状没给 → ok:false（ps1 坏对象坑）', r4.ok === false && /找不到要加动画的形状/.test(r4.error || ''));
+    uninstallCefQuery();
+  }
+
+  console.log('\n--- setSlideTransition（S1:253 §3#227 + §5 行 354，method SlideShowTransition.EntryEffect）---');
+  {
+    const sent = installCefQuery({});
+    const r1 = await pptActions.setSlideTransition({ slideIndex: 1, effect: 'push', duration: 2 });
+    let s = lastSent(sent);
+    ok("'push' → params.entryEffect=2（映射表抄 ps1）+ duration 下发",
+      s.method === 'SlideShowTransition.EntryEffect' && s.params.entryEffect === 2 && s.params.duration === 2);
+    const r2 = await pptActions.setSlideTransition({ slideIndex: 1, effect: 'none' });
+    ok("'none' → 0（取消切换不再炸，ps1 历史坑）", lastSent(sent).params.entryEffect === 0);
+    const r3 = await pptActions.setSlideTransition({ slideIndex: 1, effect: '77' });
+    ok('数字串直通 → 77', lastSent(sent).params.entryEffect === 77);
+    const before = sent.length;
+    const r4 = await pptActions.setSlideTransition({ slideIndex: 1, effect: 'starWipe' });
+    ok('认不出的切换 → ok:false 且未发送', r4.ok === false && sent.length === before, r4.error);
+    uninstallCefQuery();
+  }
+
+  console.log('\n--- setSlideBackground（S1:254 §3#228 + S0 #18，method Background.Fill.Solid）---');
+  {
+    const sent = installCefQuery({});
+    const r1 = await pptActions.setSlideBackground({ slideIndex: 1, color: '#00FF00' });
+    const s1 = lastSent(sent);
+    ok('params.colorRgb=65280（Solid+RGB 两步编码进单 method，次序由原生侧承担——B3 复核点）',
+      s1.method === 'Background.Fill.Solid' && s1.params.colorRgb === 65280, JSON.stringify(s1.params));
+    const before = sent.length;
+    const r2 = await pptActions.setSlideBackground({ slideIndex: 1, color: 'zzz' });
+    ok('非法颜色 → ok:false（ps1 静默跳过仍回 success——有意差异）且未发送',
+      r2.ok === false && sent.length === before, (r2.error || '').slice(0, 60));
+    const r3 = await pptActions.setSlideBackground({ slideIndex: 1, imagePath: '/tmp/x.png' });
+    ok('图片路径本轮未实现 → 明确报"纯色"，不静默成功', r3.ok === false && /纯色/.test(r3.error || ''), (r3.error || '').slice(0, 60));
+    uninstallCefQuery();
+  }
+
+  console.log('\n--- exportSlideAsImage（S1:232 §3#206 + S0 #19；B3 §5 明确属异步范畴）---');
+  {
+    const sent = installCefQuery({});
+    const r1 = await pptActions.exportSlideAsImage({ slideIndex: 1, outputPath: '/tmp/s1.png' });
+    const s1 = lastSent(sent);
+    ok("method=Slide.Export 且 params.path/filter（PNG）",
+      s1.method === 'Slide.Export' && s1.params.path === '/tmp/s1.png' && s1.params.filter === 'PNG');
+    const r2 = await pptActions.exportSlideAsImage({ slideIndex: 1, path: '/tmp/s2.png', format: 'JPG', width: 1334, height: 750 });
+    const s2 = lastSent(sent);
+    ok('path 别名键也认 + 带尺寸四参下发（S0 实测带尺寸成功）',
+      s2.params.path === '/tmp/s2.png' && s2.params.filter === 'JPG' && s2.params.width === 1334 && s2.params.height === 750);
+    const before = sent.length;
+    const r3 = await pptActions.exportSlideAsImage({ slideIndex: 1 });
+    ok('缺 path → ok:false 且不发送', r3.ok === false && sent.length === before, r3.error);
+    uninstallCefQuery();
+  }
+
+  console.log('\n=== 分发器接线（注册表查找 + Promise 化 + 回落）===');
+  {
+    clientJs.WpsAddonActionsWord = wordActions;
+    clientJs.WpsAddonActionsPpt = pptActions;
+    const d = clientJs.WpsAddonChannel.dispatch;
+    const ping = await d('ping', {}, 'word');
+    ok('ping 仍真实现（Promise 化）', ping.ok === true && ping.data.pong === true);
+    const wc = await d('wireCheck', {}, 'wpp');
+    ok('wireCheck 仍真实现（文案 B4 异步动作层）', wc.ok === true && /B4/.test(wc.data.message || ''));
+    const ghost = await d('setValue', { x: 1 }, 'word');
+    ok('注册表外的动作仍回落 unsupported:B3', ghost.ok === false && ghost.unsupported === 'B3');
+    // 注册表命中但宿主无 cefQuery（Node 侧未 mock）→ 动作 reject → dispatch 兜成 ok:false 原文
+    const host = await d('getSlideCount', {}, 'ppt');
+    ok('注册表命中但无 cefQuery → 兜成 ok:false 原文（不静默成功）',
+      host.ok === false && /cefQuery/.test(host.error || ''), (host.error || '').slice(0, 70));
+    uninstallCefQuery();
+  }
+
+  console.log('\n=== jsapi.js 专项：超时 / 回调清理 / 并发 / onFailure ===');
+  {
+    // 超时：onCall 抛错 = 永不回调 → 120ms 后 reject（await 会 throw，用 .then 捕成值）
+    installCefQuery({ onCall: () => { throw new Error('never call back'); } });
+    const t0 = Date.now();
+    const r1 = await jsapi.jsAsynCall('slowMethod', {}).then(() => 'resolved', (e) => e);
+    const dt = Date.now() - t0;
+    ok('超时 → reject 且文案含 method', r1 instanceof Error && /jsAsynCall 超时/.test(r1.message) && /slowMethod/.test(r1.message),
+      r1.message.slice(0, 60));
+    ok('超时时长 ≈ WPS_JSAPI_TIMEOUT(120ms)', dt >= 110 && dt < 1000, `${dt}ms`);
+    ok('超时后全局无残留 jsCallback（清理到位）', jsapi.pendingCallbacks().length === 0, JSON.stringify(jsapi.pendingCallbacks()));
+    uninstallCefQuery();
+
+    // 正常调用后同样无残留
+    installCefQuery({ responses: { m1: { a: 1 } } });
+    await jsapi.jsAsynCall('m1', {});
+    ok('正常调用后无残留 jsCallback', jsapi.pendingCallbacks().length === 0);
+    uninstallCefQuery();
+
+    // 并发：两个调用交错，各自回调不串线
+    const m2 = installCefQuery({
+      responses: { mA: { which: 'A' }, mB: { which: 'B' } },
+      delay: 15,
     });
+    const pa = jsapi.jsAsynCall('mA', {});
+    const pb = jsapi.jsAsynCall('mB', {});
+    const [ra, rb] = await Promise.all([pa, pb]);
+    ok('并发 A：拿到 A 的结果（不串线）', ra && ra.which === 'A');
+    ok('并发 B：拿到 B 的结果（不串线）', rb && rb.which === 'B');
+    eq('并发发送两条且 method 各自正确', sentOf(m2, 'mA').length + sentOf(m2, 'mB').length, 2);
+    ok('并发完成后无残留 jsCallback', jsapi.pendingCallbacks().length === 0);
+    // 回调名自增不重复
+    const names = m2.map((x) => x.callback);
+    ok('回调名自增不重复', new Set(names).size === names.length, names.join(','));
+    uninstallCefQuery();
+
+    // onFailure：原生侧失败 → reject 原文（等价原"JSAPI 抛错原文带回"）
+    installCefQuery({ onFailureOnce: {} });
+    const rf = await jsapi.jsAsynCall('failingMethod', {}).then(() => 'resolved', (e) => e);
+    ok('cefQuery onFailure → reject 且 error 是原文', rf instanceof Error && /原生侧失败/.test(rf.message), rf.message.slice(0, 60));
+    ok('onFailure 后无残留 jsCallback', jsapi.pendingCallbacks().length === 0);
+    uninstallCefQuery();
   }
-  return { app, log, doc, range };
-}
 
-/* ============================================================
- * PPT mock（wpp 型）
- * ============================================================ */
-function makeTextChain(log, prefix, text) {
-  const chain = {};
-  let t = text;
-  const textRange = {};
-  Object.defineProperty(textRange, 'Text', {
-    get() { log.push(`${prefix}.TextRange.Text (read)`); return t; },
-    set(v) { log.push(`${prefix}.TextRange.Text=${JSON.stringify(v)}`); t = v; },
-  });
-  const font = watched({ Size: 18, Name: '宋体' }, ['Size', 'Name'], log, `${prefix}.Font`);
-  textRange.Font = font;
-  chain.TextFrame = { TextRange: textRange };
-  return chain;
-}
-
-function makePptMock(opts) {
-  opts = opts || {};
-  const log = [];
-  const mkShape = (i, spec) => {
-    const s = { Name: spec.name, Type: spec.type, HasTable: !!spec.hasTable, Table: spec.table };
-    watched(s, ['Left', 'Top', 'Width', 'Height'], log, `Shape${i}`);
-    if (spec.text !== undefined) Object.assign(s, makeTextChain(log, `Shape${i}`, spec.text));
-    return s;
-  };
-  const tableShape = mkShape(2, {
-    name: 'Table 1', type: 19, hasTable: true, text: undefined,
-    table: (() => {
-      const cells = {};
-      return {
-        Cell(r, c) {
-          log.push(`Table.Cell(${JSON.stringify(r)}, ${JSON.stringify(c)})`);
-          const key = r + ',' + c;
-          if (!cells[key]) cells[key] = { Shape: makeTextChain(log, `Cell(${r},${c}).Shape`, `旧内容${key}`) };
-          return cells[key];
-        },
-      };
-    })(),
-  });
-  const shapes = [
-    mkShape(1, { name: 'TextBox 1', type: 17, text: '初始文本' }),
-    tableShape,
-    mkShape(3, { name: 'Title 1', type: 13, text: '' }),
-  ];
-  const shapesObj = {
-    get Count() { log.push('Shapes.Count (read)'); return shapes.length; },
-    Item(i) {
-      log.push(`Shapes.Item(${JSON.stringify(i)})`);
-      const s = shapes[i - 1];
-      if (!s) throw new Error('JSAPI: Shapes.Item 越界（mock）');
-      return s;
-    },
-    AddTextbox(orientation, l, t, w, h) {
-      log.push(`Shapes.AddTextbox(${orientation}, ${l}, ${t}, ${w}, ${h})`);
-      const s = mkShape(shapes.length + 1, { name: 'TextBox ' + (shapes.length + 1), type: 17, text: '' });
-      shapes.push(s);
-      return s;
-    },
-    AddTable(rows, cols, l, t, w, h) {
-      log.push(`Shapes.AddTable(${rows}, ${cols}, ${l}, ${t}, ${w}, ${h})`);
-      if (opts.addTableThrows) throw new Error('JSAPI: AddTable 炸了（mock）');
-      const s = mkShape(shapes.length + 1, { name: 'Table ' + (shapes.length + 1), type: 19, hasTable: true });
-      s.Table = { Cell() { return { Shape: makeTextChain(log, 'NewTable.Cell.Shape', '') }; } };
-      shapes.push(s);
-      return s;
-    },
-  };
-  // 动画"只做加"的铁律 mock：MainSequence 的 Count 一读就炸（S1 §5：读侧不稳会桥死锁）
-  const mainSequence = {};
-  Object.defineProperty(mainSequence, 'Count', {
-    get() { throw new Error('S1 §5：MainSequence.Count 读侧不稳（读了就桥死锁），动作层禁止读'); },
-    configurable: true,
-  });
-  recording(mainSequence, 'AddEffect', log, 'TimeLine.MainSequence');
-  const slide = {
-    Shapes: shapesObj,
-    Delete() { log.push('Slide.Delete()'); },
-    TimeLine: { MainSequence: mainSequence },
-    SlideShowTransition: watched({ EntryEffect: 0, Duration: 0 }, ['EntryEffect', 'Duration'], log, 'Transition'),
-    Background: {
-      Fill: {
-        solidCalls: 0,
-        Solid() { log.push('Background.Fill.Solid()'); this.solidCalls += 1; },
-        ForeColor: watched({ RGB: 0 }, ['RGB'], log, 'Background.Fill.ForeColor'),
-      },
-    },
-    Export(p, f, w, h) { log.push(`Slide.Export(${JSON.stringify(p)}, ${JSON.stringify(f)}${w !== undefined ? ', ' + w + ', ' + h : ''})`); },
-  };
-  if (opts.placeholderSlide) {
-    // addSlide 的 content 落点：PlaceholderFormat.Type===2 的正文占位符
-    const ph = mkShape(1, { name: 'Content Placeholder 1', type: 7, text: '' });
-    ph.PlaceholderFormat = { Type: 2 };
-    slide.Shapes = {
-      get Count() { return 1; },
-      Item(i) { return ph; },
-      AddTextbox: shapesObj.AddTextbox,
-      AddTable: shapesObj.AddTable,
-    };
-    slide.Shapes.HasTitle = false;
-    slide._ph = ph;
-  }
-  const pres = {
-    Name: 'Pres1',
-    Slides: {
-      get Count() { log.push('Slides.Count (read)'); return opts.slideCount !== undefined ? opts.slideCount : 3; },
-      Item(i) {
-        log.push(`Slides.Item(${JSON.stringify(i)})`);
-        if (opts.slidesItemThrows) throw new Error('JSAPI: Slides.Item 炸了（mock）');
-        if (opts.slidesItemNull && i === 99) return null;
-        return slide;
-      },
-      Add(position, layout) {
-        log.push(`Slides.Add(${JSON.stringify(position)}, ${JSON.stringify(layout)})`);
-        if (opts.slidesAddThrows) throw new Error('JSAPI: Slides.Add 炸了（mock）');
-        return slide;
-      },
-    },
-  };
-  const app = {
-    ActivePresentation: opts.noPres ? null : pres,
-    Presentations: {
-      Add() { log.push('Presentations.Add()'); return { Name: 'Presentation2' }; },
-    },
-  };
-  return { app, log, slide, shapes, pres };
-}
-
-/* ============================================================
- * Word 5 动作
- * ============================================================ */
-console.log('\n=== Word（wps 型）5 动作 ===');
-
-(function () {
-  console.log('\n--- openDocument（S1:134 §3#108）---');
-  const m = makeWordMock();
-  const r1 = wordActions.openDocument(m.app, { filePath: '/tmp/a.docx', path: '/tmp/a.docx' });
-  ok('正路 ok:true', r1.ok === true, JSON.stringify(r1.data));
-  ok('调了 Documents.Open 且路径参数正确', inLog(m.log, 'Documents.Open("/tmp/a.docx")'), m.log.join(' | ').slice(0, 100));
-  eq('回包带文档名', r1.data && r1.data.documentName, 'Doc1');
-  const r2 = wordActions.openDocument(m.app, {});
-  ok('缺 path → ok:false 且不再调 Open', r2.ok === false && !inLog(m.log.slice(m.log.indexOf('Documents.Open') + 1) || [], 'Documents.Open("/tmp/a.docx")') === false && m.log.filter((l) => l.includes('Documents.Open')).length === 1, r2.error);
-  const m2 = makeWordMock({ openThrows: true });
-  const r3 = wordActions.openDocument(m2.app, { path: '/tmp/a.docx' });
-  ok('JSAPI 抛错 → ok:false 且 error 是原文', r3.ok === false && /Open 炸了/.test(r3.error || ''), (r3.error || '').slice(0, 60));
-})();
-
-(function () {
-  console.log('\n--- getActiveDocumentState（S1:129 §3#103）---');
-  const m = makeWordMock();
-  const r1 = wordActions.getActiveDocumentState(m.app, { app: 'word' });
-  ok('正路 ok:true 且字段齐', r1.ok === true && r1.data.name === 'Doc1' && r1.data.hasPath === true && r1.data.saved === false, JSON.stringify(r1.data).slice(0, 90));
-  const m2 = makeWordMock({ noDoc: true });
-  const r2 = wordActions.getActiveDocumentState(m2.app, {});
-  ok('空壳 → ok:false', r2.ok === false, (r2.error || '').slice(0, 60));
-})();
-
-(function () {
-  console.log('\n--- getSelectedText（S1:303 §3#277）---');
-  const m = makeWordMock();
-  const r1 = wordActions.getSelectedText(m.app, {});
-  eq('正路取回选区文本', r1.ok && r1.data && r1.data.text, '选中文字');
-  const m2 = makeWordMock({ selectionTextThrows: true });
-  const r2 = wordActions.getSelectedText(m2.app, {});
-  ok('Selection 抛错 → ok:false 且 error 是原文', r2.ok === false && /Selection 炸了/.test(r2.error || ''), (r2.error || '').slice(0, 60));
-})();
-
-(function () {
-  console.log('\n--- replaceRange（S1:163 §3#137）---');
-  const m = makeWordMock();
-  const r1 = wordActions.replaceRange(m.app, { startPos: 1, endPos: 3, text: '新文字' });
-  ok('正路 ok:true', r1.ok === true, JSON.stringify(r1.data));
-  ok('调了 ActiveDocument.Range(1, 3)', inLog(m.log, 'ActiveDocument.Range(1, 3)'), m.log.join(' | ').slice(0, 100));
-  ok('对 Range.Text 赋了新值', inLog(m.log, 'Range.Text="新文字"'));
-  const r2 = wordActions.replaceRange(m.app, { startPos: 1, endPos: 3 });
-  ok('缺 text → ok:false', r2.ok === false, (r2.error || '').slice(0, 60));
-  ok('错误路上没有第二次 Range 调用', m.log.filter((l) => l.includes('ActiveDocument.Range')).length === 1);
-})();
-
-(function () {
-  console.log('\n--- setFont（S1:145 §3#119 + ps1 setFont case）---');
-  const m = makeWordMock();
-  const r1 = wordActions.setFont(m.app, { fontName: 'SimSun', fontSize: 24, bold: true, color: '#00FF00' });
-  ok('正路 ok:true', r1.ok === true);
-  ok('Selection.Font.Name 赋值', inLog(m.log, 'SelFont.Name="SimSun"'));
-  ok('Selection.Font.Size=24', inLog(m.log, 'SelFont.Size=24'));
-  ok('Selection.Font.Bold=true', inLog(m.log, 'SelFont.Bold=true'));
-  ok('#00FF00 → Font.Color=65280（COM RGB 编码，S0 #18 背书）', inLog(m.log, 'SelFont.Color=65280'));
-  const mAll = makeWordMock();
-  const r2 = wordActions.setFont(mAll.app, { fontName: 'KaiTi', range: 'all' });
-  ok("range='all' 走 Content.Font（不是选区）", inLog(mAll.log, 'ContentFont.Name="KaiTi"') && !inLog(mAll.log, 'SelFont.Name="KaiTi"'));
-  const mPin = makeWordMock();
-  const r3 = wordActions.setFont(mPin.app, { fontName: 'X', documentName: 'Doc1' });
-  ok('钉文档+选区范围 → 拒绝（ps1 同款护栏）', r3.ok === false && /改到别人/.test(r3.error || ''), (r3.error || '').slice(0, 60));
-  const r4 = wordActions.setFont(mPin.app, { color: 'purple' });
-  ok('非法色名 → ok:false 且未赋 Color', r4.ok === false && !inLog(mPin.log, 'Color=') , r4.error);
-})();
-
-/* ============================================================
- * PPT 15 动作
- * ============================================================ */
-console.log('\n=== PPT（wpp 型）15 动作 ===');
-
-(function () {
-  console.log('\n--- createPresentation（S1:309 §3#283）---');
-  const m = makePptMock();
-  const r1 = pptActions.createPresentation(m.app, {});
-  ok('正路 ok:true 且调了 Presentations.Add()', r1.ok === true && inLog(m.log, 'Presentations.Add()'));
-  eq('回包带新演示名', r1.data && r1.data.name, 'Presentation2');
-  const r2 = pptActions.createPresentation({ ActivePresentation: null, Presentations: { Add() { throw new Error('JSAPI: Add 炸了（mock）'); } } }, {});
-  ok('JSAPI 抛错 → ok:false 原文', r2.ok === false && /Add 炸了/.test(r2.error || ''), (r2.error || '').slice(0, 60));
-})();
-
-(function () {
-  console.log('\n--- getSlideCount（S1:202 §3#176）---');
-  const m = makePptMock({ slideCount: 7 });
-  const r1 = pptActions.getSlideCount(m.app, {});
-  ok('正路读 Slides.Count 且回数字', r1.ok === true && r1.data.count === 7 && inLog(m.log, 'Slides.Count (read)'));
-  const m2 = makePptMock({ noPres: true });
-  const r2 = pptActions.getSlideCount(m2.app, {});
-  ok('无活动演示 → ok:false', r2.ok === false, (r2.error || '').slice(0, 60));
-})();
-
-(function () {
-  console.log('\n--- addSlide（S1:210 §3#184 + ps1 addSlide 映射表）---');
-  const m = makePptMock({ slideCount: 3, placeholderSlide: true });
-  const r1 = pptActions.addSlide(m.app, { layout: 'blank', title: 'T', content: 'C' });
-  ok('正路 ok:true', r1.ok === true, JSON.stringify(r1.data));
-  ok("layout 'blank' → 编号 12（ps1 $layouts 表）", inLog(m.log, 'Slides.Add(4, 12)'));
-  ok('缺省 position = Count+1 = 4', inLog(m.log, 'Slides.Add(4, 12)'));
-  const m2 = makePptMock({ slideCount: 2, placeholderSlide: true });
-  const r2 = pptActions.addSlide(m2.app, { layout: 'title_content', content: '正文内容' });
-  ok("'title_content' → 2 且落正文占位符（PlaceholderFormat.Type===2）",
-    inLog(m2.log, 'Slides.Add(3, 2)') && inLog(m2.log, 'Shape1.TextRange.Text="正文内容"'),
-    m2.log.filter((l) => l.includes('TextRange.Text')).join(' | ').slice(0, 80));
-  const m3 = makePptMock({ slideCount: 5, placeholderSlide: true });
-  const r3 = pptActions.addSlide(m3.app, { layout: '不存在的版式' });
-  ok('认不出的版式回落 2（ps1 同款）', r3.ok === true && inLog(m3.log, 'Slides.Add(6, 2)'));
-  const m4 = makePptMock({ slidesAddThrows: true });
-  const r4 = pptActions.addSlide(m4.app, { layout: 'blank' });
-  ok('Slides.Add 抛错 → ok:false 原文', r4.ok === false && /Add 炸了/.test(r4.error || ''), (r4.error || '').slice(0, 60));
-})();
-
-(function () {
-  console.log('\n--- deleteSlide（S1:198 §3#172）---');
-  const m = makePptMock();
-  const r1 = pptActions.deleteSlide(m.app, { slideIndex: 2 });
-  ok('正路调 Slides.Item(2).Delete()', r1.ok === true && inLog(m.log, 'Slides.Item(2)') && r1.data.deleted === 2);
-  const r2 = pptActions.deleteSlide(m.app, {});
-  ok('缺 slideIndex → ok:false 且不多调 Item', r2.ok === false && m.log.filter((l) => l.includes('Slides.Item')).length === 1, r2.error);
-})();
-
-(function () {
-  console.log('\n--- getShapes（S1:222 §3#196）---');
-  const m = makePptMock();
-  const r1 = pptActions.getShapes(m.app, { slideIndex: 1 });
-  ok('正路返回 3 个形状', r1.ok === true && r1.data.shapes.length === 3 && r1.data.count === 3);
-  eq('index 从 1 计且字段齐（S1 证据：#1:T14 #2:T14/#19 #3:T13）',
-    r1.data.shapes.map((s) => [s.index, s.name]), [[1, 'TextBox 1'], [2, 'Table 1'], [3, 'Title 1']]);
-  const m2 = makePptMock({ slidesItemThrows: true });
-  const r2 = pptActions.getShapes(m2.app, { slideIndex: 9 });
-  ok('Item 抛错 → ok:false 原文', r2.ok === false && /Item 炸了/.test(r2.error || ''), (r2.error || '').slice(0, 60));
-})();
-
-(function () {
-  console.log('\n--- setShapeText（S1:226 §3#200）---');
-  const m = makePptMock();
-  const r1 = pptActions.setShapeText(m.app, { slideIndex: 1, shapeIndex: 1, text: '新形状文字' });
-  ok('正路对 Item(1).TextFrame.TextRange.Text 赋值', r1.ok === true && inLog(m.log, 'Shapes.Item(1)') && inLog(m.log, 'Shape1.TextRange.Text="新形状文字"'));
-  const r2 = pptActions.setShapeText(m.app, { slideIndex: 1 });
-  ok('缺 text → ok:false', r2.ok === false, (r2.error || '').slice(0, 60));
-  const r3 = pptActions.setShapeText(m.app, { slideIndex: 1, shapeIndex: 99, text: 'x' });
-  ok('形状越界 → ok:false 原文', r3.ok === false && /越界/.test(r3.error || ''), (r3.error || '').slice(0, 60));
-})();
-
-(function () {
-  console.log('\n--- addTextBox（S1:211 §3#185 + ps1 addTextBox 缺省）---');
-  const m = makePptMock();
-  const r1 = pptActions.addTextBox(m.app, { slideIndex: 1, text: '框内容', fontSize: 20 });
-  ok('orientation 固定 1，缺省 100/100/400/50（ps1 同款）',
-    inLog(m.log, 'Shapes.AddTextbox(1, 100, 100, 400, 50)'), m.log.filter((l) => l.includes('AddTextbox')).join(''));
-  ok('text 与 fontSize 落到新文本框', inLog(m.log, 'Shape4.TextRange.Text="框内容"') && inLog(m.log, 'Shape4.Font.Size=20'));
-  const m2 = makePptMock();
-  const r2 = pptActions.addTextBox(m2.app, { slideIndex: 1, left: 10, top: 20, width: 30, height: 40 });
-  ok('显式坐标直传', inLog(m2.log, 'Shapes.AddTextbox(1, 10, 20, 30, 40)'));
-  const r3 = pptActions.addTextBox(m2.app, { slideIndex: 1 });
-  ok('不传 text 也不炸（文本可选）', r3.ok === true);
-})();
-
-(function () {
-  console.log('\n--- setShapePosition（S1:227 §3#201）---');
-  const m = makePptMock();
-  const r1 = pptActions.setShapePosition(m.app, { slideIndex: 1, shapeIndex: 1, left: 300, top: 250 });
-  ok('只设给了的维度：Left/Top 赋值', inLog(m.log, 'Shape1.Left=300') && inLog(m.log, 'Shape1.Top=250'));
-  ok('Width/Height 未赋值（录像里没有）', !inLog(m.log, 'Shape1.Width=') && !inLog(m.log, 'Shape1.Height='));
-  const r2 = pptActions.setShapePosition(m.app, { slideIndex: 1, left: 1 });
-  ok('形状没给 → ok:false', r2.ok === false, (r2.error || '').slice(0, 60));
-})();
-
-(function () {
-  console.log('\n--- insertPptTable（S1:233 §3#207）---');
-  const m = makePptMock();
-  const r1 = pptActions.insertPptTable(m.app, { slideIndex: 1, rows: 4, cols: 2, left: 5, top: 6 });
-  ok('AddTable(4, 2, 5, 6, 400, 200)（缺省尺寸 ps1 同款）',
-    inLog(m.log, 'Shapes.AddTable(4, 2, 5, 6, 400, 200)'), m.log.filter((l) => l.includes('AddTable')).join(''));
-  eq('tableIndex 按 HasTable 计数（页上已有 1 表，新表是第 2 个）', r1.data && r1.data.tableIndex, 2);
-  const m2 = makePptMock({ addTableThrows: true });
-  const r2 = pptActions.insertPptTable(m2.app, { slideIndex: 1, rows: 2, cols: 2 });
-  ok('AddTable 抛错 → ok:false 原文', r2.ok === false && /AddTable 炸了/.test(r2.error || ''), (r2.error || '').slice(0, 60));
-})();
-
-(function () {
-  console.log('\n--- getPptTableCell / setPptTableCell（S1:235/234 §3#209/#208）---');
-  const m = makePptMock();
-  const r1 = pptActions.getPptTableCell(m.app, { slideIndex: 1, tableIndex: 1, row: 2, col: 3 });
-  ok('正路走 Table.Cell(2, 3).Shape.TextFrame.TextRange.Text', r1.ok === true && inLog(m.log, 'Table.Cell(2, 3)'));
-  eq('读回单元格文本', r1.data && r1.data.value, '旧内容2,3');
-  const r2 = pptActions.getPptTableCell(m.app, { slideIndex: 1, tableIndex: 9, row: 1, col: 1 });
-  ok('tableIndex 越界 → ok:false', r2.ok === false && /找不到第 9 个表格/.test(r2.error || ''), (r2.error || '').slice(0, 60));
-  const r3 = pptActions.setPptTableCell(m.app, { slideIndex: 1, tableIndex: 1, row: 1, col: 1, text: '新格值' });
-  ok('写路径对 Cell(1,1).Shape…Text 赋值', r3.ok === true && inLog(m.log, 'Cell(1,1).Shape.TextRange.Text="新格值"'),
-    m.log.filter((l) => l.includes('Cell(1,1)')).join(' | ').slice(0, 90));
-  const r4 = pptActions.setPptTableCell(m.app, { slideIndex: 1, tableIndex: 1, row: 1, col: 1 });
-  ok('缺 text → ok:false', r4.ok === false, (r4.error || '').slice(0, 60));
-})();
-
-(function () {
-  console.log('\n--- addAnimation（S1:252/271/272 §3#226/#245/#246 + §5 行 355）---');
-  const m = makePptMock();
-  const r1 = pptActions.addAnimation(m.app, { slideIndex: 1, shapeIndex: 1, effect: 'fadeIn' });
-  ok("effect 'fadeIn' → AddEffect(shape, 10, 0)（映射表抄 ps1；level 恒 0 防 ps1 实测的双效果坑）",
-    inLog(m.log, 'TimeLine.MainSequence.AddEffect'), m.log.filter((l) => l.includes('AddEffect')).join(' | '));
-  ok('回包没有 count 字段（S1 §5：Count 读侧不稳，刻意不读）', r1.ok === true && !('count' in (r1.data || {})));
-  // "只做加"的强断言：mock 的 MainSequence.Count 一读就炸——实现若读了，r1 就不会是 ok:true
-  ok('全程没碰 MainSequence.Count（读了就会炸）', r1.ok === true);
-  const r2 = pptActions.addAnimation(m.app, { slideIndex: 1, shapeIndex: 1, effect: 29 });
-  ok('数字 effect 直通（S1 §5：编号恒等）', r2.ok === true && inLog(m.log, 'AddEffect') && /, 29, 0\)/.test(m.log.filter((l) => l.includes('AddEffect')).pop() || ''));
-  const r3 = pptActions.addAnimation(m.app, { slideIndex: 1, shapeIndex: 1, effect: 'magicFly' });
-  ok('认不出的效果名 → 明确报错（ps1 同款，不猜）', r3.ok === false && /不认识的 effect/.test(r3.error || ''), (r3.error || '').slice(0, 60));
-  const r4 = pptActions.addAnimation(m.app, { slideIndex: 1, effect: 'fadeIn' });
-  ok('形状没给 → ok:false（ps1 实测过的坏对象坑：Item(null) 会毁整页）', r4.ok === false && /找不到要加动画的形状/.test(r4.error || ''));
-  const effectCalls = m.log.filter((l) => l.includes('AddEffect')).length;
-  ok('错误路径没有产生任何 AddEffect 调用', effectCalls === 2, `实际 ${effectCalls} 次`);
-})();
-
-(function () {
-  console.log('\n--- setSlideTransition（S1:253 §3#227 + §5 行 354）---');
-  const m = makePptMock();
-  const r1 = pptActions.setSlideTransition(m.app, { slideIndex: 1, effect: 'push', duration: 2 });
-  ok("'push' → EntryEffect=2（映射表抄 ps1）", inLog(m.log, 'Transition.EntryEffect=2'));
-  ok('Duration 赋值', inLog(m.log, 'Transition.Duration=2'));
-  const r2 = pptActions.setSlideTransition(m.app, { slideIndex: 1, effect: 'none' });
-  ok("'none' → 0（取消切换不再炸，ps1 注释里的历史坑）", inLog(m.log, 'Transition.EntryEffect=0'));
-  const r3 = pptActions.setSlideTransition(m.app, { slideIndex: 1, effect: '77' });
-  ok('数字串直通 → 77', inLog(m.log, 'Transition.EntryEffect=77'));
-  const r4 = pptActions.setSlideTransition(m.app, { slideIndex: 1, effect: 'starWipe' });
-  ok('认不出的切换 → ok:false 且未赋值', r4.ok === false && m.log.filter((l) => l.includes('EntryEffect=')).length === 3, r4.error);
-})();
-
-(function () {
-  console.log('\n--- setSlideBackground（S1:254 §3#228 + S0 #18）---');
-  const m = makePptMock();
-  const r1 = pptActions.setSlideBackground(m.app, { slideIndex: 1, color: '#00FF00' });
-  ok('先 Solid() 再 ForeColor.RGB', inLog(m.log, 'Background.Fill.Solid()') && inLog(m.log, 'Background.Fill.ForeColor.RGB=65280'));
-  const r2 = pptActions.setSlideBackground(m.app, { slideIndex: 1, color: 'zzz' });
-  ok('非法颜色 → ok:false（ps1 是静默跳过仍回 success——这是与 ps1 的有意差异）', r2.ok === false, (r2.error || '').slice(0, 60));
-  const r3 = pptActions.setSlideBackground(m.app, { slideIndex: 1, imagePath: '/tmp/x.png' });
-  ok('图片路径本轮未实现 → 明确报"纯色"，不静默成功', r3.ok === false && /纯色/.test(r3.error || ''), (r3.error || '').slice(0, 60));
-  const solidCalls = m.log.filter((l) => l.includes('Solid()')).length;
-  ok('两条错误路径都没有碰 Fill', solidCalls === 1, `Solid 实际 ${solidCalls} 次`);
-})();
-
-(function () {
-  console.log('\n--- exportSlideAsImage（S1:232 §3#206 + S0 #19）---');
-  const m = makePptMock();
-  const r1 = pptActions.exportSlideAsImage(m.app, { slideIndex: 1, outputPath: '/tmp/s1.png' });
-  ok("Export(path, 'PNG') 两参调用", inLog(m.log, 'Slide.Export("/tmp/s1.png", "PNG")'));
-  const r2 = pptActions.exportSlideAsImage(m.app, { slideIndex: 1, path: '/tmp/s2.png', format: 'JPG', width: 1334, height: 750 });
-  ok('path 别名键也认 + 带尺寸四参调用（S0 实测带尺寸成功）',
-    inLog(m.log, 'Slide.Export("/tmp/s2.png", "JPG", 1334, 750)'), m.log.filter((l) => l.includes('Export')).join(' | '));
-  const r3 = pptActions.exportSlideAsImage(m.app, { slideIndex: 1 });
-  ok('缺 path → ok:false 且 Export 未多调', r3.ok === false && m.log.filter((l) => l.includes('Slide.Export')).length === 2, r3.error);
-})();
-
-/* ============================================================
- * 分发器接线（channel-client.js 的注册表路由）
- * ============================================================ */
-console.log('\n=== 分发器接线（注册表查找 + 回落）===');
-(function () {
-  // channel-client.js 在 CommonJS 里挂 module.exports；把动作注册表挂上去，
-  // 等价模拟浏览器里 manifest 按序加载（channel-client → actions/*.js）后的 window 状态
-  clientJs.WpsAddonActionsWord = wordActions;
-  clientJs.WpsAddonActionsPpt = pptActions;
-  const d = clientJs.WpsAddonChannel.dispatch;
-  const ping = d('ping', {}, 'word');
-  ok("ping 仍真实现", ping.ok === true && ping.data.pong === true);
-  const wc = d('wireCheck', {}, 'wpp');
-  ok("wireCheck 仍真实现（文案升级 B2.5）", wc.ok === true && /B2\.5/.test(wc.data.message || ''));
-  const ghost = d('setValue', { x: 1 }, 'word');
-  ok('注册表外的动作仍回落 unsupported:B3（显式拒绝）', ghost.ok === false && ghost.unsupported === 'B3');
-  // Node 侧 hostApp 拿不到 window.Application → 注册表内动作应报"拿不到宿主"，而不是静默成功
-  const host = d('getSlideCount', {}, 'ppt');
-  ok('注册表命中但无宿主 → 明确报错（不静默成功）', host.ok === false && /宿主 Application/.test(host.error || ''), (host.error || '').slice(0, 70));
-})();
-
-console.log(`\n汇总：${pass} 通过 / ${fail} 失败`);
-process.exit(fail === 0 ? 0 : 1);
+  console.log(`\n汇总：${pass} 通过 / ${fail} 失败`);
+  process.exit(fail === 0 ? 0 : 1);
+})().catch((e) => {
+  console.error('门禁异常：', e && e.stack ? e.stack : e);
+  process.exit(2);
+});

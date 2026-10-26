@@ -233,12 +233,13 @@ function makeFakeAddon(port, type, onFrame) {
     JSON.stringify(ping && ping.__hung ? { hung: true } : ping).slice(0, 90));
 
   console.log('\n=== 附：加载项侧分发器（channel-client.js）骨架行为 ===');
+  // B4：dispatch Promise 化（动作层异步 jsAsynCall），此段全部 await——28 断言数不变
   const d = clientJs.WpsAddonChannel.dispatch;
-  const p1 = d('ping', {}, 'word');
+  const p1 = await d('ping', {}, 'word');
   ok("dispatch('ping') 真实现", p1.ok === true && p1.data.pong === true, JSON.stringify(p1.data).slice(0, 60));
-  const p2 = d('wireCheck', {}, 'word');
+  const p2 = await d('wireCheck', {}, 'word');
   ok("dispatch('wireCheck') 真实现", p2.ok === true && typeof p2.data.message === 'string', (p2.data.message || '').slice(0, 60));
-  const p3 = d('insertText', { text: 'x' }, 'word');
+  const p3 = await d('insertText', { text: 'x' }, 'word');
   ok('其余动作一律 unsupported:B3（显式拒绝，不静默成功）', p3.ok === false && p3.unsupported === 'B3', `action=insertText → ${JSON.stringify({ ok: p3.ok, unsupported: p3.unsupported })}`);
 
   console.log(`\n汇总：${pass} 通过 / ${fail} 失败`);
