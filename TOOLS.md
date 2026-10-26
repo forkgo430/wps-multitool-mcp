@@ -3,7 +3,7 @@
 > 本文件由 `wps-multitool-mcp/scripts/manual/gen-tools-doc.js` 从**运行时注册表**生成，请勿手改。
 > 改完工具跑一次 `node scripts/manual/gen-tools-doc.js`；CI 会重跑并 `git diff --exit-code`，对不上就红。
 
-**284 个工具**（8 内置 + 276 专业/组工具）· 默认列出 40 个 · 注解覆盖 284/284 · 真机验证 201/284
+**288 个工具**（8 内置 + 280 专业/组工具）· 默认列出 40 个 · 注解覆盖 288/288 · 真机验证 201/288
 
 | 标记 | 含义 |
 |---|---|
@@ -48,7 +48,7 @@
 | `wps_get_cached_data` |  | R | live | 从MCP Server获取缓存的数据，用于跨应用数据传递。<br><sub>别名：取暂存数据 / 读缓存 / 取暂存结果</sub> |
 | `wps_list_cache` |  | R | live | 列出MCP Server中所有缓存的数据键名<br><sub>别名：看缓存列表 / 暂存了哪些 / 列出cache</sub> |
 
-## Word（67）
+## Word（69）
 
 | 工具 | 默认档 | 注解 | 验证 | 说明 |
 |---|---|---|---|---|
@@ -105,6 +105,7 @@
 | `wps_word_proofread_basic` |  | R | live | 对中文文本进行基础校对，检测常见问题。<br><sub>别名：校对基础 / 基础</sub> |
 | `wps_word_replace_bookmark_content` |  | DN | live | 替换Word文档中书签的内容。通过书签名定位，替换书签范围内的文本，保持原有格式。<br><sub>别名：替换书签内容 / 书签 / 内容</sub> |
 | `wps_word_replace_range` |  | DN | live | 按字符范围精确替换Word文档中的文本。<br><sub>别名：替换区域 / 区域 / 范围</sub> |
+| `wps_word_review_mode` |  | — | static | 开启/关闭/查询这份文档的修订模式。 |
 | `wps_word_revisions` |  | DN | live | 处理文档的修订（tracked changes）：列出 / 全部接受 / 全部拒绝 / 单条接受或拒绝。<br><sub>别名：修订 / 批注 / 审阅</sub> |
 | `wps_word_set_cell_borders` |  | — | live | 设置表格单元格的边框。<br><sub>别名：设置单元格borders / 设定单元格borders / 单元格</sub> |
 | `wps_word_set_columns` |  | — | live | 设置分栏（整节等宽多栏）。<br><sub>别名：设置列 / 设定列 / 列</sub> |
@@ -118,9 +119,10 @@
 | `wps_word_smart_fill_field` |  | — | live | 智能填写Word模板中的字段。自动识别关键字附近的填写模式，在正确位置插入内容并保持原有格式。<br><sub>别名：智能填充域 / 填充 / 域</sub> |
 | `wps_word_split_cell` |  | N | live | 拆分一个已合并的单元格。<br><sub>别名：拆分单元格 / 分割单元格 / 单元格</sub> |
 | `wps_word_table_row_col` |  | N | live | 在表格里插入或删除行/列。<br><sub>别名：表格行col / 行</sub> |
+| `wps_word_undo` |  | — | static | 按步撤销这份文档里最近的编辑。 |
 | `wps_word_update_fields` |  | — | live | 刷新文档里的所有域：目录、图表目录、交叉引用、页码等。<br><sub>别名：更新域 / 刷新域 / 域</sub> |
 
-## Excel（89）
+## Excel（91）
 
 | 工具 | 默认档 | 注解 | 验证 | 说明 |
 |---|---|---|---|---|
@@ -135,6 +137,7 @@
 | `wps_excel_switch_workbook` | 是 | — | live | 切换到指定名称的Excel工作簿。<br><sub>别名：切换工作簿 / 工作簿 / 表格文件</sub> |
 | `wps_excel_write_range` | 是 | — | live | 向Excel指定范围写入数据。数据格式为二维数组，从指定单元格开始向右下方填充。<br><sub>别名：批量写 / 写区域 / 一次写一片</sub> |
 | `wps_excel_add_comment` |  | N | live | 给单元格添加批注（同一格已有批注会被覆盖）。<br><sub>别名：添加批注 / 新增批注 / 加批注</sub> |
+| `wps_excel_add_slicer` |  | N | static | 给已创建的 Excel 表格添加切片器（按某列筛选的按钮面板）。<br><sub>别名：添加slicer / 新增slicer / 加slicer</sub> |
 | `wps_excel_auto_fill` |  | — | live | [DEPRECATED·改用 wps_excel_fill_series] 自动填充单元格区域。根据源区域的数据模式自动填充到…<br><sub>别名：自动填充 / 填充</sub> |
 | `wps_excel_auto_filter` |  | — | live | 对Excel指定范围应用自动筛选。<br><sub>别名：自动筛选 / 筛选 / 过滤</sub> |
 | `wps_excel_auto_fit` |  | — | live | 按内容自动调整行高/列宽（等同 Excel 里双击列边界）。<br><sub>别名：自适应 / 自动调整列宽 / 自动列宽</sub> |
@@ -147,6 +150,7 @@
 | `wps_excel_copy_sheet` |  | N | live | 复制当前工作簿中的指定工作表。可指定新名称和插入位置。<br><sub>别名：复制工作表 / 拷贝工作表 / 工作表</sub> |
 | `wps_excel_create_pivot_table` |  | N | live | 创建Excel透视表，用于数据汇总和分析。<br><sub>别名：创建数据透视表表格 / 新建数据透视表表格 / 生成数据透视表表格</sub> |
 | `wps_excel_create_sheet` |  | N | live | 在当前工作簿中创建新的工作表。可指定名称和插入位置。<br><sub>别名：创建工作表 / 新建工作表 / 生成工作表</sub> |
+| `wps_excel_create_table` |  | N | static | 把一块区域创建为"Excel 表格"（结构化引用区）。<br><sub>别名：创建表格 / 新建表格 / 生成表格</sub> |
 | `wps_excel_create_workbook` |  | N | live | 新建一个空白Excel工作簿。<br><sub>别名：创建工作簿 / 新建工作簿 / 生成工作簿</sub> |
 | `wps_excel_delete_cell_comment` |  | DN | live | 删除Excel单元格上的批注。<br><sub>别名：删除单元格批注 / 删掉单元格批注 / 去掉单元格批注</sub> |
 | `wps_excel_delete_chart` |  | DN | live | 删除工作表上的图表。<br><sub>别名：删图表 / 删除图表 / 把图删了</sub> |

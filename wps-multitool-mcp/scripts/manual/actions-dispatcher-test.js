@@ -434,6 +434,169 @@ const lastSent = (sent) => sent[sent.length - 1];
     uninstallCefQuery();
   }
 
+  console.log('\n=== Excel（et 型）B5-T1：57 实现 + 3 PivotTables 桩（表驱动，断调用序列）===');
+  {
+    const ex = require(path.join(ADDON, 'js', 'actions', 'excel.js'));
+    const A = ex.actions;
+    const AD = ex.adapter;
+
+    // ---- ExcelAdapter 纯函数直测（集合双语义的编码层）----
+    eq('colToLetters(1)=A', AD.colToLetters(1), 'A');
+    eq('colToLetters(26)=Z', AD.colToLetters(26), 'Z');
+    eq('colToLetters(27)=AA', AD.colToLetters(27), 'AA');
+    eq('colToLetters(52)=AZ', AD.colToLetters(52), 'AZ');
+    eq('a1(3,2)=B3（Item 语义的 A1 编码）', AD.a1(3, 2), 'B3');
+    eq('refOf：row/col 组 A1', AD.refOf({ row: 5, col: 3 }), 'C5');
+    eq('refOf：range 优先', AD.refOf({ range: 'B2:C9', row: 1, col: 1 }), 'B2:C9');
+    let threwV = '';
+    try { AD.writeValue2({ ref: 'A1', value: 1 }); } catch (e) { threwV = e.message; }
+    ok('writeValue2 防呆：value 键直接抛（S1 §4 #3 静默失效的编码层禁止）', /禁止 value 键/.test(threwV), threwV.slice(0, 60));
+    eq('withValue2：value 自动改道 value2', AD.withValue2({ ref: 'A1' }, 42).value2, 42);
+    ok('cellRef：Item 语义定位参数', JSON.stringify(AD.cellRef(2, 3)) === JSON.stringify({ row: 2, col: 3 }));
+
+    // ---- 57 实现动作：正路（method + 关键 params）表驱动 ----
+    const cases = [
+      ['getActiveWorkbook', {}, 'ActiveWorkbook', {}],
+      ['getRangeData', { range: 'A1:B3' }, 'Range.Value2', { ref: 'A1:B3' }],
+      ['setRangeData', { range: 'A2:B3', value2: [[1, 2], [3, 4]] }, 'Range.Value2', { ref: 'A2:B3', value2: [[1, 2], [3, 4]] }],
+      ['setRangeData', { range: 'A2:B3', value: '旧键改道' }, 'Range.Value2', { value2: '旧键改道' }],
+      ['clearFormats', { range: 'B2:D4' }, 'Range.ClearFormats', { ref: 'B2:D4' }],
+      ['addConditionalFormat', { range: 'A1:A9', type: 1, operator: 1, formula: '>0' }, 'FormatConditions.Add', { type: 1, operator: 1, formula: '>0' }],
+      ['removeConditionalFormat', { range: 'A1:A9' }, 'FormatConditions.Delete', { ref: 'A1:A9' }],
+      ['getConditionalFormats', { range: 'A1:A9' }, 'FormatConditions.Count', { ref: 'A1:A9' }],
+      ['addDataValidation', { range: 'B1:B9', type: 1, operator: 1, alertStyle: 1, formula: '10' }, 'Validation.Add', { formula: '10' }],
+      ['removeDataValidation', { range: 'B1:B9' }, 'Validation.Delete', { ref: 'B1:B9' }],
+      ['getDataValidations', { range: 'B1:B9' }, 'Validation', { ref: 'B1:B9' }],
+      ['setArrayFormula', { range: 'C1:C3', formula: '=A1:A3&"!"' }, 'Range.FormulaArray', { formula: '=A1:A3&"!"' }],
+      ['refreshLinks', {}, 'Workbook.UpdateLink', {}],
+      ['consolidate', { range: 'E1:E9' }, 'Range.Consolidate', { ref: 'E1:E9' }],
+      ['calculateSheet', { sheet: 'Sheet1' }, 'Worksheet.Calculate', { sheet: 'Sheet1' }],
+      ['getExcelContext', {}, 'Context', { includeSelection: false }],
+      ['getContext', {}, 'Context', { includeSelection: true }],
+      ['sortRange', { range: 'A1:C9', key: 'B', order: 2 }, 'Range.Sort', { key: 'B', order: 2 }],
+      ['autoFilter', { range: 'A1:C9', field: 2, criteria: 'x' }, 'Range.AutoFilter', { field: 2, criteria: 'x' }],
+      ['updateChart', { chartIndex: 1, chartType: 51 }, 'Chart', { chartIndex: 1, chartType: 51 }],
+      ['exportChartAsImage', { chartIndex: 1, outputPath: '/tmp/c.png', format: 'PNG' }, 'Chart.Export', { path: '/tmp/c.png', filter: 'PNG' }],
+      ['removeDuplicates', { range: 'A1:C9', columns: 1, header: true }, 'Range.RemoveDuplicates', { columns: 1, header: true }],
+      ['deleteSheet', { name: 'Sheet2' }, 'Worksheet.Delete', { name: 'Sheet2' }],
+      ['deleteSheet', { index: 2 }, 'Worksheet.Delete', { index: 2 }],
+      ['renameSheet', { target: 'Sheet1', name: '探针表' }, 'Worksheet.Name', { name: '探针表', target: 'Sheet1' }],
+      ['copySheet', { target: 'Sheet1' }, 'Worksheet.Copy', { target: 'Sheet1' }],
+      ['getSheetList', {}, 'Worksheets', {}],
+      ['getSheetInfo', { sheet: 'Sheet1' }, 'Worksheet.Info', { sheet: 'Sheet1' }],
+      ['autoFit', { sheet: 'Sheet1' }, 'UsedRange.AutoFit', { sheet: 'Sheet1' }],
+      ['findInSheet', { what: '探针', sheet: 'Sheet1' }, 'Cells.Find', { what: '探针', sheet: 'Sheet1' }],
+      ['setSheetPageSetup', { orientation: 2 }, 'PageSetup', { orientation: 2 }],
+      ['setSheetPrintTitles', { rows: '$1:$1' }, 'PageSetup.PrintTitleRows', { rows: '$1:$1' }],
+      ['switchSheet', { index: 2 }, 'Worksheets.Activate', { index: 2 }],
+      ['switchSheet', { name: 'Sheet2' }, 'Worksheets.Activate', { name: 'Sheet2' }],
+      ['moveSheet', { target: 'Sheet1', before: 1 }, 'Worksheet.Move', { target: 'Sheet1', before: 1 }],
+      ['mergeCells', { range: 'A1:B2' }, 'Range.Merge', { ref: 'A1:B2' }],
+      ['unmergeCells', { range: 'A1:B2' }, 'Range.UnMerge', { ref: 'A1:B2' }],
+      ['autoFitAll', {}, 'UsedRange.AutoFit', {}],
+      ['setPrintArea', { area: '$A$1:$D$5' }, 'PageSetup.PrintArea', { area: '$A$1:$D$5' }],
+      ['getSelection', {}, 'Selection.Address', {}],
+      ['clearRange', { range: 'A1:B2' }, 'Range.ClearContents', { ref: 'A1:B2' }],
+      ['freezePanes', {}, 'ActiveWindow.FreezePanes', { freeze: true }],
+      ['unfreezePanes', {}, 'ActiveWindow.FreezePanes', { freeze: false }],
+      ['copyRange', { range: 'A1:B2', destination: 'D1' }, 'Range.Copy', { ref: 'A1:B2', destination: 'D1' }],
+      ['pasteRange', { range: 'D1', pasteMode: 1 }, 'Range.PasteSpecial', { ref: 'D1', pasteMode: 1 }],
+      ['fillSeries', { range: 'A1:A9', direction: 'down' }, 'Range.DataSeries', { ref: 'A1:A9', direction: 'down' }],
+      ['textToColumns', { range: 'A1:A9', delimiter: ',' }, 'Range.TextToColumns', { ref: 'A1:A9', delimiter: ',' }],
+      ['subtotal', { range: 'A1:C9', groupBy: 1, 'function': 1, totalList: [2, 3] }, 'Range.Subtotal', { groupBy: 1 }],
+      ['createNamedRange', { name: '探针名', refersTo: 'Sheet1!$A$1:$B$2' }, 'Names.Add', { name: '探针名', refersTo: 'Sheet1!$A$1:$B$2' }],
+      ['getNamedRanges', {}, 'Names', {}],
+      ['protectSheet', { sheet: 'Sheet1', password: 'p' }, 'Worksheet.Protect', { sheet: 'Sheet1', password: 'p' }],
+      ['unprotectSheet', { sheet: 'Sheet1' }, 'Worksheet.Unprotect', { sheet: 'Sheet1' }],
+      ['protectWorkbook', { structureOnly: true }, 'Workbook.Protect', { structureOnly: true }],
+      ['insertExcelImage', { path: '/tmp/x.png', left: 10, top: 20 }, 'Shapes.AddPicture', { path: '/tmp/x.png', left: 10, top: 20 }],
+      ['setHyperlink', { anchorRef: 'A1', address: 'https://example.com' }, 'Hyperlinks.Add', { anchor: 'A1', address: 'https://example.com' }],
+      ['openWorkbook', { path: '/tmp/wb.xlsx' }, 'Workbooks.Open', { path: '/tmp/wb.xlsx' }],
+      ['getOpenWorkbooks', {}, 'Workbooks', {}],
+      ['switchWorkbook', { index: 2 }, 'Workbooks.Activate', { index: 2 }],
+      ['closeWorkbook', { index: 2, saveChanges: false }, 'Workbooks.Close', { index: 2, saveChanges: false }],
+      ['createWorkbook', {}, 'Workbooks.Add', {}],
+    ];
+    for (const [action, input, method, wantParams] of cases) {
+      const sent = installCefQuery({});
+      let r;
+      try { r = await A[action](input); } catch (e) { r = { ok: false, error: String(e) }; }
+      ok(`${action} 正路 ok:true`, r && r.ok === true, r && r.error);
+      const hits = sentOf(sent, method);
+      ok(`${action} 恰好发一条 method=${method}`, hits.length === 1,
+        hits.length ? JSON.stringify(hits[0].params).slice(0, 90) : `实际发送：${sent.map((x) => x.method).join(',') || '（无）'}`);
+      for (const [k, v] of Object.entries(wantParams)) {
+        eq(`${action} params.${k}`, hits.length ? hits[0].params[k] : undefined, v);
+      }
+      uninstallCefQuery();
+    }
+
+    // ---- 错误路（校验拒绝 + 绝不发送）----
+    const errCases = [
+      ['getRangeData', {}, /缺少 range/],
+      ['clearFormats', {}, /缺少 range/],
+      ['setRangeData', { range: 'A1:B2' }, /缺少 value2/],
+      ['setArrayFormula', { range: 'A1' }, /缺少 formula/],
+      ['sortRange', { range: 'A1:C9' }, /缺少 key/],
+      ['updateChart', {}, /chartIndex\/chartName/],
+      ['exportChartAsImage', {}, /outputPath\/path/],
+      ['deleteSheet', {}, /name\/index/],
+      ['renameSheet', {}, /缺少 name/],
+      ['findInSheet', {}, /缺少 what/],
+      ['setSheetPageSetup', {}, /至少给一个/],
+      ['setSheetPrintTitles', {}, /缺少 rows/],
+      ['switchSheet', {}, /name\/index/],
+      ['setPrintArea', {}, /缺少 area/],
+      ['clearRange', {}, /缺少 range/],
+      ['copyRange', {}, /缺少 range/],
+      ['pasteRange', {}, /缺少 range/],
+      ['fillSeries', {}, /缺少 range/],
+      ['textToColumns', {}, /缺少 range/],
+      ['subtotal', {}, /缺少 range/],
+      ['createNamedRange', { name: 'x' }, /refersTo 必填/],
+      ['insertExcelImage', {}, /path\/imagePath/],
+      ['setHyperlink', { anchorRef: 'A1' }, /address 必填/],
+      ['openWorkbook', {}, /path\/filePath/],
+      ['switchWorkbook', {}, /name\/index/],
+      ['closeWorkbook', {}, /name\/index/],
+      ['mergeCells', {}, /缺少 range/],
+      ['consolidate', {}, /缺少 range/],
+    ];
+    for (const [action, input, match] of errCases) {
+      const sent = installCefQuery({});
+      const r = await A[action](input);
+      ok(`${action} 错误路 → ok:false 且匹配「${match.source.slice(0, 30)}」`,
+        r && r.ok === false && match.test(r.error || ''), (r && r.error || '').slice(0, 60));
+      ok(`${action} 错误路零发送`, sent.length === 0, `实际发送 ${sent.length} 条`);
+      uninstallCefQuery();
+    }
+
+    // ---- PivotTables 桩 3 条：unsupported:'待S1补测'，绝不猜 method ----
+    for (const action of ['createPivotTable', 'getPivotTables', 'refreshPivotTables']) {
+      const sent = installCefQuery({});
+      const r = await A[action]({});
+      ok(`${action} → unsupported:'待S1补测'（S1 §4 #6：Count=undefined、Item 不可调）`,
+        r && r.ok === false && r.unsupported === '待S1补测', (r && r.error || '').slice(0, 60));
+      ok(`${action} 桩零发送`, sent.length === 0);
+      uninstallCefQuery();
+    }
+
+    // ---- 分发器接线：excel 表命中（et 型动作经 channel-client 分发）----
+    clientJs.WpsAddonActionsExcel = A;
+    installCefQuery({ responses: { 'Slides.Count': { count: 9 } } });
+    const viaDispatch = await clientJs.WpsAddonChannel.dispatch('getSlideCount', {}, 'ppt');
+    ok('分发器接线：ppt 表不受 excel 表影响（回归守护）', viaDispatch.ok === true && viaDispatch.data.count === 9);
+    uninstallCefQuery();
+    installCefQuery({ responses: { 'Workbooks.Add': { name: 'Workbook2' } } });
+    const viaExcel = await clientJs.WpsAddonChannel.dispatch('createWorkbook', {}, 'excel');
+    ok('分发器接线：excel 动作表已注册（createWorkbook 走通道）',
+      viaExcel.ok === true && !viaExcel.unsupported, JSON.stringify(viaExcel.data).slice(0, 60));
+    const ghost = await clientJs.WpsAddonChannel.dispatch('setCellValue', { row: 1, col: 1 }, 'excel');
+    ok('部分支持的动作（setCellValue）本批未实现 → 仍回落 unsupported:B3（不越批）',
+      ghost.ok === false && ghost.unsupported === 'B3');
+    uninstallCefQuery();
+  }
+
   console.log(`\n汇总：${pass} 通过 / ${fail} 失败`);
   process.exit(fail === 0 ? 0 : 1);
 })().catch((e) => {

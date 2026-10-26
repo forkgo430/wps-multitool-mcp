@@ -111,6 +111,7 @@
     var registries = [];
     if (global.WpsAddonActionsWord) registries.push(global.WpsAddonActionsWord);
     if (global.WpsAddonActionsPpt) registries.push(global.WpsAddonActionsPpt);
+    if (global.WpsAddonActionsExcel) registries.push(global.WpsAddonActionsExcel); // B5-T1：et 型动作表
     for (var i = 0; i < registries.length; i++) {
       if (Object.prototype.hasOwnProperty.call(registries[i], action)) {
         try {

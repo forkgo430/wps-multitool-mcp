@@ -159,6 +159,27 @@ function Remove-OwnCreatedProcs {
     return $n
 }
 
+# ==================== AI 撤销分组（逐步撤销，对标 per-action undo） ====================
+# AI 的每个破坏性动作包进一个自定义撤销记录：用户 Ctrl+Z 一次退回一整个动作，
+# 而不是跟自己的编辑混在一起。仅 Word 侧有 UndoRecord；拿不到时静默返回 $null——
+# 没有分组只是撤销粒度变粗，不是功能失败。
+function Start-AiUndoRecord {
+    param($Doc, [string]$Label)
+    try {
+        $app = $Doc.Application
+        if ($null -ne $app -and $null -ne $app.UndoRecord) {
+            $ur = $app.UndoRecord
+            $ur.StartCustomRecord("AI: " + $Label)
+            return $ur
+        }
+    } catch { }
+    return $null
+}
+function Stop-AiUndoRecord {
+    param($UndoRecord)
+    if ($null -ne $UndoRecord) { try { $UndoRecord.StopCustomRecord() } catch { } }
+}
+
 # ==================== COM Object Getters ====================
 
 function Get-WpsExcel {
@@ -4189,12 +4210,16 @@ switch ($Action) {
         } else {
             Output-Json @{ success = $false; error = "需要 index（序号）或 text（批注内容片段）之一" }; return
         }
+        # 逐步撤销：删除批注包进一个撤销记录，用户一次 Ctrl+Z 退回
+        $ur = Start-AiUndoRecord $doc "删除批注"
+        try {
         $before = ""
         try { $before = [string]$target.Range.Text } catch {} # 吞错有据：展示用的删除前文本，读不到不影响删除本身
         $target.Delete()
         $n1 = 0
         try { $n1 = [int]$doc.Comments.Count } catch {} # 吞错有据：剩余计数读不到按 0 展示
         Output-Json @{ success = $true; data = @{ deleted = $before; remaining = $n1 } }
+        } finally { Stop-AiUndoRecord $ur }
     }
 
     "getBookmarks" {
@@ -8332,6 +8357,9 @@ switch ($Action) {
         if ($null -eq $word) { Output-Json @{ success = $false; error = "WPS Word not running" }; return }
         $doc = Resolve-Doc $word $p
         if ($null -eq $doc) { Output-Json @{ success = $false; error = "No active document" }; return }
+        # 逐步撤销：整段修订处理包进一个自定义撤销记录，用户一次 Ctrl+Z 全退
+        $ur = Start-AiUndoRecord $doc "处理修订"
+        try {
         $mode = [string]$p.mode
         $before = 0
         try { $before = [int]$doc.Revisions.Count } catch {} # 吞错有据：读不到按 0 处理，走"没有修订"路径（不会误删）
@@ -8358,6 +8386,7 @@ switch ($Action) {
         } catch {
             Output-Json @{ success = $false; error = "处理修订失败: $(Get-CallError $_)" }
         }
+        } finally { Stop-AiUndoRecord $ur }
     }
 
     # 列出修订（谁改的、改成什么）—— 处理之前得先看得见
@@ -8847,6 +8876,88 @@ switch ($Action) {
             } }
         } catch {
             Output-Json @{ success = $false; error = "设置页眉页脚布局失败: $(Get-CallError $_)" }
+        }
+    }
+
+    # 修订模式开关（对标 word-mcp-live 的 native tracked changes）：
+    # 开启后 AI 的所有写入自动带修订留痕，用户逐条审阅、可接受可拒绝。会话级状态。
+    "reviewMode" {
+        $word = Get-WpsWord
+        if ($null -eq $word) { Output-Json @{ success = $false; error = "WPS Word not running" }; return }
+        $doc = Resolve-Doc $word $p
+        if ($null -eq $doc) { Output-Json @{ success = $false; error = "No active document" }; return }
+        $enabled = $false
+        try { $enabled = [bool]$doc.TrackRevisions } catch { }
+        if ($null -ne $p.enabled) {
+            $want = [bool]$p.enabled
+            try {
+                $doc.TrackRevisions = $want
+                $enabled = $want
+            } catch {
+                Output-Json @{ success = $false; error = "设置修订模式失败: $(Get-CallError $_)" }
+                return
+            }
+        }
+        Output-Json @{ success = $true; data = @{ reviewMode = $enabled; doc = [string]$doc.Name } }
+    }
+
+    # 逐步撤销（对标 per-action undo）：按步撤销最近的编辑。
+    # 配合 Start/Stop-AiUndoRecord 的分组，AI 的一个动作 = 用户的一次 Ctrl+Z。
+    "undoSteps" {
+        $word = Get-WpsWord
+        if ($null -eq $word) { Output-Json @{ success = $false; error = "WPS Word not running" }; return }
+        $doc = Resolve-Doc $word $p
+        if ($null -eq $doc) { Output-Json @{ success = $false; error = "No active document" }; return }
+        $steps = 1
+        if ($null -ne $p.steps) { $steps = [Math]::Max(1, [Math]::Min(100, [int]$p.steps)) }
+        $undone = 0
+        try { $undone = [int]$doc.Undo($steps) } catch { Output-Json @{ success = $false; error = "撤销失败: $(Get-CallError $_)" }; return }
+        Output-Json @{ success = $true; data = @{ requested = $steps; undone = $undone; doc = [string]$doc.Name } }
+    }
+
+    # Excel 表格（ListObjects）：结构化引用区，与"插入网格表格"是两种东西。
+    # 探针实测（2026-10-26）：ListObjects.Add 可用，真建出命名表格。
+    "createExcelTable" {
+        $excel = Get-WpsExcel
+        if ($null -eq $excel) { Output-Json @{ success = $false; error = "WPS Excel not running" }; return }
+        $ws = Resolve-Sheet $excel $p
+        if ($null -eq $ws) { Output-Json @{ success = $false; error = "No active worksheet" }; return }
+        $range = [string]$p.range
+        if (-not $range) { Output-Json @{ success = $false; error = "[勿重试·先改参数] 缺少 range（如 A1:C10，含表头行）" }; return }
+        $tableName = [string]$p.tableName
+        if (-not $tableName) { $tableName = "AI表" + (Get-Date -Format "HHmmss") }
+        try {
+            $lo = $ws.ListObjects.Add(1, $ws.Range($range), $null, 1)
+            if ($null -eq $lo) { Output-Json @{ success = $false; error = "ListObjects.Add 返回空" }; return }
+            try { $lo.Name = $tableName } catch { }
+            Output-Json @{ success = $true; data = @{ name = [string]$lo.Name; range = [string]$lo.Range.Address($false, $false) } }
+        } catch {
+            Output-Json @{ success = $false; error = "创建表格失败: $(Get-CallError $_)" }
+        }
+    }
+
+    # 切片器（SlicerCaches.Add）：探针实测（2026-10-26）SlicerCaches/Slicers.Add 可用，真建出切片器。
+    "addSlicer" {
+        $excel = Get-WpsExcel
+        if ($null -eq $excel) { Output-Json @{ success = $false; error = "WPS Excel not running" }; return }
+        $ws = Resolve-Sheet $excel $p
+        if ($null -eq $ws) { Output-Json @{ success = $false; error = "No active worksheet" }; return }
+        $tableName = [string]$p.tableName
+        $field = [string]$p.field
+        if (-not $field) { Output-Json @{ success = $false; error = "[勿重试·先改参数] 缺少 field（切片器对应的列名）" }; return }
+        $lo = $null
+        if ($tableName) { try { $lo = $ws.ListObjects.Item($tableName) } catch { } }
+        if ($null -eq $lo) { try { $lo = $ws.ListObjects.Item(1) } catch { } }
+        if ($null -eq $lo) { Output-Json @{ success = $false; error = "找不到表格：传 tableName，或先 createExcelTable" }; return }
+        $wb = $ws.Parent
+        try {
+            $sc = $wb.SlicerCaches.Add($lo, $field)
+            $slicerName = [string]$p.name
+            if (-not $slicerName) { $slicerName = "切片_" + $field }
+            $sl = $sc.Slicers.Add($slicerName, "", $field, "", 180, 120)
+            Output-Json @{ success = $true; data = @{ slicer = [string]$sl.Name; table = [string]$lo.Name; field = $field } }
+        } catch {
+            Output-Json @{ success = $false; error = "添加切片器失败: $(Get-CallError $_)" }
         }
     }
 

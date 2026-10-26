@@ -22,6 +22,10 @@
   },
   "tools": {
     "wps_common_quit": "live",
+    "wps_word_review_mode": "static",
+    "wps_word_undo": "static",
+    "wps_excel_create_table": "static",
+    "wps_excel_add_slicer": "static",
     "wps_ppt_create_presentation": "live",
     "wps_ppt_add_slide": "live",
     "wps_ppt_get_slide_count": "live",

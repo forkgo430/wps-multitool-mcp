@@ -663,6 +663,77 @@ export const pageNumberHandler: ToolHandler = async (args: Args): Promise<ToolCa
   }
 };
 
+// ============================================================================
+// 修订模式开关（对标 word-mcp-live 的 native tracked changes 卖点）：
+// 开启后 AI 的所有写入自动带修订留痕，用户逐条审阅、可接受可拒绝。
+// 会话级状态（TrackRevisions 是文档属性，守护进程存活期间保持）。
+// ============================================================================
+
+export const reviewModeDefinition: ToolDefinition = {
+  name: 'wps_word_review_mode',
+  description: `开启/关闭/查询这份文档的修订模式。
+
+开启后，AI 对文档的所有写入自动以修订留痕呈现——用户逐条审阅、可接受可拒绝，
+适合合同、公文等"改了什么必须看得见"的场景。不传 enabled 为查询当前状态。`,
+  category: ToolCategory.DOCUMENT,
+  inputSchema: {
+    type: 'object',
+    properties: {
+      target: WORD_TARGET_PROPERTY,
+      enabled: { type: 'boolean', description: 'true=开启修订模式，false=关闭；不传=查询当前状态' },
+    },
+  },
+};
+
+export const reviewModeHandler: ToolHandler = async (args) => {
+  const payload = args.enabled === undefined ? {} : { enabled: Boolean(args.enabled) };
+  try {
+    const r = await call<{ reviewMode: boolean; doc?: string }>('reviewMode', payload);
+    if (!r.ok) return fail(errText('设置修订模式失败', r), r.error);
+    return ok(`修订模式：${r.data?.reviewMode ? '已开启（之后的写入带修订留痕）' : '已关闭'}`);
+  } catch (e) {
+    const m = e instanceof Error ? e.message : String(e);
+    return fail(`修订模式异常：${m}`, m);
+  }
+};
+
+// ============================================================================
+// 逐步撤销（对标 word-mcp-live 的 per-action undo）：
+// 按步撤销最近的编辑。AI 的破坏性写入已包进撤销记录（ps1 Start/Stop-AiUndoRecord），
+// 用户或 AI 撤销时一次退回一整个动作。
+// ============================================================================
+
+export const undoDefinition: ToolDefinition = {
+  name: 'wps_word_undo',
+  description: `按步撤销这份文档里最近的编辑。
+
+参数：
+- steps: 撤销几步，默认 1，最多 100
+
+适合 AI 刚做完一组修改、发现方向错了要回退的场景。
+每步对应一个撤销记录；AI 的破坏性动作已按动作分组，一次退回一整步。`,
+  category: ToolCategory.DOCUMENT,
+  inputSchema: {
+    type: 'object',
+    properties: {
+      target: WORD_TARGET_PROPERTY,
+      steps: { type: 'number', description: '撤销步数，默认 1，最大 100' },
+    },
+  },
+};
+
+export const undoHandler: ToolHandler = async (args) => {
+  const steps = args.steps === undefined ? 1 : Math.max(1, Math.min(100, Number(args.steps) || 1));
+  try {
+    const r = await call<{ requested: number; undone: number; doc?: string }>('undoSteps', { steps });
+    if (!r.ok) return fail(errText('撤销失败', r), r.error);
+    return ok(`已撤销 ${r.data?.undone ?? 0} 步（请求 ${r.data?.requested ?? steps} 步）`);
+  } catch (e) {
+    const m = e instanceof Error ? e.message : String(e);
+    return fail(`撤销异常：${m}`, m);
+  }
+};
+
 /** 本批工具集合 */
 export const p01Tools: RegisteredTool[] = [
   { definition: revisionsDefinition, handler: revisionsHandler },
@@ -678,6 +749,9 @@ export const p01Tools: RegisteredTool[] = [
   { definition: crossRefDefinition, handler: crossRefHandler },
   { definition: indexDefinition, handler: indexHandler },
   { definition: pageNumberDefinition, handler: pageNumberHandler },
+  // 2026-10-26 对标补齐：修订模式开关 + 逐步撤销（见文件尾部的两个定义）
+  { definition: reviewModeDefinition, handler: reviewModeHandler },
+  { definition: undoDefinition, handler: undoHandler },
 ];
 
 export default p01Tools;

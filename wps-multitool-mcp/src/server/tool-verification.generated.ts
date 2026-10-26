@@ -8,7 +8,7 @@
  */
 export type ToolVerification = 'live' | 'static';
 
-/** 每个注册工具的验证状态（覆盖 284/284） */
+/** 每个注册工具的验证状态（覆盖 288/288） */
 export const TOOL_VERIFICATION: Readonly<Record<string, ToolVerification>> = {
   "wps_cache_data": "live",
   "wps_check_connection": "live",
@@ -30,6 +30,7 @@ export const TOOL_VERIFICATION: Readonly<Record<string, ToolVerification>> = {
   "wps_convert_format": "live",
   "wps_convert_to_pdf": "live",
   "wps_excel_add_comment": "live",
+  "wps_excel_add_slicer": "static",
   "wps_excel_auto_fill": "live",
   "wps_excel_auto_filter": "live",
   "wps_excel_auto_fit": "live",
@@ -43,6 +44,7 @@ export const TOOL_VERIFICATION: Readonly<Record<string, ToolVerification>> = {
   "wps_excel_create_chart": "live",
   "wps_excel_create_pivot_table": "live",
   "wps_excel_create_sheet": "live",
+  "wps_excel_create_table": "static",
   "wps_excel_create_workbook": "live",
   "wps_excel_delete_cell_comment": "live",
   "wps_excel_delete_chart": "live",
@@ -278,6 +280,7 @@ export const TOOL_VERIFICATION: Readonly<Record<string, ToolVerification>> = {
   "wps_word_proofread_basic": "live",
   "wps_word_replace_bookmark_content": "live",
   "wps_word_replace_range": "live",
+  "wps_word_review_mode": "static",
   "wps_word_revisions": "live",
   "wps_word_set_cell_borders": "live",
   "wps_word_set_columns": "live",
@@ -293,8 +296,9 @@ export const TOOL_VERIFICATION: Readonly<Record<string, ToolVerification>> = {
   "wps_word_split_cell": "live",
   "wps_word_switch_document": "live",
   "wps_word_table_row_col": "live",
+  "wps_word_undo": "static",
   "wps_word_update_fields": "live",
 };
 
 /** 生成时的总量，供自检/文档使用（别手写这些数字） */
-export const VERIFICATION_TOTALS = { live: 201, static: 83, total: 284 } as const;
+export const VERIFICATION_TOTALS = { live: 201, static: 87, total: 288 } as const;

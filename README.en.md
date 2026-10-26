@@ -3,7 +3,7 @@
 [简体中文](README.md) | **English**
 
 <!-- AUTO:badges:start -->
-[![CI](https://github.com/forkgo430/wps-multitool-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/forkgo430/wps-multitool-mcp/actions/workflows/ci.yml) [![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE) [![npm](https://img.shields.io/npm/v/wps-multitool-mcp)](https://www.npmjs.com/package/wps-multitool-mcp) [![release](https://img.shields.io/github/v/release/forkgo430/wps-multitool-mcp)](https://github.com/forkgo430/wps-multitool-mcp/releases) [![tools](https://img.shields.io/badge/tools-284-brightgreen.svg)](#capabilities) [![platform](https://img.shields.io/badge/platform-Windows%20only-lightgrey.svg)](#requirements)
+[![CI](https://github.com/forkgo430/wps-multitool-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/forkgo430/wps-multitool-mcp/actions/workflows/ci.yml) [![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE) [![npm](https://img.shields.io/npm/v/wps-multitool-mcp)](https://www.npmjs.com/package/wps-multitool-mcp) [![release](https://img.shields.io/github/v/release/forkgo430/wps-multitool-mcp)](https://github.com/forkgo430/wps-multitool-mcp/releases) [![tools](https://img.shields.io/badge/tools-288-brightgreen.svg)](#capabilities) [![platform](https://img.shields.io/badge/platform-Windows%20only-lightgrey.svg)](#requirements)
 <!-- AUTO:badges:end -->
 
 > Let AI directly drive the WPS Office documents you have open right now — Writer, Spreadsheets, Presentation.
@@ -79,8 +79,8 @@ Four conveniences built in:
 <!-- AUTO:tool-table:start -->
 | App | Tools | Highlights |
 |-----|-------|-----------|
-| Excel | 89 | formulas, data, charts, pivot tables, sheets, formatting, workbooks, rows/columns, comments & protection, image export |
-| Word | 67 | formatting, content, document management, headers/footers, comments, bookmarks, tables, templates, academic layout, revisions, index, cross-references |
+| Excel | 91 | formulas, data, charts, pivot tables, sheets, formatting, workbooks, rows/columns, comments & protection, image export |
+| Word | 69 | formatting, content, document management, headers/footers, comments, bookmarks, tables, templates, academic layout, revisions, index, cross-references |
 | PPT | 101 | slides, shapes, images, tables, beautify, animations, charts, 3D, data viz, image export |
 | Common | 27 | save, connection check, text selection, format conversion, tool groups, intent routing, batch |
 | Built-in | 8 (already counted above) | connection check, generic method, data cache |
@@ -94,9 +94,9 @@ to the new tools with parameters migrated.
 <summary><b>Scale (measured from the registry)</b></summary>
 
 <!-- AUTO:tool-stats:start -->
-- **284 tools** (8 built-in + 276 specialized); **only 40 listed by default** (essential ∩ live-verified, load on demand — see `scripts/manual/basic-tier-verify.js`)
-- Distribution (by tool group, built-ins counted in their app group): Common 27 (incl. core) / Word 67 / Excel 89 / PPT 101
-- Annotations (measured): read-only 51 / destructive 35 / non-idempotent 108 — coverage 284/284
+- **288 tools** (8 built-in + 280 specialized); **only 40 listed by default** (essential ∩ live-verified, load on demand — see `scripts/manual/basic-tier-verify.js`)
+- Distribution (by tool group, built-ins counted in their app group): Common 27 (incl. core) / Word 69 / Excel 91 / PPT 101
+- Annotations (measured): read-only 51 / destructive 35 / non-idempotent 110 — coverage 288/288
 <!-- AUTO:tool-stats:end -->
 
 </details>

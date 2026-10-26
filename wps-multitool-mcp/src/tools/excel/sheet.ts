@@ -1040,6 +1040,119 @@ export const autoSumHandler: ToolHandler = async (
   }
 };
 
+// ============================================================================
+// Excel 表格（ListObjects）与切片器（2026-10-26 对标 excel-mcp-server）：
+// "Excel 表格"是结构化引用区（Sort/筛选/结构化引用跟随），与"插入网格表格"不同物。
+// 真机探针（2026-10-26）：ListObjects.Add / SlicerCaches.Add / Slicers.Add 全部可用。
+// ============================================================================
+
+export const createExcelTableDefinition: ToolDefinition = {
+  name: 'wps_excel_create_table',
+  description: `把一块区域创建为"Excel 表格"（结构化引用区）。
+
+与 insert_table 的网格表格不同：创建后获得筛选按钮、结构化引用、随数据扩展的汇总能力。
+range 需包含表头行。可选 tableName 自定义表名（默认自动命名）。`,
+  category: ToolCategory.SPREADSHEET,
+  inputSchema: {
+    type: 'object',
+    properties: {
+      sheet: { type: 'string', description: '工作表名，默认当前表' },
+      range: { type: 'string', description: '区域，如 A1:C10（含表头行）' },
+      tableName: { type: 'string', description: '表名，默认自动命名' },
+    },
+    required: ['range'],
+  },
+};
+
+export const createExcelTableHandler: ToolHandler = async (args) => {
+  const { sheet, range, tableName } = args as { sheet?: string; range?: string; tableName?: string };
+  try {
+    const response = await wpsClient.executeMethod<{ name: string; range: string }>(
+      'createExcelTable',
+      { sheet, range, tableName },
+      WpsAppType.SPREADSHEET
+    );
+    if (response.success) {
+      const d = response.data as { name?: string; range?: string } | undefined;
+      return {
+        id: uuidv4(),
+        success: true,
+        content: [{ type: 'text', text: `已创建表格「${d?.name ?? tableName ?? ''}」（${d?.range ?? range}）。之后可 addSlicer 加切片器，或对表内数据排序/筛选。` }],
+      };
+    }
+    return {
+      id: uuidv4(),
+      success: false,
+      content: [{ type: 'text', text: `创建表格失败: ${response.error}` }],
+      error: response.error,
+    };
+  } catch (error) {
+    const errMsg = error instanceof Error ? error.message : String(error);
+    return {
+      id: uuidv4(),
+      success: false,
+      content: [{ type: 'text', text: `创建表格出错: ${errMsg}` }],
+      error: errMsg,
+    };
+  }
+};
+
+export const addSlicerDefinition: ToolDefinition = {
+  name: 'wps_excel_add_slicer',
+  description: `给已创建的 Excel 表格添加切片器（按某列筛选的按钮面板）。
+
+需要先 createExcelTable。field 是列名（表头文字）。`,
+  category: ToolCategory.SPREADSHEET,
+  inputSchema: {
+    type: 'object',
+    properties: {
+      sheet: { type: 'string', description: '工作表名，默认当前表' },
+      tableName: { type: 'string', description: '表名；不传默认当前表的第一张表格' },
+      field: { type: 'string', description: '列名（表头文字）' },
+      name: { type: 'string', description: '切片器名称，默认"切片_列名"' },
+    },
+    required: ['field'],
+  },
+};
+
+export const addSlicerHandler: ToolHandler = async (args) => {
+  const { sheet, tableName, field, name } = args as {
+    sheet?: string;
+    tableName?: string;
+    field?: string;
+    name?: string;
+  };
+  try {
+    const response = await wpsClient.executeMethod<{ slicer: string; table: string; field: string }>(
+      'addSlicer',
+      { sheet, tableName, field, name },
+      WpsAppType.SPREADSHEET
+    );
+    if (response.success) {
+      const d = response.data as { slicer?: string; table?: string; field?: string } | undefined;
+      return {
+        id: uuidv4(),
+        success: true,
+        content: [{ type: 'text', text: `已添加切片器「${d?.slicer ?? name ?? field}」（表 ${d?.table ?? tableName ?? ''} · 列 ${d?.field ?? field}）` }],
+      };
+    }
+    return {
+      id: uuidv4(),
+      success: false,
+      content: [{ type: 'text', text: `添加切片器失败: ${response.error}` }],
+      error: response.error,
+    };
+  } catch (error) {
+    const errMsg = error instanceof Error ? error.message : String(error);
+    return {
+      id: uuidv4(),
+      success: false,
+      content: [{ type: 'text', text: `添加切片器出错: ${errMsg}` }],
+      error: errMsg,
+    };
+  }
+};
+
 /**
  * 导出所有工作表管理相关的Tools
  */
@@ -1058,6 +1171,9 @@ export const sheetTools: RegisteredTool[] = [
   { definition: setNamedRangeDefinition, handler: setNamedRangeHandler },
   { definition: hideColumnDefinition, handler: hideColumnHandler },
   { definition: autoSumDefinition, handler: autoSumHandler },
+  // 2026-10-26 对标补齐：Excel 表格（ListObjects）与切片器
+  { definition: createExcelTableDefinition, handler: createExcelTableHandler },
+  { definition: addSlicerDefinition, handler: addSlicerHandler },
 ];
 
 export default sheetTools;

@@ -12,6 +12,10 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
+  ListResourcesRequestSchema,
+  ReadResourceRequestSchema,
+  ListPromptsRequestSchema,
+  GetPromptRequestSchema,
   ErrorCode as McpErrorCode,
   McpError as SdkMcpError,
 } from '@modelcontextprotocol/sdk/types.js';
@@ -28,6 +32,7 @@ import { getToolAnnotations } from './tool-annotations';
 import { getToolMeta } from './tool-metadata';
 import { serverInstructions, setToolCount } from './server-info';
 import { CancelError } from '../bridge/cancellable';
+import { WpsAppType } from '../types/wps';
 import { MCP_NAME, MCP_VERSION } from '../version';
 
 const logger = createChildLogger('McpServer');
@@ -90,6 +95,8 @@ export class WpsMcpServer {
       {
         capabilities: {
           tools: {},
+          resources: {},
+          prompts: {},
         },
         // 介绍 + 作者署名：随 initialize 响应发给客户端。
         instructions: serverInstructions(),
@@ -98,6 +105,7 @@ export class WpsMcpServer {
 
     // 注册请求处理器
     this.setupRequestHandlers();
+    this.setupResourceAndPromptHandlers();
 
     // 错误处理
     this.server.onerror = (error) => {
@@ -107,6 +115,109 @@ export class WpsMcpServer {
     logger.info('MCP Server created', {
       name: this.config.name,
       version: this.config.version,
+    });
+  }
+
+  /**
+   * Resources 与 Prompts（2026-10-26 对标头部 MCP 项目补齐的协议面）
+   *
+   * Resources：把"当前打开的文档"暴露为资源——客户端（Claude Desktop 等）可以直接浏览
+   *   与读取，不必先调工具。列表实时查询三应用的打开文档；读失败的某应用在 JSON 里如实标注。
+   * Prompts：四个场景模板（周报/公文/合同/论文），把 skill 的五步链路预编排成用户可选的
+   *   一等条目。失败语义与工具一致：Linux 等无通道环境抛 BackendUnavailableError。
+   */
+  private setupResourceAndPromptHandlers(): void {
+    // Resources：当前打开的文档
+    this.server.setRequestHandler(ListResourcesRequestSchema, async () => {
+      return {
+        resources: [
+          {
+            uri: 'wps://documents',
+            name: '当前打开的文档',
+            description: 'WPS 文字/表格/演示里此刻打开的全部文档（实时查询）',
+            mimeType: 'application/json',
+          },
+        ],
+      };
+    });
+
+    this.server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
+      if (request.params.uri !== 'wps://documents') {
+        throw new SdkMcpError(McpErrorCode.InvalidRequest, `未知资源: ${request.params.uri}`);
+      }
+      const apps: Array<{ app: 'word' | 'excel' | 'ppt'; appType: WpsAppType; method: string }> = [
+        { app: 'word', appType: WpsAppType.WRITER, method: 'getOpenDocuments' },
+        { app: 'excel', appType: WpsAppType.SPREADSHEET, method: 'getOpenWorkbooks' },
+        { app: 'ppt', appType: WpsAppType.PRESENTATION, method: 'getOpenPresentations' },
+      ];
+      const out: Record<string, unknown> = {};
+      for (const { app, appType, method } of apps) {
+        try {
+          const r = await wpsClient.executeMethod(method, {}, appType);
+          out[app] = r.data ?? null;
+        } catch (e) {
+          // 某个应用不可用（没开 WPS / Linux 无通道）：在资源内容里如实标注，不让整个资源读失败
+          out[app] = { error: e instanceof Error ? e.message : String(e) };
+        }
+      }
+      return {
+        contents: [
+          {
+            uri: request.params.uri,
+            mimeType: 'application/json',
+            text: JSON.stringify(out, null, 2),
+          },
+        ],
+      };
+    });
+
+    // Prompts：场景模板
+    const scenario = (
+      name: string,
+      title: string,
+      description: string,
+      argsSpec: Array<{ name: string; description: string }>,
+      render: (a: Record<string, string>) => string
+    ) => ({ name, title, description, arguments: argsSpec, render });
+
+    const prompts = [
+      scenario('wps-weekly-report', '周报生成', '把表格里的数据整理成一页周报文档', [
+        { name: 'sheet', description: '数据所在的工作簿/表名（可省略，默认当前）' },
+        { name: 'focus', description: '本周重点，一句话' },
+      ], (a) => `我在 WPS 表格里有本周的工作数据${a.sheet ? `（${a.sheet}）` : ''}。请：1) 探活并读取数据；2) 提炼三到五条要点${a.focus ? `，围绕「${a.focus}」展开` : ''}；3) 在新的 WPS 文字文档里生成一页周报（标题加粗、要点分级）；4) 导出 PDF 给我。动笔前先让我确认要点清单。`),
+      scenario('wps-official-doc', '公文排版', '按中文公文规范重排一份 WPS 文字文档', [
+        { name: 'doc', description: '文档名（默认当前活动文档）' },
+      ], (a) => `请把${a.doc ? `「${a.doc}」` : '当前打开的公文'}按党政机关公文格式重排：标题二号小标宋居中、正文三号仿宋、一级标题黑体、二级标题楷体、行距 28 磅。重排前先建快照；完成后逐项报告改了哪些格式。`),
+      scenario('wps-contract-review', '合同修订', '以修订模式逐条修改合同，全部改动可审阅', [
+        { name: 'doc', description: '合同文档名（默认当前活动文档）' },
+        { name: 'changes', description: '要改的要点，每行一条' },
+      ], (a) => `请先开启修订模式，再把${a.doc ? `「${a.doc}」` : '这份合同'}按以下要点逐条修改：\n${a.changes || '（等我说改动要点）'}\n每条改动走修订留痕，全部完成后给出改动清单；不要接受任何修订——留给我审。`),
+      scenario('wps-academic-paper', '学术论文排版', '给论文生成目录、交叉引用与参考文献整理', [
+        { name: 'doc', description: '论文文档名（默认当前活动文档）' },
+      ], (a) => `请给${a.doc ? `「${a.doc}」` : '当前这篇论文'}做学术排版：1) 按标题层级生成目录；2) 为"如图 X 所示"类表述补交叉引用；3) 整理文末参考文献为规范格式；4) 全文统一字体字号。动格式前先建快照。`),
+    ];
+
+    this.server.setRequestHandler(ListPromptsRequestSchema, async () => ({
+      prompts: prompts.map(({ name, title, description, arguments: args }) => ({
+        name,
+        title,
+        description,
+        arguments: args.map(({ name: an, description: ad }) => ({ name: an, description: ad })),
+      })),
+    }));
+
+    this.server.setRequestHandler(GetPromptRequestSchema, async (request) => {
+      const prompt = prompts.find((p) => p.name === request.params.name);
+      if (!prompt) {
+        throw new SdkMcpError(McpErrorCode.InvalidRequest, `未知模板: ${request.params.name}`);
+      }
+      const args = (request.params.arguments || {}) as Record<string, string>;
+      return {
+        description: prompt.description,
+        messages: [
+          { role: 'user' as const, content: { type: 'text', text: prompt.render(args) } },
+        ],
+      };
     });
   }
 
