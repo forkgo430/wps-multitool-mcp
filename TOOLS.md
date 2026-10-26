@@ -3,7 +3,7 @@
 > 本文件由 `wps-multitool-mcp/scripts/manual/gen-tools-doc.js` 从**运行时注册表**生成，请勿手改。
 > 改完工具跑一次 `node scripts/manual/gen-tools-doc.js`；CI 会重跑并 `git diff --exit-code`，对不上就红。
 
-**288 个工具**（8 内置 + 280 专业/组工具）· 默认列出 40 个 · 注解覆盖 288/288 · 真机验证 201/288
+**287 个工具**（7 内置 + 280 专业/组工具）· 默认列出 40 个 · 注解覆盖 287/287 · 真机验证 200/287
 
 | 标记 | 含义 |
 |---|---|
@@ -17,11 +17,11 @@
 |---|---|---|---|---|
 | `wps_list_tool_groups` | 是 | R | live | 列出所有工具组及当前是否已在列。<br><sub>别名：列出工具工具组 / 列举工具工具组 / 工具</sub> |
 | `wps_load_tool_group` | 是 | — | live | 加载一个工具组，加载后该组工具才会出现在工具列表里。<br><sub>别名：加载组 / 拉起组 / 把PPT工具弄出来</sub> |
-| `wps_route_intent` | 是 | R | live | 快速意图识别：给一句任务描述，告诉你需要开启哪些工具组、先用哪些工具。<br><sub>别名：意图识别 / 该用哪个组 / 这句话是干嘛</sub> |
+| `wps_route_intent` | 是 | R | live | 意图路由（三层）：一句话进来，返回【能直接行动】的结果，而不是只给一个组名。<br><sub>别名：意图识别 / 该用哪个组 / 这句话是干嘛</sub> |
 | `wps_search_tools` | 是 | R | live | 在所有工具里搜索（包括未加载组的工具），返回名字 + 所属组 + 是否已列出 + 中文别名 + 验证状态。<br><sub>别名：找工具 / 搜工具 / 有没有什么工具</sub> |
 | `wps_unload_tool_group` | 是 | — | live | 卸载一个工具组，卸载后该组工具不再出现在工具列表里（仍可直接调用，但不推荐）。<br><sub>别名：卸载工具组合 / 工具 / 组合</sub> |
 
-## 通用（22）
+## 通用（21）
 
 | 工具 | 默认档 | 注解 | 验证 | 说明 |
 |---|---|---|---|---|
@@ -44,7 +44,6 @@
 | `wps_common_snapshot_create` |  | N | live | 给当前文档存一份快照（复制磁盘文件到 ~/.wps-multitool-mcp/snapshots）。<br><sub>别名：snapshot创建 / 创建 / 新建</sub> |
 | `wps_common_snapshot_list` |  | R | live | 列出本机快照（只读），按时间倒序。可按原文件路径过滤。<br><sub>别名：snapshot列出 / 列出 / 列举</sub> |
 | `wps_common_snapshot_restore` |  | DN | live | 把快照恢复回去。 |
-| `wps_common_wire_check` |  | — | live | 检查与WPS加载项之间的通信线路状态。<br><sub>别名：连通性check</sub> |
 | `wps_get_cached_data` |  | R | live | 从MCP Server获取缓存的数据，用于跨应用数据传递。<br><sub>别名：取暂存数据 / 读缓存 / 取暂存结果</sub> |
 | `wps_list_cache` |  | R | live | 列出MCP Server中所有缓存的数据键名<br><sub>别名：看缓存列表 / 暂存了哪些 / 列出cache</sub> |
 

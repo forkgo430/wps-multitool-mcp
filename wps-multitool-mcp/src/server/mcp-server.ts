@@ -29,6 +29,7 @@ import { createChildLogger } from '../utils/logger';
 import { McpError, formatWpsErrorTag, WpsErrorType } from '../utils/error';
 import { runWithCancel } from './cancel-context';
 import { getToolAnnotations } from './tool-annotations';
+import { runWithProgress } from './progress-context';
 import { getToolMeta } from './tool-metadata';
 import { serverInstructions, setToolCount } from './server-info';
 import { CancelError } from '../bridge/cancellable';
@@ -138,37 +139,61 @@ export class WpsMcpServer {
             mimeType: 'application/json',
           },
         ],
+        // 资源模板：客户端填入应用类型与文档名后，可直接读取该文档的正文
+        resourceTemplates: [
+          {
+            uriTemplate: 'wps://doc/{app}/{name}',
+            name: '打开的文档内容',
+            description: '按应用类型与文档名读取一份已打开文档的正文文本',
+            mimeType: 'text/plain',
+            examples: ['wps://doc/word/报告.docx', 'wps://doc/excel/数据.xlsx'],
+          },
+        ],
       };
     });
 
     this.server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
-      if (request.params.uri !== 'wps://documents') {
-        throw new SdkMcpError(McpErrorCode.InvalidRequest, `未知资源: ${request.params.uri}`);
+      const uri = request.params.uri;
+
+      // 静态资源：三应用打开文档汇总
+      if (uri === 'wps://documents') {
+        const apps: Array<{ app: 'word' | 'excel' | 'ppt'; appType: WpsAppType; method: string }> = [
+          { app: 'word', appType: WpsAppType.WRITER, method: 'getOpenDocuments' },
+          { app: 'excel', appType: WpsAppType.SPREADSHEET, method: 'getOpenWorkbooks' },
+          { app: 'ppt', appType: WpsAppType.PRESENTATION, method: 'getOpenPresentations' },
+        ];
+        const out: Record<string, unknown> = {};
+        for (const { app, appType, method } of apps) {
+          try {
+            const r = await wpsClient.executeMethod(method, {}, appType);
+            out[app] = r.data ?? null;
+          } catch (e) {
+            out[app] = { error: e instanceof Error ? e.message : String(e) };
+          }
+        }
+        return {
+          contents: [{ uri, mimeType: 'application/json', text: JSON.stringify(out, null, 2) }],
+        };
       }
-      const apps: Array<{ app: 'word' | 'excel' | 'ppt'; appType: WpsAppType; method: string }> = [
-        { app: 'word', appType: WpsAppType.WRITER, method: 'getOpenDocuments' },
-        { app: 'excel', appType: WpsAppType.SPREADSHEET, method: 'getOpenWorkbooks' },
-        { app: 'ppt', appType: WpsAppType.PRESENTATION, method: 'getOpenPresentations' },
-      ];
-      const out: Record<string, unknown> = {};
-      for (const { app, appType, method } of apps) {
+
+      // 资源模板：wps://doc/{app}/{name} → 读该文档的正文
+      const docMatch = uri.match(/^wps:\/\/doc\/(word|excel|ppt)\/(.+)$/);
+      if (docMatch) {
+        const [, app, name] = docMatch;
+        const appType = app === 'word' ? WpsAppType.WRITER : app === 'excel' ? WpsAppType.SPREADSHEET : WpsAppType.PRESENTATION;
+        const method = app === 'word' ? 'getDocumentText' : app === 'excel' ? 'getRangeData' : 'getSlideCount';
         try {
-          const r = await wpsClient.executeMethod(method, {}, appType);
-          out[app] = r.data ?? null;
+          const decoded = decodeURIComponent(name);
+          const r = await wpsClient.executeMethod(method, { documentName: decoded }, appType);
+          return {
+            contents: [{ uri, mimeType: 'text/plain', text: JSON.stringify(r.data ?? r, null, 2) }],
+          };
         } catch (e) {
-          // 某个应用不可用（没开 WPS / Linux 无通道）：在资源内容里如实标注，不让整个资源读失败
-          out[app] = { error: e instanceof Error ? e.message : String(e) };
+          throw new SdkMcpError(McpErrorCode.InternalError, `读取文档失败: ${e instanceof Error ? e.message : String(e)}`);
         }
       }
-      return {
-        contents: [
-          {
-            uri: request.params.uri,
-            mimeType: 'application/json',
-            text: JSON.stringify(out, null, 2),
-          },
-        ],
-      };
+
+      throw new SdkMcpError(McpErrorCode.InvalidRequest, `未知资源: ${uri}`);
     });
 
     // Prompts：场景模板
@@ -277,7 +302,28 @@ export class WpsMcpServer {
         );
       }
       const runIt = () => this.handleToolCall(name, args ?? {});
-      return signal ? runWithCancel({ signal, toolName: name }, runIt) : runIt();
+      const execute = signal
+        ? () => runWithCancel({ signal, toolName: name }, runIt)
+        : runIt;
+
+      // 进度通知（2026-10-26 对标）：客户端传 progressToken 时，长操作发 notifications/progress
+      const meta = (request.params as Record<string, unknown> & { _meta?: Record<string, unknown> })._meta;
+      const progressToken = meta?.progressToken;
+      const sendNotification = extra?.sendNotification;
+
+      if (progressToken && typeof sendNotification === 'function') {
+        return runWithProgress(
+          (p: number, t: number, msg?: string) => {
+            sendNotification({
+              method: 'notifications/progress' as const,
+              params: { progressToken, progress: p, total: t, ...(msg ? { message: msg } : {}) },
+            } as never);
+          },
+          execute
+        );
+      }
+
+      return execute();
     });
   }
 
@@ -322,6 +368,19 @@ export class WpsMcpServer {
         return {
           content,
           isError: !result.success,
+          // 结构化输出（2026-10-26 对标）：工具文本里如果是 JSON 对象，同步给 structuredContent
+          // 让客户端拿到结构化数据而非纯文本。仅试探首块，不递归。
+          ...(() => {
+            const first = result.content.find((c) => c.type === 'text');
+            if (!first || first.type !== 'text') return {};
+            const trimmed = (first as { text: string }).text.trim();
+            if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) return {};
+            try {
+              const parsed = JSON.parse(trimmed);
+              if (parsed && typeof parsed === 'object') return { structuredContent: parsed };
+            } catch { }
+            return {};
+          })(),
         };
       } catch (error) {
         // 取消不是故障：单独走一条，别记成 error 吓唬人

@@ -49,6 +49,7 @@
   ],
   "aliases": {
     "wps_common_ping": "wps_check_connection",
+    "wps_common_wire_check": "wps_check_connection",
     "wps_get_active_document": "wps_word_get_active_document",
     "wps_get_cell_value": "wps_excel_get_cell_value",
     "wps_set_cell_value": "wps_excel_set_cell_value",

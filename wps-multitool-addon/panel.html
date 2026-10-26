@@ -168,7 +168,7 @@
     <div class="kv"><span class="k">作者</span><span>赢容</span></div>
     <div class="kv"><span class="k">许可</span><span>MIT</span></div>
     <ul>
-      <li>288 个 MCP 工具，默认只列 40 个基础工具</li>
+      <li>287 个 MCP 工具，默认只列 40 个基础工具</li>
       <li>常驻桥进程，冷启动后 2~3ms/次</li>
       <li>快照 / 撤销 / 导出 / 诊断</li>
     </ul>
@@ -229,7 +229,7 @@ function render(d) {
   q.className = 'v' + ((d.queued || 0) >= d.queueMax ? ' err' : ((d.queued || 0) > 0 ? ' warn' : ' ok'));
 
   // 工具组数在桥侧拿不到（那是 MCP server 的注册表），这里显示说明
-  $('v-group').innerHTML = '基础 40 / 共 288 <span style="color:var(--dim);font-size:11px">（按需加载）</span>';
+  $('v-group').innerHTML = '基础 40 / 共 287 <span style="color:var(--dim);font-size:11px">（按需加载）</span>';
 
   // 最近改动
   var recent = d.recent || [];

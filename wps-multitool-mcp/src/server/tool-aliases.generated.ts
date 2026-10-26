@@ -4,7 +4,7 @@
  * Pos: 别名表【生成物】。一旦我被修改，请更新我的头部注释，以及所属目录的md。
  *
  * 别手改这个文件：真相源是 scripts/manual/tool-aliases.json，
- * 生成器是 scripts/manual/gen-tool-aliases.js，共 24 条。
+ * 生成器是 scripts/manual/gen-tool-aliases.js，共 25 条。
  *
  * 别名不注册成工具：它不出现在 tools/list、不计入工具总数，只在 registry 的入口被解析成规范名。
  * 为什么只做一跳解析：链式别名（a→b→c）会让"到底谁是真的"变成谜，一份表里就该一步到位。
@@ -13,6 +13,7 @@
 /** 旧名 → 规范名。键是已下线的旧工具名，值是仍在注册表里的规范名 */
 export const TOOL_ALIASES: Readonly<Record<string, string>> = {
   "wps_common_ping": "wps_check_connection",
+  "wps_common_wire_check": "wps_check_connection",
   "wps_excel_delete_column": "wps_excel_delete_columns",
   "wps_excel_insert_column": "wps_excel_insert_columns",
   "wps_excel_insert_row": "wps_excel_insert_rows",

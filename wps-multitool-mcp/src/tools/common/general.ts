@@ -199,12 +199,14 @@ export const saveAsHandler: ToolHandler = async (
 };
 
 // ============================================================
-// 4. wps_common_wire_check - 检查通信线路
+// 4. wps_check_connection - 检查通信线路（B5 意图升级：ping / check_connection /
+//    wire_check 三名合一的规范名；wps_common_wire_check / wps_common_ping 降为别名，
+//    映射见 scripts/manual/tool-aliases.json）
 // ============================================================
 
 export const wireCheckDefinition: ToolDefinition = {
-  name: 'wps_common_wire_check',
-  description: `检查与WPS加载项之间的通信线路状态。
+  name: 'wps_check_connection',
+  description: `检查与WPS加载项之间的通信线路状态（连接健康检查的唯一规范入口）。
 
 使用场景：
 - "检查通信状态"
@@ -212,7 +214,7 @@ export const wireCheckDefinition: ToolDefinition = {
 - "通信线路是否正常"
 
 特点：
-- 比ping更详细的通信诊断
+- 原 wps_common_ping / wps_common_wire_check 两个名字已合并到这里（旧名走别名仍可调用）
 - 返回线路延迟、协议状态等信息`,
   category: ToolCategory.COMMON,
   inputSchema: {

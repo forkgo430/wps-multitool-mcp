@@ -1,0 +1,176 @@
+{
+  "_note": [
+    "任务包模板（三层意图架构的导航层）。真相源，由 src/tools/common/intent.ts 运行时加载。",
+    "",
+    "match 关键词的场景依据（B5 任务卡红线 6：不许拍脑袋编）——每包 steps 里的动作全部来自",
+    "S1-REPORT §3 判定'支持'的 JSAPI 动作集（Linux）与 Windows 侧注册工具的交集场景：",
+    "  weekly_report    —— 周报=读数据+图表+成文+转 PDF，是办公自动化最常见组合（S1 Excel #5/#33 替代路径 + Word #108/#118 + Common #284）",
+    "  official_document—— 公文有固定排版规范（页面设置/标题样式/页码），Word 页面设置 S1 #123/#162 实测支持",
+    "  contract_review  —— 合同审阅走修订模式：Word 修订族 S1 #135-140（enableTrackChanges/replaceRange/revisions）全支持",
+    "  paper_format     —— 论文三件套（样式/目录/题注交叉引用）S1 #134/#104/#151/#158 全支持",
+    "  data_entry       —— 数据录入=建簿+写值+公式+保存，S1 Excel #102/#6/#11 支持",
+    "  demo_beautify    —— 演示美化=背景/字体统一/切换，S1 PPT #228/#275/#227 支持",
+    "  data_charts      —— 图表化=选区→建图→导出，S1 Excel #33 复核路径 Shapes.AddChart + #35",
+    "  format_unify     —— 批量格式=条件格式+清除重设，S1 Excel #17-19/#16 支持",
+    "  meeting_notes    —— 纪要=建文档+列表+保存，S1 Word #108/#164 支持",
+    "  project_tracker  —— 进度表=建簿+写表+条件格式+冻结，S1 Excel #77/#17 支持",
+    "  compare_analysis —— 对比=读数+公式+图表+导出，与 weekly_report 同链路不同措辞",
+    "  template_fill    —— 模板填字段=打开+替换+另存，S1 Word #108/#120/#129 + Common #280",
+    "",
+    "steps 里的 action 是【Windows 注册工具的语义名】（Linux 侧由动作层映射到 jsAsynCall method）；",
+    "app 是会话路由（word/excel/ppt/common）；confirm_before 列破坏性动作（执行前应征询）；",
+    "snapshot 列写动作前建议自动快照（auto-snapshot 机制对齐）。"
+  ],
+  "packages": [
+    {
+      "task": "weekly_report",
+      "title": "周报生成",
+      "match": ["周报", "本周总结", "工作周报", "weekly report", "本周汇报", "周总结"],
+      "steps": [
+        { "action": "getRangeData", "app": "excel", "note": "读本周数据" },
+        { "action": "createChart", "app": "excel", "note": "数据成图" },
+        { "action": "exportChartAsImage", "app": "excel", "inline": true, "note": "导出图表图片" },
+        { "action": "createDocument", "app": "word", "snapshot": true, "note": "建周报文档" },
+        { "action": "insertText", "app": "word", "note": "写入正文" },
+        { "action": "convertToPDF", "app": "common", "note": "转 PDF 归档" }
+      ],
+      "confirm_before": ["createDocument"]
+    },
+    {
+      "task": "official_document",
+      "title": "公文排版",
+      "match": ["公文", "红头文件", "公文格式", "公文排版", "官方文件排版"],
+      "steps": [
+        { "action": "createDocument", "app": "word", "snapshot": true, "note": "建公文" },
+        { "action": "setPageSetup", "app": "word", "note": "页边距/纸型按公文规范" },
+        { "action": "applyStyle", "app": "word", "note": "标题/正文样式" },
+        { "action": "addPageNumber", "app": "word", "note": "页码" },
+        { "action": "save", "app": "common", "note": "保存" }
+      ],
+      "confirm_before": ["createDocument"]
+    },
+    {
+      "task": "contract_review",
+      "title": "合同修订（走修订模式）",
+      "match": ["合同修订", "修订合同", "审阅合同", "合同审阅", "改合同", "修订模式"],
+      "steps": [
+        { "action": "openDocument", "app": "word", "note": "打开合同" },
+        { "action": "enableTrackChanges", "app": "word", "note": "开修订模式" },
+        { "action": "findReplace", "app": "word", "note": "逐处修改" },
+        { "action": "getDocumentRevisions", "app": "word", "note": "列修订供确认" },
+        { "action": "save", "app": "common", "note": "保存" }
+      ],
+      "confirm_before": ["save"]
+    },
+    {
+      "task": "paper_format",
+      "title": "论文排版",
+      "match": ["论文排版", "毕业论文", "论文格式", "参考文献排版", "学位论文"],
+      "steps": [
+        { "action": "openDocument", "app": "word" },
+        { "action": "setPageSetup", "app": "word", "note": "页边距/行距" },
+        { "action": "applyStyle", "app": "word", "note": "标题层级样式" },
+        { "action": "generateTOC", "app": "word", "note": "目录" },
+        { "action": "addCaption", "app": "word", "note": "图表题注" },
+        { "action": "insertCrossReference", "app": "word", "note": "交叉引用" },
+        { "action": "getDocumentStats", "app": "word", "note": "字数核查" }
+      ],
+      "confirm_before": []
+    },
+    {
+      "task": "data_entry",
+      "title": "数据录入",
+      "match": ["数据录入", "录入数据", "填数据", "数据填表", "把数据填进去"],
+      "steps": [
+        { "action": "createWorkbook", "app": "excel", "snapshot": true },
+        { "action": "setRangeData", "app": "excel", "note": "批量写入" },
+        { "action": "setFormula", "app": "excel", "note": "合计/校验列" },
+        { "action": "save", "app": "common" }
+      ],
+      "confirm_before": []
+    },
+    {
+      "task": "demo_beautify",
+      "title": "演示美化",
+      "match": ["美化PPT", "演示美化", "PPT美化", "统一演示风格", "幻灯片美化"],
+      "steps": [
+        { "action": "setSlideBackground", "app": "ppt" },
+        { "action": "unifyFont", "app": "ppt", "note": "全篇字体统一" },
+        { "action": "setSlideTransition", "app": "ppt", "note": "统一切换" },
+        { "action": "save", "app": "common" }
+      ],
+      "confirm_before": []
+    },
+    {
+      "task": "data_charts",
+      "title": "数据图表化",
+      "match": ["图表化", "做图表", "数据可视化", "画个图表", "趋势图"],
+      "steps": [
+        { "action": "getRangeData", "app": "excel", "note": "确认数据区" },
+        { "action": "createChart", "app": "excel", "note": "建图表" },
+        { "action": "exportChartAsImage", "app": "excel", "inline": true }
+      ],
+      "confirm_before": []
+    },
+    {
+      "task": "format_unify",
+      "title": "批量格式统一",
+      "match": ["格式统一", "统一格式", "批量格式", "把格式改成一致"],
+      "steps": [
+        { "action": "addConditionalFormat", "app": "excel", "note": "规则化高亮" },
+        { "action": "clearFormats", "app": "excel", "note": "清残留格式" },
+        { "action": "autoFit", "app": "excel", "note": "行列自适应" },
+        { "action": "save", "app": "common" }
+      ],
+      "confirm_before": []
+    },
+    {
+      "task": "meeting_notes",
+      "title": "会议纪要",
+      "match": ["会议纪要", "纪要整理", "整理会议记录", "会议记录成文"],
+      "steps": [
+        { "action": "createDocument", "app": "word", "snapshot": true },
+        { "action": "insertText", "app": "word", "note": "议题/结论分节写入" },
+        { "action": "addList", "app": "word", "note": "待办列表" },
+        { "action": "save", "app": "common" }
+      ],
+      "confirm_before": ["createDocument"]
+    },
+    {
+      "task": "project_tracker",
+      "title": "项目进度表",
+      "match": ["进度表", "项目计划表", "项目进度", "排期表", "甘特"],
+      "steps": [
+        { "action": "createWorkbook", "app": "excel", "snapshot": true },
+        { "action": "setRangeData", "app": "excel", "note": "任务/负责人/日期" },
+        { "action": "addConditionalFormat", "app": "excel", "note": "超期高亮" },
+        { "action": "freezePanes", "app": "excel", "note": "冻结表头" },
+        { "action": "save", "app": "common" }
+      ],
+      "confirm_before": []
+    },
+    {
+      "task": "compare_analysis",
+      "title": "对比分析",
+      "match": ["对比分析", "环比", "同比", "两个表对比", "差异分析"],
+      "steps": [
+        { "action": "getRangeData", "app": "excel", "note": "读两期数据" },
+        { "action": "setFormula", "app": "excel", "note": "差值/百分比列" },
+        { "action": "createChart", "app": "excel", "note": "对比图" },
+        { "action": "exportChartAsImage", "app": "excel", "inline": true }
+      ],
+      "confirm_before": []
+    },
+    {
+      "task": "template_fill",
+      "title": "模板填字段",
+      "match": ["填字段", "模板填充", "按模板生成", "套模板", "占位符替换"],
+      "steps": [
+        { "action": "openDocument", "app": "word", "note": "打开模板" },
+        { "action": "findReplace", "app": "word", "note": "占位符逐个替换" },
+        { "action": "saveAs", "app": "common", "note": "另存成品" }
+      ],
+      "confirm_before": []
+    }
+  ]
+}

@@ -3,7 +3,7 @@
 **简体中文** | [English](README.en.md)
 
 <!-- AUTO:badges:start -->
-[![CI](https://github.com/forkgo430/wps-multitool-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/forkgo430/wps-multitool-mcp/actions/workflows/ci.yml) [![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE) [![npm](https://img.shields.io/npm/v/wps-multitool-mcp)](https://www.npmjs.com/package/wps-multitool-mcp) [![release](https://img.shields.io/github/v/release/forkgo430/wps-multitool-mcp)](https://github.com/forkgo430/wps-multitool-mcp/releases) [![tools](https://img.shields.io/badge/tools-288-brightgreen.svg)](#能力一览) [![platform](https://img.shields.io/badge/platform-Windows%20only-lightgrey.svg)](#安装)
+[![CI](https://github.com/forkgo430/wps-multitool-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/forkgo430/wps-multitool-mcp/actions/workflows/ci.yml) [![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE) [![npm](https://img.shields.io/npm/v/wps-multitool-mcp)](https://www.npmjs.com/package/wps-multitool-mcp) [![release](https://img.shields.io/github/v/release/forkgo430/wps-multitool-mcp)](https://github.com/forkgo430/wps-multitool-mcp/releases) [![tools](https://img.shields.io/badge/tools-287-brightgreen.svg)](#能力一览) [![platform](https://img.shields.io/badge/platform-Windows%20only-lightgrey.svg)](#安装)
 <!-- AUTO:badges:end -->
 
 > 让 AI 直接操控你正开着的 WPS 文字、表格、演示。
@@ -81,8 +81,8 @@ irm https://cdn.jsdelivr.net/gh/forkgo430/wps-multitool-mcp@main/scripts/install
 | Excel | 91 | 公式/数据/图表/透视表/工作表/格式/工作簿/行列/批注保护/图片导出 |
 | Word | 69 | 格式/内容/文档管理/页眉页脚/批注/书签/表格/模板填写/学术排版/修订/索引/交叉引用 |
 | PPT | 101 | 幻灯片/形状/图片/表格/美化/动画/图表/3D/数据可视化/图片导出 |
-| 通用 | 27 | 保存/连接检测/文本选取/格式转换/工具组管理/意图路由/批量执行 |
-| 内置 | 8（已计入上方各组） | 连接检查/万能方法调用/数据缓存 |
+| 通用 | 26 | 保存/连接检测/文本选取/格式转换/工具组管理/意图路由/批量执行 |
+| 内置 | 7（已计入上方各组） | 连接检查/万能方法调用/数据缓存 |
 <!-- AUTO:tool-table:end -->
 
 全部 284 个工具的完整清单（名称 / 是否需要确认 / 真机验证状态）见 **[TOOLS.md](TOOLS.md)**，
@@ -92,9 +92,9 @@ irm https://cdn.jsdelivr.net/gh/forkgo430/wps-multitool-mcp@main/scripts/install
 <summary><b>规模（由注册表实测生成）</b></summary>
 
 <!-- AUTO:tool-stats:start -->
-- **288 个工具**（8 个内置 + 280 个专业/组工具）；**默认只列 40 个**（基础档 ∩ 真机验证，按需加载 —— 口径与校验见 `scripts/manual/basic-tier-verify.js`）
-- 分布（按工具组，内置计入对应组）：通用 27（含 core）/ Word 69 / Excel 91 / PPT 101
-- 注解（实测）：只读 51 / 破坏性 35 / 非幂等 110，覆盖 288/288
+- **287 个工具**（7 个内置 + 280 个专业/组工具）；**默认只列 40 个**（基础档 ∩ 真机验证，按需加载 —— 口径与校验见 `scripts/manual/basic-tier-verify.js`）
+- 分布（按工具组，内置计入对应组）：通用 26（含 core）/ Word 69 / Excel 91 / PPT 101
+- 注解（实测）：只读 51 / 破坏性 35 / 非幂等 110，覆盖 287/287
 <!-- AUTO:tool-stats:end -->
 
 </details>
