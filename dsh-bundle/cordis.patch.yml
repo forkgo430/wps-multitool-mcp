@@ -1,0 +1,72 @@
+# dsh-multitool 组合包 · 配置层
+#
+# 一个包同时给两样东西：
+#   ① 40 个 WPS 工具（挂官方 MCP 客户端）
+#   ② 一份教 AI 怎么用这些工具的技能（assets/wps-multitool/SKILL.md）
+#
+# 关键点（2026-10-22 实测，别改回去）：
+#   - 插件行按【包名】引用，由 dsh 的 loader 解析，不写相对源码路径。
+#     我们自己的代码去 import('@deepseek-ai/dsh-mcp-client') 会失败 ——
+#     那个包只在 dsh 的 app.asar 内部可见，从 profile 目录永远解析不到。
+#   - assetRoot / args 必须是【绝对路径】，发布时不可能知道用户装在哪，
+#     所以用 !!js 在 loader 求值时算。求值上下文提供 baseUrl 与 process.getBuiltinModule。
+
+# ① 挂官方 MCP 客户端，指向本机的 wps-multitool-mcp
+- insert:
+    - id: mcp-wps
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        # serverName 决定工具名前缀：mcp__<serverName>__<工具名>
+        #
+        # 这里用 wpslocal 而不是 wps，原因是【避免和另一个包撞车】：
+        # npm 上已有 dsh-wps@0.1.2（别人做的，WPS/金山文档【云文档】集成），
+        # 它的工具前缀也是 mcp__wps__*。两边装在一起就会同名冲突。
+        # 我们操作的是【本机正开着的 WPS 窗口】，不是云文档，所以叫 wpslocal 更准确。
+        # dsh 的 serverName 规则：^[A-Za-z0-9_-]{1,32}$，wpslocal 合规。
+        serverName: wpslocal
+        transport: stdio
+        # 必须 node + 绝对路径，不能用 npx：dsh 的 args 直接透传、不过 shell，
+        # Windows 上 npx 实际是 npx.cmd，按 npx 去 spawn 会 ENOENT。
+        command: node
+        args:
+          # 两档解析：先按依赖解析（用户把它作为依赖装了），
+          # 解析不到就退回【本包同级目录】（开发者本地 checkout 的情形）。
+          - !!js >-
+              (() => {
+                const req = process.getBuiltinModule('node:module').createRequire(baseUrl);
+                const fs = process.getBuiltinModule('node:fs');
+                const path = process.getBuiltinModule('node:path');
+                try {
+                  const got = req.resolve('wps-multitool-mcp/dist/index.js');
+                  if (fs.existsSync(got)) return got;
+                } catch {}
+                return path.join(path.dirname(req.resolve('dsh-multitool/package.json')), '..', 'wps-multitool-mcp', 'dist', 'index.js');
+              })()
+        # 必须 >= 桥的 WPS_DAEMON_TIMEOUT（默认 120000）。dsh 默认 60000 会先掐断，
+        # 而 WPS 那边动作已经改完了 —— "客户端报失败、文档其实改了"。
+        toolCallTimeoutMs: 130000
+        # 默认 false 会在连不上时静默降级成"零工具"，用户只会觉得 AI 不会用 WPS。
+        failOnStartupError: true
+        env:
+          # 保持默认档：dsh 会把工具定义塞进每一次请求，284 个全量很贵。
+          WPS_TOOL_TIER: essential
+
+# ② 启用技能系统，把本包的 assets/ 加进扫描根
+#
+# 这两个插件在 web 模板里默认是 disabled: true。
+# 这里按 id 覆盖、且不写 disabled —— 等于重新启用它们。
+# （官方语义：后层按 id 整行覆盖，config 是整体替换不是深合并，所以 name 必须写全。）
+- id: skill-filesystem
+  name: '@deepseek-ai/dsh-skill-filesystem'
+  config:
+    customSkillDirs:
+      - !!js >-
+          process.getBuiltinModule('node:path').join(
+            process.getBuiltinModule('node:path').dirname(
+              process.getBuiltinModule('node:module').createRequire(baseUrl).resolve('dsh-multitool/package.json')
+            ),
+            'assets'
+          )
+
+- id: tool-skill
+  name: '@deepseek-ai/dsh-tool-skill'

@@ -1,0 +1,117 @@
+name: Release
+
+# 发版链路（与 ci.yml 的分工）
+# ----------------------------
+# ci.yml 只管"能不能用"（构建 + 生成器 diff + 真机门禁）。
+# 本文件只管"怎么发出去"：main 上有未发布的 changeset 时开一个 Version PR，
+# 合并后自动 npm publish + 建 GitHub Release。
+#
+# 为什么用 changesets 而不是手写 CHANGELOG
+# ---------------------------------------
+# 版本号、CHANGELOG、git tag 三处手工同步迟早会漂（这个仓库在"文档数字"上已经吃过四轮亏）。
+# changesets 把"改了什么"变成 PR 里的一行记录，剩下的交给工具。
+#
+# 为什么不再需要 OTP
+# -----------------
+# npm 的 Trusted Publishing（OIDC）：GitHub Actions 用短期 token 换 npm 的发布权，
+# 不再保存长期 NPM_TOKEN，也不用每次发版输 2FA 验证码。
+# 前提是你在 npmjs.com 上把本包与这个 workflow 绑定一次（Package → Settings → Trusted Publisher）。
+# 没绑定之前，下面的 NODE_AUTH_TOKEN 兜底（在仓库 Secrets 里配 NPM_TOKEN 即可）。
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write # changesets/action 要提交 CHANGELOG + 版本号、打 tag、建 release
+  pull-requests: write # 开 Version Packages PR
+  id-token: write # Trusted Publishing（npm OIDC）必需
+
+jobs:
+  release:
+    # 与 ci.yml 保持一致：构建产物（dist）在两种 runner 上没有差异，
+    # 但统一平台能少一类"本地能过 CI 不过"的意外。
+    runs-on: windows-latest
+
+    steps:
+      # Windows runner 只设 USERPROFILE，不设 HOME；而 changesets/action 在
+      # "setting GitHub credentials" 时会往 $HOME/.netrc 写 GitHub 凭据。
+      # HOME 为空 → 拼成 "<cwd>/undefined/.netrc" → ENOENT 直接崩，
+      # build / 对账 / publish 一个都没跑到。实测 Release run 就这么死的：
+      #   ##[error] ENOENT ... open 'D:\a\...\wps-multitool-mcp\undefined\.netrc'
+      #
+      # 为什么写成 step 而不是 job 级 env：runner context 只在 step 级可用，
+      # 写进 job.env 会让 GitHub 在【编译 workflow】时就判无效 —— 表现是
+      # run 没有 job、名字退化成文件路径，看不出真实原因。踩过一次。
+      - name: 设置 HOME（Windows runner 默认不设）
+        run: echo "HOME=$env:RUNNER_TEMP" >> $env:GITHUB_ENV
+      - uses: actions/checkout@v4
+        with:
+          # changesets/action 需要完整历史才能判断 tag 与版本
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: wps-multitool-mcp/package-lock.json
+          registry-url: https://registry.npmjs.org
+
+      # Trusted Publishing 要求 npm >= 11.5.2；node 22 自带的 npm 可能更旧
+      - name: 升级 npm（OIDC 发布要求 >= 11.5.2）
+        working-directory: wps-multitool-mcp
+        run: npm install -g npm@latest
+
+      - name: 安装依赖
+        working-directory: wps-multitool-mcp
+        run: npm ci
+
+      - name: 构建
+        working-directory: wps-multitool-mcp
+        run: npm run build
+
+      # 发出去的包里必须带最新的生成物：数字漂了的话，用户看到的 README 就是假的
+      - name: 生成物与注册表一致（发版前最后一次对账）
+        working-directory: wps-multitool-mcp
+        run: |
+          node scripts/manual/gen-tool-verification.js
+          node scripts/manual/gen-doc-stats.js
+          node scripts/manual/gen-tools-doc.js
+          git diff --exit-code -- ../TOOLS.md ../README.md ../README.en.md ../wps-multitool-addon/panel.html src/server/tool-verification.generated.ts
+
+      - name: Version PR / Publish
+        id: changesets
+        uses: changesets/action@v1
+        with:
+          # 这个仓库的 npm 包在【子目录】wps-multitool-mcp/ 里（仓库根是同名目录，
+          # 下面还有 wps-multitool-addon/）。上面每个 step 都单独写了
+          # working-directory，但 changesets/action 默认在仓库根跑 ——
+          # 那里既没有 package.json 也没有 .changeset/，于是它报
+          #   There is no .changeset directory in this project
+          # 连 npm publish 都没开始。必须显式指过去。
+          cwd: wps-multitool-mcp
+          # 有 changeset 时：开（或更新）Version Packages PR
+          # PR 合并后（没有 changeset 且版本已 bump）：执行 publish
+          version: npm run version
+          publish: npm run release
+          commit: 'chore(release): 版本与 CHANGELOG'
+          title: 'chore(release): 版本与 CHANGELOG'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # OIDC 走 id-token；NPM_TOKEN 只是没绑定 Trusted Publisher 时的兜底
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_CONFIG_PROVENANCE: 'true'
+
+      # 评审 P1-5 闭环：发布成功后把 install.ps1 的 SHA256 写进对应 Release 正文，
+      # 让 README 里的"与 Release 页校验值比对"成为可执行的步骤（2026-10-25）
+      - name: 安装脚本校验值写入 Release
+        if: steps.changesets.outputs.published == 'true'
+        working-directory: wps-multitool-mcp
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/manual/attach-install-hash.js

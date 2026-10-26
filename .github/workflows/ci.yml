@@ -1,0 +1,94 @@
+name: CI
+
+# 门禁的意义：今天工具数在「live 注册表 / 注解表 / 文档」三处漂了四轮才发现，
+# 根因是没有任何一个地方会因为"数字对不上"而失败。这里把三件事变成硬失败：
+#   1) 构建不过 → 红
+#   2) 任一 verify 脚本挂 → 红
+#   3) 注解映射表与注册表不一致（改了工具没重跑生成器）→ 红
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  verify:
+    # Windows 是硬要求：cancel-verify 要真 spawn PowerShell 子进程，
+    # bridge-test 也要起常驻进程。Linux runner 上这些会假绿。
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: wps-multitool-mcp/package-lock.json
+
+      - name: 安装依赖
+        working-directory: wps-multitool-mcp
+        run: npm ci
+
+      - name: 类型检查 + 构建
+        working-directory: wps-multitool-mcp
+        run: npm run build
+
+      - name: 动作路由表与 wps-com.ps1 一致
+        working-directory: wps-multitool-mcp
+        run: |
+          node scripts/gen-action-routes.js
+          git diff --exit-code -- src/client/action-routes.generated.ts
+        # 补上这个洞：改了 wps-com.ps1 忘了重跑路由表，之前全部门禁照绿。
+        # 后果是静默的——没传 appType 的调用会回落到 common 进程，动作在别处执行或直接 Unknown action。
+
+      - name: 注解映射表与注册表一致性
+        working-directory: wps-multitool-mcp
+        run: |
+          node scripts/manual/gen-tool-annotations.js
+          git diff --exit-code -- src/server/tool-annotations.generated.ts
+        # 加了新工具却忘了重跑生成器 → 生成的表与提交的不一致 → 这一步红。
+        # 这是今天那次三处数字漂移的直接防线。
+
+      - name: 文档统计与注册表一致（README / 面板）
+        working-directory: wps-multitool-mcp
+        run: |
+          node scripts/manual/gen-doc-stats.js
+          git diff --exit-code -- ../README.md ../README.en.md ../wps-multitool-addon/panel.html
+        # README（中/英两份）的工具数/分布/清单表与面板数字全部由注册表生成（AUTO 区）。
+        # 加了工具忘了重跑 → diff 非空 → 红。和上面注解表同一套路：
+        # 数字只能有一个来源，忘了同步就让它失败。
+        #
+        # 路径别写 ../../：工作目录就是 wps-multitool-mcp，回仓库根只需 ../。
+        # 写多了一层会指到仓库外，git 直接 fatal（exit 128）—— 这个坑踩过一次。
+
+      - name: 验证状态表与清单一致
+        working-directory: wps-multitool-mcp
+        run: |
+          node scripts/manual/gen-tool-verification.js
+          git diff --exit-code -- src/server/tool-verification.generated.ts
+        # 真相源是 scripts/manual/tool-verification.json（组级默认 + 逐工具覆盖）。
+        # 新加了组却忘了表态 → 生成器本身就会非 0 退出；改了 json 忘了重跑 → 这里红。
+
+      - name: 工具清单 TOOLS.md 与注册表一致
+        working-directory: wps-multitool-mcp
+        run: |
+          node scripts/manual/gen-tools-doc.js
+          git diff --exit-code -- ../TOOLS.md
+        # 306 个 COM 动作只有运行期看得见，GitHub 上等于没有。TOOLS.md 是同一套"单一真相源"：
+        # 从注册表生成，忘了重跑就红。清单里不许有时间和版本号，否则每次生成都 diff 非空。
+
+      - name: 验证门禁（全量，含真跑 PowerShell 与端到端）
+        working-directory: wps-multitool-mcp
+        run: npm run verify:all
+
+      - name: 上传验证日志
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verify-log
+          path: |
+            ~/.workbuddy/wps-multitool-mcp/logs/*.log
+            ~/.wps-multitool-mcp/logs/*.log
+          if-no-files-found: ignore

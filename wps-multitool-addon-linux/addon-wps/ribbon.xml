@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Input: 功能区 UI 定义 -->
+<!-- Output: WPS Linux 加载项（wps 型）功能区按钮 -->
+<!-- Pos: Linux 加载项（wps 型）功能区，B2 骨架只留一个连接状态入口。一旦我被修改，请更新我的头部注释，以及所属文件夹的md。 -->
+<!--
+  Linux 骨架版功能区：只留「连接状态」一个按钮。
+  为什么极简：Linux 加载项必须手动从 UI 打开（计划 §12.2），这个标签页就是用户
+  确认"加载项开没开、连没连上"的最短路径；动作执行不需要 UI（Agent 从通道走）。
+-->
+<customUI xmlns="http://schemas.microsoft.com/office/2006/01/customui" onLoad="OnAddinLoad">
+    <ribbon startFromScratch="false">
+        <tabs>
+            <tab id="tabMcpLinux" label="MCP · Linux">
+                <group id="grpChannel" label="加载项通道">
+                    <button id="btnChannelStatus" onAction="ribbonChannelStatus" label="连接状态" imageMso="Info" size="large"/>
+                </group>
+            </tab>
+        </tabs>
+    </ribbon>
+</customUI>

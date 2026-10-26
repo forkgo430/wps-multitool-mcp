@@ -1,0 +1,101 @@
+{
+  "_note": [
+    "旧工具名 → 规范工具名。唯一真相源，人维护；gen-tool-aliases.js 读它生成 src/server/tool-aliases.generated.ts。",
+    "",
+    "为什么要有这层：本仓历史上同一个 WPS 动作被注册成了两个工具名（动作集完全相同），",
+    "两套名字等于两倍上下文、两倍模型选择负担，注解/验证状态/文档还要各维护一遍。",
+    "现在只留一个【规范名】注册，另一个降为别名：旧名仍可调用（registry 入口解析），",
+    "但不出现在 tools/list、不计入工具总数，注解/验证状态/warnings 全部跟随规范名。",
+    "",
+    "分三类（第 2 轮修正：只做 A+B，C 不动）：",
+    "  A 参数完全一致（或仅描述文字差异）—— 别名化零风险；",
+    "  B 规范名的参数集是旧名的超集 —— 旧调用不缺参数、不报错（超集之外多出来的参数旧调用用不到而已）；",
+    "  C 参数名/语义不兼容 —— 旧调用会缺必填项或被静默忽略，本轮【不别名、不删】，",
+    "    只在描述首行标 [DEPRECATED·改用 X]，留给下一轮做参数映射或并入 schema。",
+    "",
+    "C 类 9 个（为什么不动：旧参数在规范名里不存在）：",
+    "  wps_excel_delete_row      row            → wps_excel_delete_rows 要 startRow（PS 侧其实两个都认，但 TS schema 只声明了一个）",
+    "  wps_excel_hide_row        row/count/hide → wps_excel_hide_rows 要 startRow/endRow",
+    "  wps_excel_auto_fill       sourceRange/targetRange → wps_excel_fill_series 要 range/direction/step/type",
+    "  wps_word_set_font_style   fontName/fontSize      → wps_word_set_font 要 font_name/font_size/range/color",
+    "  wps_ppt_align_objects     第 9 轮起两边的参数集已完全一致（slideIndex+alignment+shapeIndices）——",
+    "                         原来是 C 类（它没有 shapeIndices）。本轮只补齐参数、没做别名化：",
+    "                         别名化会把工具数从 284 降到 283 并牵动文档/门禁，属于下一轮单独决定的事。",
+    "  wps_ppt_insert_ppt_image  filePath       → wps_ppt_insert_image 必填 path",
+    "  wps_ppt_set_animation     animationType  → wps_ppt_add_animation 必填 effect",
+    "  wps_ppt_set_slide_background background   → wps_ppt_set_background 要 color/imagePath（background 会被忽略）",
+    "  wps_ppt_set_transition    transition     → wps_ppt_set_slide_transition 必填 effect",
+    "",
+    "规范名的选择规则（按优先级，先命中先定）：",
+    "  1) 被 ESSENTIAL_TOOLS / 文档 / 门禁脚本点名的优先 —— 换掉它会让默认档、README、验证脚本一起漂；",
+    "  2) 参数集是另一个的超集时选超集（别名化不丢能力）；",
+    "  3) 都不满足时选与 PS 动作名语义一致、且符合 wps_<组>_<动词>_<名词>（单复数跟动作走）的那个。",
+    "",
+    "维护方式：只改本文件，然后 node scripts/manual/gen-tool-aliases.js。别手改 generated（CI 有 diff 门禁）。",
+    "",
+    "第 5 轮补充：允许多个旧名指向同一个规范名 —— 那是【族合并】留下的（background 6→1：",
+    "set_slide_background / set_background_color / set_background_image / set_background_gradient 全指向 set_background）。",
+    "合并族里唯一没法走别名的是 wps_ppt_set_master_background：别名不能注入 target='master'，",
+    "靠别名过来会变成改单页背景（静默改错地方），所以它的旧名是直接下线、能力留在新工具的 target:'master'。",
+    "",
+    "第 8 轮补充：value 除了字符串，还可以写成对象，给别名带上【参数映射】：",
+    "  { to, rename: {旧参数名: 新参数名}, set: {固定值} }",
+    "为什么需要：族合并里最容易被忽略的失效方式是【名字换了但参数没换】——",
+    "旧调用传 preset，新工具必填 effect，光改名字会让旧名直接报 Missing required parameter；",
+    "更糟的是 set_animation_order 的 newOrder → order 这种改名，参数被静默忽略后工具会按默认值乱改。",
+    "rename 在调用方没给新键时才搬（不覆盖规范名自己收的参数），set 是【缺了才补】（调用方显式给了就听调用方的）。",
+    "合并时必须写 set 的场景：族里每个旧工具的\"默认值\"不同 —— preset 固定 category='entrance'、",
+    "emphasis 固定 category='emphasis'、order 固定 op='reorder'，少了这一步 3 个旧名会打同一个动作的不同分支。"
+  ],
+  "aliases": {
+    "wps_common_ping": "wps_check_connection",
+    "wps_get_active_document": "wps_word_get_active_document",
+    "wps_get_cell_value": "wps_excel_get_cell_value",
+    "wps_set_cell_value": "wps_excel_set_cell_value",
+    "wps_excel_zoom": "wps_excel_set_zoom",
+    "wps_ppt_set_slide_notes": "wps_ppt_add_speaker_notes",
+    "wps_insert_text": "wps_word_insert_text",
+    "wps_excel_insert_row": "wps_excel_insert_rows",
+    "wps_excel_insert_column": "wps_excel_insert_columns",
+    "wps_excel_delete_column": "wps_excel_delete_columns",
+    "wps_word_generate_doc_toc": "wps_word_generate_toc",
+    "wps_ppt_duplicate_slide": "wps_ppt_copy_slide",
+    "wps_ppt_add_chart": "wps_ppt_insert_ppt_chart",
+
+    "wps_ppt_set_slide_background": "wps_ppt_set_background",
+    "wps_ppt_set_background_color": "wps_ppt_set_background",
+    "wps_ppt_set_background_image": "wps_ppt_set_background",
+    "wps_ppt_set_background_gradient": "wps_ppt_set_background",
+
+    "wps_ppt_add_animation": {
+      "to": "wps_ppt_set_animation",
+      "set": { "op": "add", "category": "entrance" }
+    },
+    "wps_ppt_add_animation_preset": {
+      "to": "wps_ppt_set_animation",
+      "rename": { "preset": "effect" },
+      "set": { "op": "add", "category": "entrance" }
+    },
+    "wps_ppt_add_emphasis_animation": {
+      "to": "wps_ppt_set_animation",
+      "set": { "op": "add", "category": "emphasis" }
+    },
+    "wps_ppt_set_animation_order": {
+      "to": "wps_ppt_set_animation",
+      "rename": { "newOrder": "order" },
+      "set": { "op": "reorder" }
+    },
+    "wps_ppt_set_slide_transition": {
+      "to": "wps_ppt_set_transition",
+      "set": { "target": "slide" }
+    },
+    "wps_ppt_apply_transition_to_all": {
+      "to": "wps_ppt_set_transition",
+      "set": { "target": "all" }
+    },
+    "wps_ppt_remove_slide_transition": {
+      "to": "wps_ppt_set_transition",
+      "set": { "target": "slide", "effect": "none" }
+    }
+  }
+}

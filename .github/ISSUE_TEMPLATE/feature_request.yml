@@ -1,0 +1,43 @@
+name: 功能请求
+description: 缺某个能力，或现有工具不好用
+title: "[feat] "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: scenario
+    attributes:
+      label: 真实场景
+      description: 你在做什么事时卡住了？（比"想要一个 xxx 工具"有用得多）
+      placeholder: |
+        每季度要把 20 份周报合成一份汇总，现在得手动一份份读…
+    validations:
+      required: true
+
+  - type: textarea
+    id: current
+    attributes:
+      label: 现在怎么凑合的
+      description: 用了哪个工具、为什么不行（选错近名工具？缺读侧能力？）
+    validations:
+      required: false
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: 涉及应用
+      options:
+        - Word（文字）
+        - Excel（表格）
+        - PPT（演示）
+        - 通用 / 跨应用
+        - 工具检索与加载
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: 自查
+      options:
+        - label: 已在 `wps_search_tools` 里搜过（可能是组没加载）
+        - label: 已确认不是现有工具的用法问题（读过该工具的 `notFor`）

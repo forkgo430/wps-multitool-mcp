@@ -1,0 +1,22 @@
+{
+  "name": "wps-multitool-mcp",
+  "owner": {
+    "name": "赢容",
+    "email": "yingrong@local"
+  },
+  "metadata": {
+    "description": "WPS Office 多面手 MCP —— 用自然语言操控 WPS 文字/表格/演示",
+    "version": "1.0.3"
+  },
+  "plugins": [
+    {
+      "name": "wps-multitool",
+      "description": "WPS Office 自动化技能包：文字排版、表格公式与图表、演示美化、跨应用操作",
+      "source": "./",
+      "strict": false,
+      "skills": [
+        "./wps-multitool-mcp/skills/wps-multitool"
+      ]
+    }
+  ]
+}

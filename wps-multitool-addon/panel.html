@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>多面手 MCP</title>
+<!--
+  Input: 桥的 HTTP 状态端点（127.0.0.1:27731/status）+ 用户点击
+  Output: 任务面板（状态 / 操作目标 / 快捷动作 / 最近改动 / 关于）
+  Pos: WPS 加载项任务窗格页面。一旦我被修改，请更新我的头部注释，以及所属文件夹的md。
+
+  v2.3（赢容反馈"面板小、难看、功能呢"）：
+  - 加宽到 460（原来 360 太挤）
+  - 重写样式：WPS 风格的浅色卡片、分组标题带色条、等宽数字、状态色点
+  - 「关于」从原生 alert 搬进面板 —— 那个 alert 被批"难看"
+  - 快捷动作全部接真功能：保存 / 撤销 / 导出 PDF / 保存快照 / 解除卡死
+    （原来只有保存、撤销、刷新三个，且没有快照和导出）
+
+  数据来源：任务窗格跑在内嵌浏览器里，连不到命名管道（内核对象，仅限本进程），
+  所以桥额外开了只读的 localhost HTTP 端点，本页面每 2 秒轮询。
+  「最近改动」由桥在管道上记录每个请求的摘要而来（不记文档正文，摘要截断 24 字）。
+-->
+<style>
+  :root {
+    --bg: #f5f6f8;
+    --card: #ffffff;
+    --border: #e6e8eb;
+    --text: #1f2329;
+    --dim: #8a9099;
+    --accent: #3370ff;
+    --accent-bg: #eef3ff;
+    --ok: #17b978;
+    --warn: #f58a3c;
+    --err: #e34d59;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font: 13px/1.55 -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+    background: var(--bg); color: var(--text); padding: 14px;
+  }
+  /* 标题 */
+  .hdr { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; }
+  .hdr .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--err); flex-shrink: 0; }
+  .hdr.on .dot { background: var(--ok); box-shadow: 0 0 0 3px rgba(23,185,120,.15); }
+  .hdr .name { font-size: 15px; font-weight: 600; }
+  .hdr .ver { font-size: 11px; color: var(--dim); margin-left: auto; }
+
+  /* 卡片 */
+  .card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 10px; padding: 12px 14px; margin-bottom: 12px;
+  }
+  .card h3 {
+    font-size: 12px; font-weight: 600; color: var(--dim);
+    margin-bottom: 10px; padding-left: 8px; border-left: 3px solid var(--accent);
+    line-height: 1.2;
+  }
+
+  /* 状态行 */
+  .row { display: flex; justify-content: space-between; align-items: baseline; padding: 5px 0; }
+  .row + .row { border-top: 1px dashed #f0f1f3; }
+  .row .k { color: var(--dim); }
+  .row .v { font-variant-numeric: tabular-nums; text-align: right; }
+  .ok { color: var(--ok); } .warn { color: var(--warn); } .err { color: var(--err); }
+
+  /* 操作目标 */
+  .target {
+    display: flex; align-items: center; gap: 8px; padding: 9px 10px;
+    background: var(--accent-bg); border: 1px solid #d6e2ff; border-radius: 8px;
+  }
+  .target.none { background: #fafbfc; border-color: var(--border); color: var(--dim); }
+  .target .name { flex: 1; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .target .lock {
+    font-size: 11px; color: var(--accent); border: 1px solid currentColor;
+    border-radius: 4px; padding: 1px 6px; flex-shrink: 0;
+  }
+  .target.none .lock { color: var(--dim); }
+  .hint { color: var(--dim); font-size: 11px; margin-top: 7px; line-height: 1.5; }
+
+  /* 按钮 */
+  .bar { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; }
+  button {
+    font: inherit; font-size: 12px; padding: 8px 6px;
+    border: 1px solid var(--border); background: #fff; color: var(--text);
+    border-radius: 7px; cursor: pointer; transition: all .12s;
+  }
+  button:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-bg); }
+  button:active { transform: translateY(1px); }
+  button.p { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.p:hover { background: #2860e0; color: #fff; }
+  button.w { color: var(--warn); border-color: #ffd9b8; }
+  button.w:hover { background: #fff6ec; border-color: var(--warn); color: var(--warn); }
+
+  /* 最近改动 */
+  .log { max-height: 200px; overflow-y: auto; margin: -4px 0; }
+  .log .item { display: flex; gap: 8px; padding: 5px 0; font-size: 12px; align-items: baseline; }
+  .log .item + .item { border-top: 1px dashed #f0f1f3; }
+  .log .t { color: var(--dim); font-variant-numeric: tabular-nums; flex-shrink: 0; font-size: 11px; }
+  .log .a { font-weight: 500; flex-shrink: 0; max-width: 42%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .log .s { color: var(--dim); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .log .item.fail .a { color: var(--err); }
+  .log .empty { color: var(--dim); font-size: 12px; padding: 10px 0; text-align: center; }
+
+  /* 关于 */
+  .about { font-size: 12px; line-height: 1.9; }
+  .about .kv { display: flex; gap: 8px; }
+  .about .kv .k { color: var(--dim); width: 46px; flex-shrink: 0; }
+  .about ul { margin: 6px 0 0 16px; color: var(--dim); }
+  .about .foot { margin-top: 10px; padding-top: 8px; border-top: 1px dashed var(--border); color: var(--dim); font-size: 11px; }
+  .tip {
+    margin-top: 8px; padding: 7px 10px; border-radius: 6px; font-size: 12px;
+    background: #fff6ec; color: #a05a10; border: 1px solid #ffd9b8; display: none;
+  }
+  .tip.show { display: block; }
+</style>
+</head>
+<body>
+
+<div class="hdr" id="hdr">
+  <span class="dot"></span>
+  <span class="name">多面手 MCP</span>
+  <span class="ver">v1.0.3</span>
+</div>
+
+<!-- 桥状态 -->
+<div class="card">
+  <h3>桥状态</h3>
+  <div class="row"><span class="k">桥进程</span><span class="v" id="v-bridge">—</span></div>
+  <div class="row"><span class="k">当前应用</span><span class="v" id="v-app">—</span></div>
+  <div class="row"><span class="k">队列</span><span class="v" id="v-queue">—</span></div>
+  <div class="row"><span class="k">工具组</span><span class="v" id="v-group">—</span></div>
+  <div class="tip" id="tip"></div>
+</div>
+
+<!-- 操作目标 -->
+<div class="card">
+  <h3>操作目标</h3>
+  <div class="target none" id="target">
+    <span class="name" id="target-name">未锁定（跟随活动文档）</span>
+    <span class="lock" id="target-lock">锁定</span>
+  </div>
+  <div class="hint">锁定后，后续该应用的操作都指向这个文档，不会因为切换窗口而漂移。<br>用 MCP 工具 <code>wps_word_switch_document</code> / <code>wps_excel_switch_workbook</code> 锁定。</div>
+</div>
+
+<!-- 快捷动作 -->
+<div class="card">
+  <h3>快捷动作</h3>
+  <div class="bar">
+    <button onclick="act('save')">保存</button>
+    <button onclick="act('undo')">撤销</button>
+    <button onclick="act('pdf')">导出 PDF</button>
+    <button onclick="act('snap')">保存快照</button>
+    <button class="w" onclick="act('unstick')">解除卡死</button>
+  </div>
+  <div class="hint">更多能力（修订 / 表格 / 样式 / 交叉引用 / 索引 / 页码）用 MCP 工具调用，默认列 40 个基础工具。</div>
+</div>
+
+<!-- 最近改动 -->
+<div class="card">
+  <h3>最近改动</h3>
+  <div class="log" id="log"><div class="empty">暂无记录</div></div>
+</div>
+
+<!-- 关于 -->
+<div class="card">
+  <h3>关于</h3>
+  <div class="about">
+    <div class="kv"><span class="k">版本</span><span>1.0.3</span></div>
+    <div class="kv"><span class="k">作者</span><span>赢容</span></div>
+    <div class="kv"><span class="k">许可</span><span>MIT</span></div>
+    <ul>
+      <li>288 个 MCP 工具，默认只列 40 个基础工具</li>
+      <li>常驻桥进程，冷启动后 2~3ms/次</li>
+      <li>快照 / 撤销 / 导出 / 诊断</li>
+    </ul>
+    <div class="foot">
+      详细状态：<code>wps_common_status</code> ·
+      诊断修复：<code>wps_common_repair</code> ·
+      仅支持 Windows（WPS COM 自动化）
+    </div>
+  </div>
+</div>
+
+<script>
+var ENDPOINT = 'http://127.0.0.1:' + (window.__PORT__ || 27731) + '/status';
+var tipTimer = null;
+
+function fmtUptime(ms) {
+  var s = Math.floor(ms / 1000);
+  if (s < 60) return s + 's';
+  var m = Math.floor(s / 60); s = s % 60;
+  if (m < 60) return m + 'm' + s + 's';
+  var h = Math.floor(m / 60); m = m % 60;
+  return h + 'h' + m + 'm';
+}
+function fmtTime(t) {
+  var d = new Date(t);
+  function p(n) { return (n < 10 ? '0' : '') + n; }
+  return p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
+}
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+  });
+}
+function $(id) { return document.getElementById(id); }
+
+function tip(msg, kind) {
+  var el = $('tip');
+  el.textContent = msg;
+  el.className = 'tip show' + (kind ? ' ' + kind : '');
+  if (tipTimer) clearTimeout(tipTimer);
+  tipTimer = setTimeout(function () { el.className = 'tip'; }, 4000);
+}
+
+function render(d) {
+  $('hdr').className = (d.uptimeMs > 0) ? 'hdr on' : 'hdr';
+
+  $('v-bridge').innerHTML = d.uptimeMs > 0
+    ? '<span class="ok">已连接 · ' + fmtUptime(d.uptimeMs) + '</span>'
+    : '<span class="err">未连接</span>';
+
+  var running = d.appsRunning || [];
+  $('v-app').textContent = running.length
+    ? running.join(' / ') + '（' + running.length + ' 路）'
+    : '未附着（用到自动起）';
+
+  var q = $('v-queue');
+  q.textContent = (d.queued || 0) + ' / ' + d.queueMax;
+  q.className = 'v' + ((d.queued || 0) >= d.queueMax ? ' err' : ((d.queued || 0) > 0 ? ' warn' : ' ok'));
+
+  // 工具组数在桥侧拿不到（那是 MCP server 的注册表），这里显示说明
+  $('v-group').innerHTML = '基础 40 / 共 288 <span style="color:var(--dim);font-size:11px">（按需加载）</span>';
+
+  // 最近改动
+  var recent = d.recent || [];
+  var log = $('log');
+  if (!recent.length) {
+    log.innerHTML = '<div class="empty">暂无记录</div>';
+  } else {
+    log.innerHTML = recent.map(function (e) {
+      return '<div class="item' + (e.ok ? '' : ' fail') + '">' +
+        '<span class="t">' + fmtTime(e.t) + '</span>' +
+        '<span class="a">' + esc(e.action) + '</span>' +
+        '<span class="s">' + esc(e.summary) + '</span></div>';
+    }).join('');
+  }
+
+  // 操作目标：从最近改动里带 @文档名 的请求推断
+  var target = null;
+  for (var i = recent.length - 1; i >= 0; i--) {
+    var m = /@(.+)$/.exec(recent[i].summary || '');
+    if (m) { target = m[1]; break; }
+  }
+  var box = $('target');
+  if (target) {
+    box.className = 'target';
+    $('target-name').textContent = target;
+    $('target-lock').textContent = '锁定';
+  } else {
+    box.className = 'target none';
+    $('target-name').textContent = '未锁定（跟随活动文档）';
+    $('target-lock').textContent = '未锁定';
+  }
+}
+
+function poll() {
+  fetch(ENDPOINT).then(function (r) { return r.json(); }).then(render).catch(function () {
+    $('hdr').className = 'hdr';
+    $('v-bridge').innerHTML = '<span class="err">连不上桥</span>';
+    tip('HTTP 端点不通。若桥在跑，检查端口占用（WPS_BRIDGE_HTTP_PORT，默认 27731）。');
+  });
+}
+
+/* ---------- 快捷动作：全部接真功能 ---------- */
+function act(what) {
+  try {
+    var A = window.Application;
+    if (!A) { tip('拿不到 WPS 应用对象'); return; }
+
+    if (what === 'save') {
+      if (A.ActiveDocument) { A.ActiveDocument.Save(); tip('已保存当前文档'); }
+      else tip('没有活动文档');
+    } else if (what === 'undo') {
+      if (A.Undo) { A.Undo(); tip('已撤销一步'); }
+      else tip('本机 WPS 不支持 Undo');
+    } else if (what === 'pdf') {
+      var d = A.ActiveDocument;
+      if (!d) { tip('没有活动文档'); return; }
+      var base = (d.FullName || d.Name || '导出').replace(/\.[^.]+$/, '');
+      var out = base + '_' + stamp() + '.pdf';
+      d.ExportAsFixedFormat(out, 17, false);
+      tip('已导出：' + out);
+    } else if (what === 'snap') {
+      var d3 = A.ActiveDocument;
+      if (!d3 || !d3.FullName) { tip('文档未保存到磁盘，无法建快照'); return; }
+      var fso = new ActiveXObject('Scripting.FileSystemObject');
+      var sdir = d3.FullName.replace(/[^\\]*$/, '') + '.mcp-snapshots\\';
+      if (!fso.FolderExists(sdir)) fso.CreateFolder(sdir);
+      var sbase = (d3.Name || 'doc').replace(/\.[^.]+$/, '');
+      var sext = (d3.Name || '').match(/\.[^.]+$/) || [''];
+      var sout = sdir + sbase + '_' + stamp() + sext[0];
+      fso.CopyFile(d3.FullName, sout, true);
+      tip('已建快照：' + sout);
+    } else if (what === 'unstick') {
+      try { A.Calculation = -4135; } catch (e1) {}
+      try { A.ScreenUpdating = false; } catch (e2) {}
+      try { A.Calculation = -4105; A.ScreenUpdating = true; } catch (e3) {}
+      tip('已尝试解除卡死；若仍卡请关掉 WPS 对话框或重启');
+    }
+  } catch (e) {
+    tip('失败：' + e.message);
+  }
+}
+
+function stamp() {
+  var d = new Date();
+  function p(n) { return (n < 10 ? '0' : '') + n; }
+  return d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + '_' +
+         p(d.getHours()) + p(d.getMinutes()) + p(d.getSeconds());
+}
+
+poll();
+setInterval(poll, 2000);
+</script>
+</body>
+</html>

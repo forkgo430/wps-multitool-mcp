@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 安装 / 连接问题
+    url: https://github.com/forkgo430/wps-multitool-mcp#故障排除
+    about: 先看 README 的「快速开始」「环境要求」「故障排除」三节
+  - name: 用法与选型问题
+    url: https://github.com/forkgo430/wps-multitool-mcp#设计取舍
+    about: "工具不存在"多半是组没加载；近名工具先读 notFor
