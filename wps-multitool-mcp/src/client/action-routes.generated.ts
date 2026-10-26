@@ -3,8 +3,8 @@
  * 源：scripts/wps-com.ps1 的【顶层】switch ($Action) 分支（嵌套 switch 的分支标签不算动作）。
  * 重新生成：node scripts/gen-action-routes.js
  *
- * 统计：common=20  word=72  ppt=111  excel=103  合计 306
- * 口径：可分发动作 306 个（含 __ 内部探针 10 个）→ 面向用户 296 个
+ * 统计：common=20  word=74  ppt=111  excel=105  合计 310
+ * 口径：可分发动作 310 个（含 __ 内部探针 10 个）→ 面向用户 300 个
  */
 
 import type { AppKey } from './action-routes';
@@ -38,6 +38,7 @@ export const ACTION_ROUTES: Record<string, AppKey> = {
   "addPageNumber": 'word',
   "addPptHyperlink": 'ppt',
   "addShape": 'ppt',
+  "addSlicer": 'excel',
   "addSlide": 'ppt',
   "addStyle": 'word',
   "addTextBox": 'ppt',
@@ -74,6 +75,7 @@ export const ACTION_ROUTES: Record<string, AppKey> = {
   "createChart": 'excel',
   "createDocument": 'word',
   "createDonutChart": 'ppt',
+  "createExcelTable": 'excel',
   "createFlowChart": 'ppt',
   "createGauge": 'ppt',
   "createGrid": 'ppt',
@@ -221,6 +223,7 @@ export const ACTION_ROUTES: Record<string, AppKey> = {
   "replacePptImage": 'ppt',
   "replacePptText": 'ppt',
   "replaceRange": 'word',
+  "reviewMode": 'word',
   "save": 'common',
   "saveAs": 'common',
   "set3DDepth": 'ppt',
@@ -305,6 +308,7 @@ export const ACTION_ROUTES: Record<string, AppKey> = {
   "switchWorkbook": 'excel',
   "textToColumns": 'excel',
   "transpose": 'excel',
+  "undoSteps": 'word',
   "unfreezePanes": 'excel',
   "unifyFont": 'ppt',
   "unmergeCells": 'excel',
