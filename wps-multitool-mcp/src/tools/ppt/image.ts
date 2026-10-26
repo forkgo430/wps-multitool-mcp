@@ -13,10 +13,12 @@
  */
 
 import { v4 as uuidv4 } from 'uuid';
+import { imageContentBlock } from '../../utils/image-inline';
 import {
   ToolDefinition,
   ToolHandler,
   ToolCallResult,
+  ToolContent,
   ToolCategory,
   RegisteredTool,
 } from '../../types/tools';
@@ -410,10 +412,14 @@ export const exportSlideAsImageHandler: ToolHandler = async (
         `尺寸: ${finalWidth} x ${finalHeight}\n` +
         `输出路径: ${outputPath}`;
 
+      // 图像内联（2026-10-26 对标）：把导出的图作为工具结果一并返回，AI 能直接"看到"效果自查
+      const image = await imageContentBlock(outputPath, filterName === 'PNG' ? 'image/png' : 'image/jpeg');
+      const content: ToolContent[] = image ? [{ type: 'text' as const, text }, image] : [{ type: 'text' as const, text }];
+
       return {
         id: uuidv4(),
         success: true,
-        content: [{ type: 'text', text }],
+        content,
       };
     } else {
       return {

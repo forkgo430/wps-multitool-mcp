@@ -19,10 +19,12 @@ import {
   ToolDefinition,
   ToolHandler,
   ToolCallResult,
+  ToolContent,
   ToolCategory,
   RegisteredTool,
 } from '../../types/tools';
 import { wpsClient } from '../../client/wps-client';
+import { imageContentBlock } from '../../utils/image-inline';
 import { WpsAppType } from '../../types/wps';
 
 /**
@@ -602,10 +604,14 @@ export const exportChartAsImageHandler: ToolHandler = async (
         `输出路径: ${outputPath}` +
         (sheet ? `\n工作表: ${sheet}` : '');
 
+      // 图像内联（2026-10-26 对标）：AI 直接"看到"导出的图，自查效果
+      const image = await imageContentBlock(outputPath, filterName === 'PNG' ? 'image/png' : 'image/jpeg');
+      const content: ToolContent[] = image ? [{ type: 'text' as const, text }, image] : [{ type: 'text' as const, text }];
+
       return {
         id: uuidv4(),
         success: true,
-        content: [{ type: 'text', text }],
+        content,
       };
     } else {
       return {
@@ -749,10 +755,14 @@ export const exportRangeAsImageHandler: ToolHandler = async (
         `输出路径: ${outputPath}` +
         (sheet ? `\n工作表: ${sheet}` : '');
 
+      // 图像内联（2026-10-26 对标）：AI 直接"看到"导出的图，自查效果
+      const image = await imageContentBlock(outputPath, filterName === 'PNG' ? 'image/png' : 'image/jpeg');
+      const content: ToolContent[] = image ? [{ type: 'text' as const, text }, image] : [{ type: 'text' as const, text }];
+
       return {
         id: uuidv4(),
         success: true,
-        content: [{ type: 'text', text }],
+        content,
       };
     } else {
       return {
