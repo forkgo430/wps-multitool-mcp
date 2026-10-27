@@ -118,7 +118,7 @@
 | `wps_word_smart_fill_field` |  | — | live | 智能填写Word模板中的字段。自动识别关键字附近的填写模式，在正确位置插入内容并保持原有格式。<br><sub>别名：智能填充域 / 填充 / 域</sub> |
 | `wps_word_split_cell` |  | N | live | 拆分一个已合并的单元格。<br><sub>别名：拆分单元格 / 分割单元格 / 单元格</sub> |
 | `wps_word_table_row_col` |  | N | live | 在表格里插入或删除行/列。<br><sub>别名：表格行col / 行</sub> |
-| `wps_word_undo` |  | — | static | 按步撤销这份文档里最近的编辑。 |
+| `wps_word_undo` |  | DN | static | 按步撤销这份文档里最近的编辑。 |
 | `wps_word_update_fields` |  | — | live | 刷新文档里的所有域：目录、图表目录、交叉引用、页码等。<br><sub>别名：更新域 / 刷新域 / 域</sub> |
 
 ## Excel（91）

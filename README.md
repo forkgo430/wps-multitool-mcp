@@ -94,7 +94,7 @@ irm https://cdn.jsdelivr.net/gh/forkgo430/wps-multitool-mcp@main/scripts/install
 <!-- AUTO:tool-stats:start -->
 - **287 个工具**（7 个内置 + 280 个专业/组工具）；**默认只列 40 个**（基础档 ∩ 真机验证，按需加载 —— 口径与校验见 `scripts/manual/basic-tier-verify.js`）
 - 分布（按工具组，内置计入对应组）：通用 26（含 core）/ Word 69 / Excel 91 / PPT 101
-- 注解（实测）：只读 51 / 破坏性 35 / 非幂等 110，覆盖 287/287
+- 注解（实测）：只读 51 / 破坏性 36 / 非幂等 111，覆盖 287/287
 <!-- AUTO:tool-stats:end -->
 
 </details>
@@ -227,7 +227,7 @@ dsh plugin --profile <你的profile> add dsh-multitool
 ## 路线
 
 - **Linux / macOS**：平台自动识别与加载项通道骨架已落地，WPS JSAPI 全量覆盖率已实测
-  （296 动作：支持 199 / 可适配 45+），动作层实现中。详见 `docs/agents/linux/`。
+  （296 动作：支持 199 / 可适配 45+），动作层实现中。
 - **多应用批量与自动化检查**持续加细；欢迎 [提 issue](https://github.com/forkgo430/wps-multitool-mcp/issues) 点名你最想要的场景。
 
 ## 许可

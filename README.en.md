@@ -96,7 +96,7 @@ to the new tools with parameters migrated.
 <!-- AUTO:tool-stats:start -->
 - **287 tools** (7 built-in + 280 specialized); **only 40 listed by default** (essential ∩ live-verified, load on demand — see `scripts/manual/basic-tier-verify.js`)
 - Distribution (by tool group, built-ins counted in their app group): Common 26 (incl. core) / Word 69 / Excel 91 / PPT 101
-- Annotations (measured): read-only 51 / destructive 35 / non-idempotent 110 — coverage 287/287
+- Annotations (measured): read-only 51 / destructive 36 / non-idempotent 111 — coverage 287/287
 <!-- AUTO:tool-stats:end -->
 
 </details>
