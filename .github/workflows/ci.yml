@@ -85,6 +85,13 @@ jobs:
 
       - name: 上传验证日志
         if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verify-log
+          path: |
+            ~/.workbuddy/wps-multitool-mcp/logs/*.log
+            ~/.wps-multitool-mcp/logs/*.log
+          if-no-files-found: ignore
 
   # Linux 门禁（2026-10-26 评审建议）：验证跨平台行为——非 Windows 平台上
   # Windows-only 门禁正确跳过、构建与生成器产物一致、平台识别返回正确判定。
@@ -114,10 +121,3 @@ jobs:
       - name: 快测门禁（Linux 上 Windows-only 自动跳过）
         working-directory: wps-multitool-mcp
         run: npm run verify
-        uses: actions/upload-artifact@v4
-        with:
-          name: verify-log
-          path: |
-            ~/.workbuddy/wps-multitool-mcp/logs/*.log
-            ~/.wps-multitool-mcp/logs/*.log
-          if-no-files-found: ignore
