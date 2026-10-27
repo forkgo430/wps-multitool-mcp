@@ -122,6 +122,8 @@ const DESTRUCTIVE_EXACT = new Set([
   'quitWps',
   // handleRevisions：接受/拒绝修订会整块增删内容，修订记录处理掉就没了 —— 用户会想先看一眼
   'handleRevisions',
+  // undoSteps：撤销 = 把最近的编辑丢掉，连调几次会连退几步（非幂等）—— 撤销前必须留快照
+  'undoSteps',
 ]);
 
 export function isDestructiveAction(action: string): boolean {

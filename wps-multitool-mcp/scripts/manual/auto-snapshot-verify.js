@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Input: 无（全程 mock COM，不碰 WPS、不起桥）
- * Output: 单工具自动快照的四条断言 —— 破坏性 1 份 / 批量 3 步仍 1 份 / 只读 0 份 / 关开关 0 份
+ * Output: 单工具自动快照的断言组 —— 破坏性 1 份 / 批量 3 步仍 1 份 / 撤销 1 份 / 只读 0 份 / 关开关 0 份
  * Pos: 第 4 轮"单工具写入也自动快照"的验收脚本。一旦我被修改，请更新我的头部注释，以及所属目录的md。
  *
  * 为什么必须能离开真机验
@@ -105,12 +105,25 @@ const call = (name, args = {}) => toolRegistry.callTool(ToolRegistry.createReque
   ok(`${READONLY} 被判为不需要快照`, snapshotRiskOf(READONLY) === '', JSON.stringify(rAnn));
   ok(`${DESTRUCTIVE} 注解 destructiveHint=true`, dAnn && dAnn.destructiveHint === true, JSON.stringify(dAnn));
 
+  // 2026-10-27 评审回归：撤销丢的是真编辑且非幂等，撤销前必须留快照（此前漏判）
+  const UNDO = 'wps_word_undo';
+  const uAnn = getToolAnnotations(UNDO);
+  ok(`${UNDO} 被判为需要快照`, snapshotRiskOf(UNDO) !== '', snapshotRiskOf(UNDO));
+  ok(`${UNDO} 注解 idempotentHint=false`, uAnn && uAnn.idempotentHint === false, JSON.stringify(uAnn));
+
   console.log('\n=== 1. 单工具（破坏性）→ 正好 1 份 ===');
   const before1 = countSnaps();
   const r1 = await call(DESTRUCTIVE, { startRow: 1, count: 1 });
   const after1 = countSnaps();
   ok('调用返回 success', r1.success === true, String(r1.error || ''));
   ok('快照 +1', after1 - before1 === 1, `${before1} → ${after1}`);
+
+  console.log('\n=== 1.5 撤销工具（wps_word_undo）→ 正好 1 份 ===');
+  const before15 = countSnaps();
+  const r15 = await call(UNDO, { steps: 1 });
+  const after15 = countSnaps();
+  ok('撤销调用返回 success', r15.success === true, String(r15.error || ''));
+  ok('撤销前快照 +1', after15 - before15 === 1, `${before15} → ${after15}`);
 
   console.log('\n=== 2. 批量 3 步（每步都破坏性）→ 仍只 1 份 ===');
   const before2 = countSnaps();
