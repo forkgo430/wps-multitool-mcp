@@ -4371,6 +4371,14 @@ switch ($Action) {
                     Output-Json @{ success = $false; error = "探测失败：临时文档未就绪（Documents.Add 返回空壳，等待 3 秒仍不可用）" }
                     return
                 }
+
+                # 空壳对象判定（BACKLOG 顺手项 2026-10-27 补）：Documents.Add 可能返回
+                # 非 null 但不健康的空壳（B3 线门禁"Documents.Count 0→0"的根因）——
+                # 只判 null 捕不住它，这里升级为健康判定，同样显式失败。
+                if (-not (Test-DocHealthy $doc)) {
+                    Output-Json @{ success = $false; error = "探测失败：临时文档为空壳（非 null 但不健康），等待 3 秒仍不可用" }
+                    return
+                }
             # 铺探测素材：一段文字 + 一张 2x2 表 + 一个书签
             try { $null = $doc.Content.InsertAfter("__probe__ 内容") } catch {}
             try { $null = $doc.Tables.Add($doc.Range($doc.Content.End - 1, $doc.Content.End - 1), 2, 2) } catch {}
@@ -8180,6 +8188,163 @@ switch ($Action) {
         $keys = @()
         try { $keys = @($p.PSObject.Properties | ForEach-Object { $_.Name }) } catch {}
         Output-Json @{ success = $true; data = @{ received = $p; keys = $keys; ptype = $p.GetType().FullName } }
+    }
+
+    # 【B5 引擎探针 · deckkit 第一步】BORROW-PLAN §4.3 的 COM 调用面 + 七坑真机复核（对账卡目标 A/B）。
+    # 一次调用跑完全部分段（每段独立 try/catch，一段炸不影响其余），分段 JSON 原样回传——
+    # 判定归决策者，探针只交证据。临时演示/文档探完即关（不保存）；产物落 %TEMP%\wps-deckkit\。
+    # 火力分配（任务卡）：渐变（素材路线生死）最高优先；溢出可测性；行高标定；UserPicture+SaveAs32；
+    # SVG；Bibliography/Fields（word 侧）；七坑 #1/#2/#3/#5/#6 真机段。
+    "__probeDeckkit" {
+        $out = @{}
+        $dir = Join-Path $env:TEMP 'wps-deckkit'
+        try { New-Item -ItemType Directory -Path $dir -Force | Out-Null } catch {}
+        $out.workDir = $dir
+
+        # ---- PPT 段宿主：优先活动演示，没有就新建临时演示（探完关闭）----
+        $ppt = $null; $pres = $null; $tmpPres = $false
+        try { $ppt = Get-WpsPpt } catch { $out.pptHostErr = $_.Exception.Message; $ppt = $null }
+        if ($null -ne $ppt) {
+            try { $pres = $ppt.ActivePresentation } catch { $pres = $null }
+            if ($null -eq $pres) {
+                try { $pres = $ppt.Presentations.Add(); $pres.Slides.Add(1, 2) | Out-Null; $tmpPres = $true } catch { $out.newPresErr = $_.Exception.Message; $pres = $null }
+            }
+        }
+        if ($null -eq $pres) { $out.fatal = "no ppt host"; Output-Json @{ success = $false; error = "WPS PPT not running"; data = $out }; return }
+        $slide = $null
+        try { $slide = $pres.Slides.Item(1) } catch { $slide = $null }
+        if ($null -eq $slide) {
+            try { $slide = $pres.Slides.Add(1, 12) } catch { $out.slideErr = $_.Exception.Message }
+        }
+
+        # ---- seg1 形状渐变填充（素材路线生死判定）----
+        try {
+            $g = @{}
+            $sh = $slide.Shapes.AddShape(1, 10, 10, 200, 60)
+            try {
+                $sh.Fill.TwoColorGradient(1, 1)
+                $g.twoColorGradient = "ok"
+                try { $g.foreColorAfter = [string]$sh.Fill.ForeColor.RGB } catch { $g.foreErr = $_.Exception.Message }
+                try { $g.backColor = [string]$sh.Fill.BackColor.RGB } catch { $g.backErr = $_.Exception.Message }
+            } catch { $g.twoColorGradientErr = $_.Exception.Message }
+            try { $g.gradientStops = [string]$sh.Fill.GradientStops.Count } catch { $g.stopsErr = $_.Exception.Message }
+            try { $g.gradientAngle = [string]$sh.Fill.GradientAngle } catch { $g.angleErr = $_.Exception.Message }
+            try { $sh.Delete() } catch {}
+            $out.seg1_gradient = $g
+        } catch { $out.seg1_gradient = @{ ok = $false; error = $_.Exception.Message } }
+
+        # ---- seg2 文本溢出可测性（BoundWidth/BoundHeight vs 框宽；WordWrap 读写）----
+        try {
+            $t = @{}
+            $tb = $slide.Shapes.AddTextbox(1, 10, 120, 200, 60)
+            try { $tb.TextFrame.WordWrap = $true; $t.wordWrapSet = "ok" } catch { $t.wordWrapErr = $_.Exception.Message }
+            try { $t.wordWrapRead = [string]$tb.TextFrame.WordWrap } catch { $t.wordWrapReadErr = $_.Exception.Message }
+            try { $tb.TextFrame.TextRange.Text = "探针长文本" * 30; $t.longTextSet = "ok" } catch { $t.textErr = $_.Exception.Message }
+            try { $t.boundWidth = [string]$tb.TextFrame.TextRange.BoundWidth } catch { $t.bwErr = $_.Exception.Message }
+            try { $t.boundHeight = [string]$tb.TextFrame.TextRange.BoundHeight } catch { $t.bhErr = $_.Exception.Message }
+            try { $t.frameWidth = [string]$tb.Width } catch {}
+            try { $t.overflowProperty = [string]$tb.TextFrame.Overflowing } catch { $t.overflowErr = $_.Exception.Message }
+            try { $tb.Delete() } catch {}
+            $out.seg2_overflow = $t
+        } catch { $out.seg2_overflow = @{ ok = $false; error = $_.Exception.Message } }
+
+        # ---- seg3 多行文本行高标定（2 行 vs 3 行同字号，标定我们自己的行高系数）----
+        try {
+            $h = @{}
+            $tb = $slide.Shapes.AddTextbox(1, 10, 200, 300, 200)
+            try { $tb.TextFrame.TextRange.Font.Size = 24 } catch {}
+            try { $tb.TextFrame.TextRange.Text = "第一行`n第二行"; $h.twoLinesBound = [string]$tb.TextFrame.TextRange.BoundHeight } catch { $h.twoErr = $_.Exception.Message }
+            try { $tb.TextFrame.TextRange.Text = "第一行`n第二行`n第三行"; $h.threeLinesBound = [string]$tb.TextFrame.TextRange.BoundHeight } catch { $h.threeErr = $_.Exception.Message }
+            try {
+                $d2 = [double]$h.twoLinesBound; $d3 = [double]$h.threeLinesBound
+                if ($d2 -gt 0 -and $d3 -gt $d2) { $h.lineHeightAt24 = [string][math]::Round($d3 - $d2, 2) }
+            } catch { $h.calcErr = $_.Exception.Message }
+            try { $tb.Delete() } catch {}
+            $out.seg3_lineHeight = $h
+        } catch { $out.seg3_lineHeight = @{ ok = $false; error = $_.Exception.Message } }
+
+        # ---- seg4 页底图填充 + SaveAs 第二参 32 导 PDF ----
+        try {
+            $u = @{}
+            try { $slide.Export((Join-Path $dir 'probe-slide.png'), 'PNG', 1280, 720); $u.exportPng = (Test-Path (Join-Path $dir 'probe-slide.png')) } catch { $u.exportErr = $_.Exception.Message }
+            try {
+                $slide.FollowMasterBackground = $false
+                $slide.Background.Fill.UserPicture((Join-Path $dir 'probe-slide.png'))
+                $u.userPicture = "ok"
+            } catch { $u.userPictureErr = $_.Exception.Message }
+            try {
+                $pdfPath = Join-Path $dir 'probe.pdf'
+                $pres.SaveAs($pdfPath, 32)
+                Start-Sleep -Milliseconds 400
+                $u.pdfExists = (Test-Path $pdfPath)
+                if ($u.pdfExists) { $u.pdfSize = (Get-Item $pdfPath).Length }
+            } catch { $u.saveAsPdfErr = $_.Exception.Message }
+            $out.seg4_background_pdf = $u
+        } catch { $out.seg4_background_pdf = @{ ok = $false; error = $_.Exception.Message } }
+
+        # ---- seg5 SVG 插入兼容性 ----
+        try {
+            $v = @{}
+            $svgPath = Join-Path $dir 'probe.svg'
+            [IO.File]::WriteAllText($svgPath, '<svg xmlns="http://www.w3.org/2000/svg" width="100" height="60"><rect width="100" height="60" fill="#336699"/></svg>')
+            try {
+                $pic = $slide.Shapes.AddPicture($svgPath, 0, 1, 300, 10, 100, 60)
+                $v.addSvg = "ok"; $v.svgShapeType = [string]$pic.Type
+                try { $pic.Delete() } catch {}
+            } catch { $v.addSvgErr = $_.Exception.Message }
+            $out.seg5_svg = $v
+        } catch { $out.seg5_svg = @{ ok = $false; error = $_.Exception.Message } }
+
+        # ---- seg7 七坑真机段：#1 Adjustments / #2 Bold=False / #3 WordWrap+居中 / #5 AddTable 边框 / #6 SaveAs 校验 ----
+        try {
+            $s7 = @{}
+            # 坑1 Adjustments.Item(1) = 赋值（PowerShell 语法实测——B3 预判：pywin32 专属坑，ps1 天然安全）
+            try {
+                $sh = $slide.Shapes.AddShape(1, 10, 300, 120, 80)
+                try { $sh.Adjustments.Item(1) = 0.3; $s7.pit1_adjustments = "ok, value=" + [string]$sh.Adjustments.Item(1) } catch { $s7.pit1_adjustmentsErr = $_.Exception.Message }
+                try { $sh.Delete() } catch {}
+            } catch { $s7.pit1_err = $_.Exception.Message }
+            # 坑2 Bold = $false 直接赋（对方文档：抛异常）
+            try {
+                $tb = $slide.Shapes.AddTextbox(1, 10, 400, 200, 40)
+                $tb.TextFrame.TextRange.Font.Bold = $true
+                try { $tb.TextFrame.TextRange.Font.Bold = $false; $s7.pit2_boldFalse = "ok, readback=" + [string]$tb.TextFrame.TextRange.Font.Bold } catch { $s7.pit2_boldFalseErr = $_.Exception.Message }
+                try { $tb.Delete() } catch {}
+            } catch { $s7.pit2_err = $_.Exception.Message }
+            # 坑3 WordWrap=$false + 居中 + 长文本（对方文档：文字出页）
+            try {
+                $tb = $slide.Shapes.AddTextbox(1, 300, 400, 150, 40)
+                try { $tb.TextFrame.WordWrap = $false } catch {}
+                try { $tb.TextFrame.TextRange.ParagraphFormat.Alignment = 2 } catch {}
+                try { $tb.TextFrame.TextRange.Text = "这是一段故意很长的中文文本用来复现 WordWrap 关闭加居中的出页问题" } catch {}
+                try { $s7.pit3_boundLeft = [string]$tb.TextFrame.TextRange.BoundLeft; $s7.pit3_boundWidth = [string]$tb.TextFrame.TextRange.BoundWidth; $s7.pit3_frameLeft = [string]$tb.Left; $s7.pit3_frameWidth = [string]$tb.Width } catch { $s7.pit3_readErr = $_.Exception.Message }
+                try { $tb.Delete() } catch {}
+            } catch { $s7.pit3_err = $_.Exception.Message }
+            # 坑5 AddTable 边框读写（对方文档：边框 API 不稳）
+            try {
+                $tbl = $slide.Shapes.AddTable(2, 2, 10, 460, 300, 100)
+                try {
+                    $c = $tbl.Table.Cell(1, 1)
+                    try { $c.Borders.Item(1).LineStyle = 1; $s7.pit5_lineStyleSet = "ok, readback=" + [string]$c.Borders.Item(1).LineStyle } catch { $s7.pit5_styleErr = $_.Exception.Message }
+                    try { $s7.pit5_bordersCount = [string]$c.Borders.Count } catch { $s7.pit5_countErr = $_.Exception.Message }
+                } catch { $s7.pit5_cellErr = $_.Exception.Message }
+                try { $tbl.Delete() } catch {}
+            } catch { $s7.pit5_err = $_.Exception.Message }
+            # 坑6 SaveAs 落盘校验（pptx：存在性 + 大小）
+            try {
+                $pp = Join-Path $dir 'probe-out.pptx'
+                $pres.SaveAs($pp)
+                Start-Sleep -Milliseconds 400
+                $s7.pit6_saveAsExists = (Test-Path $pp)
+                if ($s7.pit6_saveAsExists) { $s7.pit6_saveAsSize = (Get-Item $pp).Length }
+            } catch { $s7.pit6_err = $_.Exception.Message }
+            $out.seg7_sevenPits = $s7
+        } catch { $out.seg7_sevenPits = @{ ok = $false; error = $_.Exception.Message } }
+
+        # ---- 清理：临时演示关闭不保存；产物目录保留（供人工复核）----
+        try { if ($tmpPres -and $null -ne $pres) { $pres.Close() } } catch { $out.closeErr = $_.Exception.Message }
+
+        Output-Json @{ success = $true; data = $out }
     }
 
     # 【临时诊断】查 WPS 文字的 COM 状态（进程/文档数/ActiveDocument 是否可用）
