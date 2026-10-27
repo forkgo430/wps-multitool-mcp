@@ -1,5 +1,66 @@
 # wps-multitool-mcp
 
+## 1.0.4
+
+### Patch Changes
+
+- 5b24452: 每个工具都重新说清了它会不会动你的文档
+  
+  一批工具此前在工具清单里不带任何读写提示，AI 只能去读描述猜它们能不能改文档 —— 猜错的话，动手之前不会问你。现在 284 个工具全部带上了只读 / 破坏性 / 非幂等标记（此前是 266 个）。
+  
+  顺带修掉了一个让这张表时好时坏的问题：生成它的脚本靠"跑一遍看这个工具发了什么命令"来取值，慢的工具有时跑完、有时被判超时，同一个工具这一次和下一次给出的结果不一样。现在这些取值直接查源码写定，不再看这一趟跑得快不快。
+- 5b24452: 写入与安全：表格写数字不再报错，退出不再误杀你开着的 WPS
+  
+  这版集中修一批"真用起来才会撞上"的问题，每条都有真机复现：
+  
+  - **往表格里写数字不再报错。** 此前 `write_range`、`set_cell_value`、`evaluate_formula` 的落盘遇到数字必然抛"类型转换失败"——值从 JSON 进 PowerShell 后被包装，COM 认不出。现在按类型分派：数字写数值格式、文本写文本格式，"007"、"1e5"、日期串的形状也全部保住。
+  - **退出命令不再连坐。** 此前 `quit` 在优雅退出后会强杀全部 wps.exe——你自己开着的、没保存的窗口一起没了。现在：有未保存文档先拒绝并列出清单，确认放弃才继续；退出只回收本会话自己创建的实例。
+  - **修订工具不再是"假只读"。** `wps_word_revisions` 的接受/拒绝分支此前没被登记进注解表，整个工具被当成只读——"接受所有修订"既不建快照也不弹确认。现在按写入+破坏性处理，动手前自动快照。
+  - **日志默认不再记录文档内容。** 此前每次调用的参数（含单元格数据、正文）整份写进日志文件。现在默认只记"调了什么、数据多大"；排障要完整参数时设 `WPS_LOG_PARAMS=1`。
+  - Word 关闭文档的报错提示里写了不存在的参数名（`saveChanges`），照提示操作永远关不上，已改为真实参数 `save`。
+- 5b24452: 多目标：AI 可以钉住"改哪一份"了
+  
+  任务同时涉及多份文档时（比如"把 A 表的数据贴进 B 文档"），此前 AI 只能跟着 WPS 的当前焦点走——
+  焦点一切换就改错地方，而且不报错。
+  
+  现在 Word 的 67 个工具支持 `target` 参数：显式指定操作哪一份文档、哪一个 WPS 实例；
+  实例池默认 1、最多 3，超限明确拒绝。不传 `target` 的调用行为与之前完全一致。
+- 5b24452: 兼容性：PowerShell 7 可用，Linux 支持的地基就位
+  
+  - **PowerShell 7 兼容**：桥现在优先使用 pwsh（显式 STA），未安装时自动回退 Windows PowerShell 5.1。
+    5.1 读无 BOM 脚本导致中文乱码的一类问题随之消失。
+  - **Linux 地基**：新增平台自动识别（Windows / WSL / Linux 五层决策，`WPS_BACKEND` 可强制指定或禁用）
+    与 Windows 链路冻结门禁。Linux 上的调用会明确告知"通道尚未实现"并列出可用选项，
+    而不是抛出无法理解的管道错误——完整 Linux 支持随后续版本到来（加载项通道骨架已就位）。
+- 5b24452: 修 6 个「从上线起从未成功过」的工具，并堵住让它们漏网的口子
+  
+  这 6 个工具的动作名在 `scripts/wps-com.ps1` 的顶层 `switch ($Action)` 里**根本不存在**，
+  每次调用都落到默认分支回 `Unknown action`。它们都带着一句 `// NOTE: 仅Windows支持` ——
+  那句注释是假的：Windows 上也不支持，ps1 里压根没有这些 case。读代码的人会以为"Windows 能用"。
+  
+  已修（动作名改正或补 case，逐个真机读过值）：
+  
+  - `wps_word_set_text_color` → 改调 `setFont`（`setFont` 才吃 color）
+  - `wps_word_set_line_spacing` → 改调 `setParagraph`（`setFont` 的参数表里没有 lineSpacing）
+  - `wps_excel_auto_sum` → 改调 `setFormula` 并自己拼 `=SUM(区域)`；写进去的是**活公式**，源区域改了会跟着变
+  - `wps_excel_evaluate_formula` → 补 `evaluateFormula` case（`Application.Evaluate`，**只算不写**；
+    给了 `cell` 才由 TS 另发一次写入动作，避免"声明只读却动手改"）
+  - `wps_excel_set_zoom` → 补 `setZoom` case（`ActiveWindow.Zoom`）。
+    它与 `PageSetup.Zoom`（打印缩放）是两回事，别混用
+  - `wps_word_insert_section_break` → 改调 `insertPageBreak`，并给它补 `evenPage`/`oddPage`
+    两个映射值；不认识的分隔符类型现在**明确报错**，不再静默退化成分页符
+  
+  顺带（同一条命根子上的两个洞）：
+  
+  - 注解生成器新增**全量交叉校验**：`TOOL_ACTIONS` 里每个动作名都必须能在 ps1 顶层 switch 里查到，
+    查不到就非 0 退出。此前它只校验手写的 `STATIC_ACTIONS`，自动推断出来的动作名不校验 —— 这 6 个就是这么漏的
+  - 路由表生成器改成**只扫主 `switch ($Action)`**（括号深度判顶层）。此前它扫整个文件，
+    把 10 个嵌套 switch 的 mode 标签（`trim` / `placeholder` / `acceptOne` …）当成了动作，
+    让"动作数"虚高 10。运行时无害，但那个数字被写进了文档与断言
+  
+  另外修了 `npm run verify` 的档位开关：它此前被硬编码成全量，与 `verify:all` 完全一样，
+  文件头和 `package.json` 承诺的"快测档"实际不存在。
+
 ## 1.0.2
 
 ### Patch Changes
