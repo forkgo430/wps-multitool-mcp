@@ -1679,22 +1679,37 @@ switch ($Action) {
     }
 
     "save" {
+        # 落盘校验（七坑 #6 收尾 2026-10-28）：Save() 之后读回文档路径，存在性 + 大小>0。
+        # 从未保存过的文档没有 FullName（Save 会弹另存框）——校验只对"有路径"的场景生效，
+        # 无路径时如实回 note，不假装校验过。
+        function Test-SavedOnDisk($obj) {
+            try {
+                $fp = [string]$obj.FullName
+                if (-not $fp -or -not (Test-Path $fp)) { return @{ saved = $true; verified = $false; note = "文档无磁盘路径（从未保存过），无法校验落盘" } }
+                $fi = Get-Item $fp
+                if ($fi.Length -gt 0) { return @{ saved = $true; verified = $true; path = $fp; size = $fi.Length } }
+                return @{ saved = $true; verified = $false; path = $fp; note = "落盘文件大小为 0" }
+            } catch { return @{ saved = $true; verified = $false; note = "落盘校验失败: " + $_.Exception.Message } }
+        }
         $excel = Get-WpsExcel
         if ($null -ne $excel -and $null -ne $(Resolve-Book $excel $p)) {
-            $(Resolve-Book $excel $p).Save()
-            Output-Json @{ success = $true; app = "excel" }
+            $bk = $(Resolve-Book $excel $p)
+            $bk.Save()
+            Output-Json @{ success = $true; app = "excel"; data = (Test-SavedOnDisk $bk) }
             return
         }
         $word = Get-WpsWord
         if ($null -ne $word -and $null -ne $(Resolve-Doc $word $p)) {
-            $(Resolve-Doc $word $p).Save()
-            Output-Json @{ success = $true; app = "word" }
+            $dc = $(Resolve-Doc $word $p)
+            $dc.Save()
+            Output-Json @{ success = $true; app = "word"; data = (Test-SavedOnDisk $dc) }
             return
         }
         $ppt = Get-WpsPpt
         if ($null -ne $ppt -and $null -ne $ppt.ActivePresentation) {
-            $ppt.ActivePresentation.Save()
-            Output-Json @{ success = $true; app = "ppt" }
+            $pr = $ppt.ActivePresentation
+            $pr.Save()
+            Output-Json @{ success = $true; app = "ppt"; data = (Test-SavedOnDisk $pr) }
             return
         }
         Output-Json @{ success = $false; error = "No active document" }
@@ -1721,7 +1736,13 @@ switch ($Action) {
             }
             $same = $false
             try { $same = ([IO.Path]::GetFullPath($actual) -ieq [IO.Path]::GetFullPath($requested)) } catch {} # 吞错有据：比较失败按未验证处理，不静默判成一致
-            return @{ path = $actual; requestedPath = $requested; verified = $same }
+            # 七坑 #6 收尾（2026-10-28）：verified 之外补大小校验（存在 + >0）
+            $size = $null; $sizeNote = $null
+            try {
+                if (Test-Path $actual) { $size = (Get-Item $actual).Length; if ($size -le 0) { $sizeNote = "落盘文件大小为 0" } }
+                else { $sizeNote = "落盘路径不存在" }
+            } catch { $sizeNote = "大小校验失败: " + $_.Exception.Message }
+            return @{ path = $actual; requestedPath = $requested; verified = $same; size = $size; sizeNote = $sizeNote }
         }
 
         if ($appType -eq 'excel') {
@@ -7966,6 +7987,21 @@ switch ($Action) {
         #    实测本机 WPS 12.1 的 Range/Selection.InsertCaption 都会抛"值不在预期的范围内"
         #    （CaptionLabels 集合也不可用），所以必须有这条兜底，否则这个功能直接废掉。
         #    代价：序号是写死的文本，不是活编号域 —— 图表目录收集不到，已在返回值里如实标注。
+        # ①b SEQ 活域兜底（2026-10-28 主线 ps1 增补轮）：__probeCaptionSeq 真机实测
+        #    Fields.Add(rng, -1, "SEQ <label> \* ARABIC", false) 插入成功且编号为活域，
+        #    TablesOfFigures.Add(…, label) 更新后实际收集 1 条（探针 collectedEntries=1）——
+  # 任务卡判定标准：读回 TOF 实际收集条目数 ≥1 → 链条通。
+        #    这层插的是真编号域，图表目录能自动收集；仍失败才落到纯文本。
+        if ($null -eq $mode) {
+            try {
+                $rng = $word.Selection.Range
+                $rng.Collapse(0)
+                $f = $doc.Fields.Add($rng, -1, "SEQ $label \* ARABIC", $false)
+                if ($null -eq $f) { throw "Fields.Add 返回 null" }
+                $mode = "seq"
+                $captionText = "$label "
+            } catch { $seqErr = $_.Exception.Message }
+        }
         if ($null -eq $mode) {
             try {
                 $n = 0
@@ -8190,6 +8226,81 @@ switch ($Action) {
         Output-Json @{ success = $true; data = @{ received = $p; keys = $keys; ptype = $p.GetType().FullName } }
     }
 
+    # 【B5-T3 主线 · 目标 A+B1】题注 SEQ 端到端 + Bibliography 探针（word 宿主，临时文档探完即关）。
+    # 链路判定标准（任务卡）：TOF 实际收集条目数 ≥1 = 链通（不许只看调用成功）。
+    # SEQ 域参考 ps1 既有范式：Fields.Add(rng, -1, 域代码, false)（PAGE/STYLEREF/REF 同款）。
+    "__probeCaptionSeq" {
+        $out = @{}
+        $word = $null; $doc = $null
+        try { $word = Get-WpsWord } catch { $out.hostErr = $_.Exception.Message }
+        if ($null -eq $word) { Output-Json @{ success = $false; error = "WPS Word not running"; data = $out }; return }
+        try {
+            $doc = $word.Documents.Add()
+            for ($i = 0; $i -lt 20; $i++) {
+                Start-Sleep -Milliseconds 150
+                try { $cur = $word.Documents.Item($word.Documents.Count); if (Test-DocHealthy $cur) { $doc = $cur; break } } catch {}
+            }
+            if (-not (Test-DocHealthy $doc)) { Output-Json @{ success = $false; error = "探测失败：临时文档为空壳"; data = $out }; return }
+
+            # 正文一段 + 伪图（占位段落）
+            try { $null = $doc.Content.InsertAfter("探针正文第一段。`r"); } catch { $out.bodyErr = $_.Exception.Message }
+
+            # ---- SEQ 域三形态（哪种能插成功且显示"图 1"）----
+            $seq = @{}
+            try {
+                $rng = $doc.Content; $rng.Collapse(0)
+                $f = $doc.Fields.Add($rng, -1, "SEQ 图 \* ARABIC", $false)
+                if ($null -eq $f) { throw "Fields.Add 返回 null" }
+                $seq.formA_code = "ok"
+                try { $seq.formA_result = [string]$f.Result.Text } catch { $seq.formAResultErr = $_.Exception.Message }
+                try { $seq.formA_codeText = [string]$f.Code.Text } catch {}
+            } catch { $seq.formA_err = $_.Exception.Message }
+            try {
+                $rng = $doc.Content; $rng.Collapse(0)
+                $f = $doc.Fields.Add($rng, 34, "图", $false)
+                if ($null -eq $f) { throw "Fields.Add 返回 null" }
+                $seq.formB_type34 = "ok"
+                try { $seq.formB_result = [string]$f.Result.Text } catch { $seq.formBResultErr = $_.Exception.Message }
+            } catch { $seq.formB_err = $_.Exception.Message }
+            $out.seqField = $seq
+
+            # ---- TOF 收集（链路判定核心）：带标签"图"的图表目录，更新后读回收集条目 ----
+            try {
+                $rng2 = $doc.Content; $rng2.Collapse(0)
+                $tof = $doc.TablesOfFigures.Add($rng2, "图")
+                try { $tof.Update() } catch { $out.tofUpdateErr = $_.Exception.Message }
+                $tofInfo = @{}
+                try { $tofInfo.tofCount = [int]$doc.TablesOfFigures.Count } catch {}
+                try {
+                    $tofText = [string]$doc.TablesOfFigures.Item(1).Range.Text
+                    $tofInfo.tofText = $tofText
+                    # 收集条目数：目录文本里 "图 N" 的出现次数（SEQ 编号至少应有"图 1"）
+                    $m = [regex]::Matches($tofText, "图\s*\d+")
+                    $tofInfo.collectedEntries = $m.Count
+                } catch { $tofInfo.readErr = $_.Exception.Message }
+                $out.tof = $tofInfo
+            } catch { $out.tof = @{ ok = $false; error = $_.Exception.Message } }
+
+            # ---- Bibliography（目标 B1）：存在性 + 书目域可用性 ----
+            try {
+                $bib = @{}
+                try { $bib.hasBibliography = ($null -ne $doc.Bibliography) } catch { $bib.bibliographyErr = $_.Exception.Message }
+                try { if ($null -ne $doc.Bibliography) { $bib.bibSourceCount = [string]$doc.Bibliography.Sources.Count } catch {} } catch { $bib.sourcesErr = $_.Exception.Message }
+                try {
+                    $rng3 = $doc.Content; $rng3.Collapse(0)
+                    $f = $doc.Fields.Add($rng3, -1, "BIBLIOGRAPHY", $false)
+                    if ($null -eq $f) { throw "Fields.Add 返回 null" }
+                    $bib.bibFieldAdd = "ok"
+                } catch { $bib.bibFieldErr = $_.Exception.Message }
+                $out.bibliography = $bib
+            } catch { $out.bibliography = @{ ok = $false; error = $_.Exception.Message } }
+
+            # ---- 清理：临时文档放弃保存关闭（自带收尾，红线教训）----
+            try { $doc.Close(0) } catch { $out.closeErr = $_.Exception.Message }
+        } catch { $out.fatal = $_.Exception.Message }
+        Output-Json @{ success = $true; data = $out }
+    }
+
     # 【B5 引擎探针 · deckkit 第一步】BORROW-PLAN §4.3 的 COM 调用面 + 七坑真机复核（对账卡目标 A/B）。
     # 一次调用跑完全部分段（每段独立 try/catch，一段炸不影响其余），分段 JSON 原样回传——
     # 判定归决策者，探针只交证据。临时演示/文档探完即关（不保存）；产物落 %TEMP%\wps-deckkit\。
@@ -8303,6 +8414,12 @@ switch ($Action) {
                 $sh = $slide.Shapes.AddShape(1, 10, 300, 120, 80)
                 try { $sh.Adjustments.Item(1) = 0.3; $s7.pit1_adjustments = "ok, value=" + [string]$sh.Adjustments.Item(1) } catch { $s7.pit1_adjustmentsErr = $_.Exception.Message }
                 try { $sh.Delete() } catch {}
+                # B5-T3 主线目标 B2：圆角矩（AutoShapeType=5）复测——矩形(1)写 0.3 读回 1，疑"矩形无调节点"
+                try {
+                    $r5 = $slide.Shapes.AddShape(5, 150, 300, 120, 80)
+                    try { $r5.Adjustments.Item(1) = 0.3; $s7.pit1_roundRect = "ok, readback=" + [string]$r5.Adjustments.Item(1) } catch { $s7.pit1_roundRectErr = $_.Exception.Message }
+                    try { $r5.Delete() } catch {}
+                } catch { $s7.pit1_roundErr = $_.Exception.Message }
             } catch { $s7.pit1_err = $_.Exception.Message }
             # 坑2 Bold = $false 直接赋（对方文档：抛异常）
             try {

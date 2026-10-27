@@ -3,14 +3,15 @@
  * 源：scripts/wps-com.ps1 的【顶层】switch ($Action) 分支（嵌套 switch 的分支标签不算动作）。
  * 重新生成：node scripts/gen-action-routes.js
  *
- * 统计：common=20  word=74  ppt=112  excel=105  合计 311
- * 口径：可分发动作 311 个（含 __ 内部探针 11 个）→ 面向用户 300 个
+ * 统计：common=20  word=75  ppt=112  excel=105  合计 312
+ * 口径：可分发动作 312 个（含 __ 内部探针 12 个）→ 面向用户 300 个
  */
 
 import type { AppKey } from './action-routes';
 
 export const ACTION_ROUTES: Record<string, AppKey> = {
   "__probeCaps": 'word',
+  "__probeCaptionSeq": 'word',
   "__probeClose": 'word',
   "__probeDeckkit": 'ppt',
   "__probeDialogs": 'common',
