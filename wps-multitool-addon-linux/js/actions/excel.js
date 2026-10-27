@@ -1448,6 +1448,26 @@
   // B5-T2 的 34 个动作并入注册表
   Object.assign(excelActions, b5t2Actions);
 
+  // ========================================================================
+  // B5-T3：Common 部分支持的 et 型缺口
+  // ========================================================================
+
+  /**
+   * getSelectedText —— S1-REPORT.md:303（§3 #277 部分支持：et 型 sel.Address 是函数须调用）
+   * method 'Selection.Address'（读）。
+   * 语义边界（S1 §4 #14，报告行 343）：Excel 上下文没有"选中文本"——能拿到的是选区【地址】，
+   * 不是文本内容；文本读取走 getRangeData（按地址）。wpp 型无 Selection（不注册）。
+   */
+  // B5-T3 的 et 型缺口并入注册表
+  Object.assign(excelActions, {
+    getSelectedText: guard(function () {
+      return jsapi.jsAsynCall('Selection.Address', {}).then(function (r) {
+        var a = r && typeof r === 'object' && !Array.isArray(r) && 'address' in r ? r.address : r;
+        return { ok: true, data: { address: a === null || a === undefined ? '' : String(a) } };
+      });
+    }),
+  });
+
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = { actions: excelActions, adapter: ExcelAdapter };
   } else {

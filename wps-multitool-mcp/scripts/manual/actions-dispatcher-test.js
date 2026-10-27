@@ -390,50 +390,6 @@ const lastSent = (sent) => sent[sent.length - 1];
     uninstallCefQuery();
   }
 
-  console.log('\n=== jsapi.js 专项：超时 / 回调清理 / 并发 / onFailure ===');
-  {
-    // 超时：onCall 抛错 = 永不回调 → 120ms 后 reject（await 会 throw，用 .then 捕成值）
-    installCefQuery({ onCall: () => { throw new Error('never call back'); } });
-    const t0 = Date.now();
-    const r1 = await jsapi.jsAsynCall('slowMethod', {}).then(() => 'resolved', (e) => e);
-    const dt = Date.now() - t0;
-    ok('超时 → reject 且文案含 method', r1 instanceof Error && /jsAsynCall 超时/.test(r1.message) && /slowMethod/.test(r1.message),
-      r1.message.slice(0, 60));
-    ok('超时时长 ≈ WPS_JSAPI_TIMEOUT(120ms)', dt >= 110 && dt < 1000, `${dt}ms`);
-    ok('超时后全局无残留 jsCallback（清理到位）', jsapi.pendingCallbacks().length === 0, JSON.stringify(jsapi.pendingCallbacks()));
-    uninstallCefQuery();
-
-    // 正常调用后同样无残留
-    installCefQuery({ responses: { m1: { a: 1 } } });
-    await jsapi.jsAsynCall('m1', {});
-    ok('正常调用后无残留 jsCallback', jsapi.pendingCallbacks().length === 0);
-    uninstallCefQuery();
-
-    // 并发：两个调用交错，各自回调不串线
-    const m2 = installCefQuery({
-      responses: { mA: { which: 'A' }, mB: { which: 'B' } },
-      delay: 15,
-    });
-    const pa = jsapi.jsAsynCall('mA', {});
-    const pb = jsapi.jsAsynCall('mB', {});
-    const [ra, rb] = await Promise.all([pa, pb]);
-    ok('并发 A：拿到 A 的结果（不串线）', ra && ra.which === 'A');
-    ok('并发 B：拿到 B 的结果（不串线）', rb && rb.which === 'B');
-    eq('并发发送两条且 method 各自正确', sentOf(m2, 'mA').length + sentOf(m2, 'mB').length, 2);
-    ok('并发完成后无残留 jsCallback', jsapi.pendingCallbacks().length === 0);
-    // 回调名自增不重复
-    const names = m2.map((x) => x.callback);
-    ok('回调名自增不重复', new Set(names).size === names.length, names.join(','));
-    uninstallCefQuery();
-
-    // onFailure：原生侧失败 → reject 原文（等价原"JSAPI 抛错原文带回"）
-    installCefQuery({ onFailureOnce: {} });
-    const rf = await jsapi.jsAsynCall('failingMethod', {}).then(() => 'resolved', (e) => e);
-    ok('cefQuery onFailure → reject 且 error 是原文', rf instanceof Error && /原生侧失败/.test(rf.message), rf.message.slice(0, 60));
-    ok('onFailure 后无残留 jsCallback', jsapi.pendingCallbacks().length === 0);
-    uninstallCefQuery();
-  }
-
   console.log('\n=== Excel（et 型）B5-T1：57 实现 + 3 PivotTables 桩（表驱动，断调用序列）===');
   {
     const ex = require(path.join(ADDON, 'js', 'actions', 'excel.js'));
@@ -705,6 +661,114 @@ const lastSent = (sent) => sent[sent.length - 1];
       ghost.ok === false && ghost.unsupported === 'B3');
     uninstallCefQuery();
   }
+  console.log('\n=== B5-T3：Word/Common 部分支持 9 动作收编（createPresentation 已存在跳过）===');
+  {
+    const b5t3Cases = [
+      ['closeDocument', { name: 'Doc1', saveChanges: false }, 'Document.Close', { name: 'Doc1', saveChanges: false }],
+      ['closeDocument', { name: 'Doc1' }, 'Document.Close', { name: 'Doc1', saveChanges: false }],
+      ['getDocumentStats', {}, 'Document.Stats', {}],
+      ['replaceBookmarkContent', { name: '探针书签', text: '新内容' }, 'Bookmarks.Item.Range.Text', { name: '探针书签', text: '新内容' }],
+      ['modifyStyle', { name: 'Heading 1', fontName: '黑体', fontSize: 16 }, 'Styles.Item.Font', { name: 'Heading 1', fontName: '黑体', fontSize: 16 }],
+      ['deleteStyle', { name: '自定义样式' }, 'Styles.Item.Delete', { name: '自定义样式' }],
+      ['setDefaultFont', { fontName: '宋体' }, 'Styles.Item.Font', { name: 'Normal', fontName: '宋体' }],
+      ['setSelectedText', { text: '写入选区' }, 'Selection.TypeText', { text: '写入选区' }],
+      ['createDocument', {}, 'Documents.Add', {}],
+    ];
+    for (const [action, input, method, wantParams] of b5t3Cases) {
+      const sent = installCefQuery({});
+      let r;
+      try { r = await wordActions[action](input); } catch (e) { r = { ok: false, error: String(e) }; }
+      ok(`B5T3 ${action} 正路 ok:true`, r && r.ok === true, r && r.error);
+      const hits = sentOf(sent, method);
+      ok(`B5T3 ${action} 恰好发一条 method=${method}`, hits.length === 1,
+        hits.length ? JSON.stringify(hits[0].params).slice(0, 80) : `实际：${sent.map((x) => x.method).join(',') || '（无）'}`);
+      for (const [k, v] of Object.entries(wantParams)) {
+        eq(`B5T3 ${action} params.${k}`, hits.length ? hits[0].params[k] : undefined, v);
+      }
+      uninstallCefQuery();
+    }
+
+    const b5t3Err = [
+      ['replaceBookmarkContent', { name: 'x' }, /缺少 text/],
+      ['replaceBookmarkContent', { text: 'x' }, /缺少 name/],
+      ['modifyStyle', {}, /name/],
+      ['modifyStyle', { name: 'S' }, /fontName\/fontSize/],
+      ['deleteStyle', {}, /缺少 name/],
+      ['setDefaultFont', {}, /fontName/],
+      ['setSelectedText', {}, /缺少 text/],
+    ];
+    for (const [action, input, match] of b5t3Err) {
+      const sent = installCefQuery({});
+      const r = await wordActions[action](input);
+      ok(`B5T3 ${action} 错误路 → ok:false 匹配「${match.source.slice(0, 24)}」`,
+        r && r.ok === false && match.test(r.error || ''), (r && r.error || '').slice(0, 55));
+      ok(`B5T3 ${action} 错误路零发送`, sent.length === 0, `实际 ${sent.length}`);
+      uninstallCefQuery();
+    }
+
+    // et 型缺口：getSelectedText（Excel 上下文拿到的是地址不是文本——S1 §4 #14）
+    {
+      const sent = installCefQuery({ responses: { 'Selection.Address': '$A$1:$B$2' } });
+      const exB5t3 = require(path.join(ADDON, 'js', 'actions', 'excel.js'));
+      const r = await exB5t3.actions.getSelectedText({});
+      eq('B5T3 getSelectedText(et) 读回选区地址', r.ok && r.data.address, '$A$1:$B$2');
+      ok('B5T3 getSelectedText(et) 发的是 Selection.Address', sentOf(sent, 'Selection.Address').length === 1);
+      uninstallCefQuery();
+    }
+
+    // 查重守护：createPresentation 只在 ppt 表实现（B4），本轮不重复注册
+    ok('查重守护：word 表 createDocument 仅一处注册',
+      Object.keys(wordActions).filter((k) => k === 'createDocument').length === 1);
+    ok('查重守护：excel 表不含 createPresentation（不与 ppt 表重复）', !('createPresentation' in require(path.join(ADDON, 'js', 'actions', 'excel.js')).actions));
+    installCefQuery({ responses: { 'Presentations.Add': { name: 'P2' } } });
+    const dup = await clientJs.WpsAddonChannel.dispatch('createPresentation', {}, 'ppt');
+    ok('查重守护：createPresentation 经 ppt 表正常分发（不因本轮改动回归）', dup.ok === true);
+    uninstallCefQuery();
+  }
+  console.log('\n=== jsapi.js 专项：超时 / 回调清理 / 并发 / onFailure ===');
+  {
+    // 超时：onCall 抛错 = 永不回调 → 120ms 后 reject（await 会 throw，用 .then 捕成值）
+    installCefQuery({ onCall: () => { throw new Error('never call back'); } });
+    const t0 = Date.now();
+    const r1 = await jsapi.jsAsynCall('slowMethod', {}).then(() => 'resolved', (e) => e);
+    const dt = Date.now() - t0;
+    ok('超时 → reject 且文案含 method', r1 instanceof Error && /jsAsynCall 超时/.test(r1.message) && /slowMethod/.test(r1.message),
+      r1.message.slice(0, 60));
+    ok('超时时长 ≈ WPS_JSAPI_TIMEOUT(120ms)', dt >= 110 && dt < 1000, `${dt}ms`);
+    ok('超时后全局无残留 jsCallback（清理到位）', jsapi.pendingCallbacks().length === 0, JSON.stringify(jsapi.pendingCallbacks()));
+    uninstallCefQuery();
+
+    // 正常调用后同样无残留
+    installCefQuery({ responses: { m1: { a: 1 } } });
+    await jsapi.jsAsynCall('m1', {});
+    ok('正常调用后无残留 jsCallback', jsapi.pendingCallbacks().length === 0);
+    uninstallCefQuery();
+
+    // 并发：两个调用交错，各自回调不串线
+    const m2 = installCefQuery({
+      responses: { mA: { which: 'A' }, mB: { which: 'B' } },
+      delay: 15,
+    });
+    const pa = jsapi.jsAsynCall('mA', {});
+    const pb = jsapi.jsAsynCall('mB', {});
+    const [ra, rb] = await Promise.all([pa, pb]);
+    ok('并发 A：拿到 A 的结果（不串线）', ra && ra.which === 'A');
+    ok('并发 B：拿到 B 的结果（不串线）', rb && rb.which === 'B');
+    eq('并发发送两条且 method 各自正确', sentOf(m2, 'mA').length + sentOf(m2, 'mB').length, 2);
+    ok('并发完成后无残留 jsCallback', jsapi.pendingCallbacks().length === 0);
+    // 回调名自增不重复
+    const names = m2.map((x) => x.callback);
+    ok('回调名自增不重复', new Set(names).size === names.length, names.join(','));
+    uninstallCefQuery();
+
+    // onFailure：原生侧失败 → reject 原文（等价原"JSAPI 抛错原文带回"）
+    installCefQuery({ onFailureOnce: {} });
+    const rf = await jsapi.jsAsynCall('failingMethod', {}).then(() => 'resolved', (e) => e);
+    ok('cefQuery onFailure → reject 且 error 是原文', rf instanceof Error && /原生侧失败/.test(rf.message), rf.message.slice(0, 60));
+    ok('onFailure 后无残留 jsCallback', jsapi.pendingCallbacks().length === 0);
+    uninstallCefQuery();
+  }
+
 
   console.log(`\n汇总：${pass} 通过 / ${fail} 失败`);
   process.exit(fail === 0 ? 0 : 1);

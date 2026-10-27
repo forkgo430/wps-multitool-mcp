@@ -151,6 +151,131 @@
     }),
   };
 
+  // ========================================================================
+  // B5-T3：部分支持收编（Word 6 + Common 2 的 wps 型缺口）。S1 §3 行号见各头注。
+  // Common 的 createPresentation 已在 ppt.js（B4）实现——不重复注册；getSelectedText
+  // 的 et 型缺口在 excel.js（Address 函数读），wpp 型无 Selection 不做（S1 §4 #9）。
+  // ========================================================================
+
+  var b5t3Actions = {
+    /**
+     * closeDocument —— S1-REPORT.md:109（§3 #109 部分支持）
+     * 证据：doc.Close() 对干净文档可关；**dirty 文档弹「是否保存」模态框阻塞 JS 线程直至用户点击**。
+     * method 'Document.Close'。saveChanges 缺省 false（放弃保存关闭——自动化通道不冒模态框风险）；
+     * 要保改动先显式 save 再关。⚠ S1 模态框阻塞语义未在异步模型下复测——B3.5 复核点。
+     */
+    closeDocument: guard(function (p) {
+      var payload = {};
+      if (p.name) payload.name = String(p.name);
+      payload.saveChanges = p.saveChanges !== undefined ? !!p.saveChanges : false;
+      return jsapi.jsAsynCall('Document.Close', payload).then(function (r) {
+        return { ok: true, data: r };
+      });
+    }),
+
+    /**
+     * getDocumentStats —— S1-REPORT.md:110（§3 #110 部分支持：Words/Characters/Paragraphs/Sections
+     * 有值，**Pages 属性不存在**——4/5 才是完整语义）
+     * method 'Document.Stats'（多字段读，只请求存在的 4 项，Pages 不请求；待补测）。
+     */
+    getDocumentStats: guard(function () {
+      return jsapi.jsAsynCall('Document.Stats', {}).then(function (r) {
+        return { ok: true, data: r };
+      });
+    }),
+
+    /**
+     * replaceBookmarkContent —— S1-REPORT.md:131（§3 #131 部分支持：TypeError doc.Styles is not a
+     * function 同族——Bookmarks 是集合，Item 按名可取（getBookmarks 实测），内容替换未单独验证）
+     * method 'Bookmarks.Item.Range.Text'（Item 语义 + 属性写，待补测）。
+     */
+    replaceBookmarkContent: guard(function (p) {
+      if (!p.name) {
+        return Promise.resolve({ ok: false, error: '[勿重试·先改参数] 缺少 name（replaceBookmarkContent 要替换哪个书签）' });
+      }
+      if (p.text === undefined || p.text === null) {
+        return Promise.resolve({ ok: false, error: '[勿重试·先改参数] 缺少 text（replaceBookmarkContent 的新内容）' });
+      }
+      return jsapi.jsAsynCall('Bookmarks.Item.Range.Text', { name: String(p.name), text: String(p.text) }).then(function (r) {
+        return { ok: true, data: r };
+      });
+    }),
+
+    /**
+     * modifyStyle —— S1-REPORT.md:149（§3 #149 部分支持：TypeError doc.Styles is not a function 复核
+     * ——Styles 集合 Item 可取（listStyles 实测），样式修改未单独验证）
+     * method 'Styles.Item.Font'（Item 语义 + 多属性写，待补测）。fontName/fontSize 至少一个。
+     */
+    modifyStyle: guard(function (p) {
+      if (!p.name) {
+        return Promise.resolve({ ok: false, error: '[勿重试·先改参数] 缺少 name（modifyStyle 要改哪个样式）' });
+      }
+      if (p.fontName === undefined && p.fontSize === undefined) {
+        return Promise.resolve({ ok: false, error: '[勿重试·先改参数] fontName/fontSize 至少给一个（modifyStyle）' });
+      }
+      var payload = { name: String(p.name) };
+      if (p.fontName !== undefined) payload.fontName = String(p.fontName);
+      if (p.fontSize !== undefined) payload.fontSize = Number(p.fontSize);
+      return jsapi.jsAsynCall('Styles.Item.Font', payload).then(function (r) {
+        return { ok: true, data: r };
+      });
+    }),
+
+    /**
+     * deleteStyle —— S1-REPORT.md:150（§3 #150 部分支持：同上 Item 语义，删除未单独验证）
+     * method 'Styles.Item.Delete'。内建样式（如 Normal）删除会抛——由原生侧如实回错，不预判。
+     */
+    deleteStyle: guard(function (p) {
+      if (!p.name) {
+        return Promise.resolve({ ok: false, error: '[勿重试·先改参数] 缺少 name（deleteStyle 要删哪个样式）' });
+      }
+      return jsapi.jsAsynCall('Styles.Item.Delete', { name: String(p.name) }).then(function (r) {
+        return { ok: true, data: r };
+      });
+    }),
+
+    /**
+     * setDefaultFont —— S1-REPORT.md:157（§3 #157 部分支持：doc.Styles('Normal').Font.Name）
+     * method 'Styles.Item.Font'（target 固定 Normal——默认字体的载体就是 Normal 样式；与 modifyStyle
+     * 同 method 不同定位）。fontName 必填。
+     */
+    setDefaultFont: guard(function (p) {
+      if (!p.fontName) {
+        return Promise.resolve({ ok: false, error: '[勿重试·先改参数] 缺少 fontName（setDefaultFont）' });
+      }
+      return jsapi.jsAsynCall('Styles.Item.Font', { name: 'Normal', fontName: String(p.fontName) }).then(function (r) {
+        return { ok: true, data: r };
+      });
+    }),
+
+    /**
+     * setSelectedText —— S1-REPORT.md:278（§3 #278 部分支持：wps 型 TypeText 已调用读回一致；
+     * et 无 TypeText（§4 #14）、wpp 无 Selection——本实现只覆盖 wps 型）
+     * method 'Selection.TypeText'。text 必填。
+     * ⚠ Selection 跟全局焦点走（S1 §4 #9）——写入落当前活动文档，钉不住指定文档。
+     */
+    setSelectedText: guard(function (p) {
+      if (p.text === undefined || p.text === null || p.text === '') {
+        return Promise.resolve({ ok: false, error: '[勿重试·先改参数] 缺少 text（setSelectedText 的写入内容）' });
+      }
+      return jsapi.jsAsynCall('Selection.TypeText', { text: String(p.text) }).then(function (r) {
+        return { ok: true, data: r };
+      });
+    }),
+
+    /**
+     * createDocument —— S1-REPORT.md:282（§3 #282 部分支持：仅 wps 型 app.Documents.Add() 支持）
+     * method 'Documents.Add'。本实现注册在 word.js（wps 型）——et/wpp 型无 Documents（S1 §6 隔离）。
+     */
+    createDocument: guard(function () {
+      return jsapi.jsAsynCall('Documents.Add', {}).then(function (r) {
+        return { ok: true, data: r };
+      });
+    }),
+  };
+
+  Object.assign(wordActions, b5t3Actions);
+
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = wordActions;
   } else {
