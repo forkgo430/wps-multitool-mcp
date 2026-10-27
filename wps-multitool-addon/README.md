@@ -37,3 +37,9 @@ powershell -ExecutionPolicy Bypass -File ..\..\scripts\deploy-addon.ps1 -Check #
 - WPS JS 加载项**没有**应用内通知/toast，提示只能走 `alert` 或任务窗格内文字。
 - 任务窗格的 `CreateTaskPane` API 在本机 WPS 12.1 上按官方社区示例实现，**未经真机验证**。
 - 「工具组 基础 40」在面板里是写死的说明文字（桥拿不到 MCP server 的注册表）。
+
+## v3.1（2026-10-28 决策者修复轮）
+
+- 修复状态闪跳：render 引用已移除的 target 区块元素 → 每 2 秒 TypeError 被 poll catch 误报"连不上桥"；死代码删除 + render 套 try/catch
+- 「最近改动」摘要与动作名同文不重复显示；同一秒内同动作同结果折叠为 ×N
+- 日志滚动条按主题着色；文档列表空态改用户语言

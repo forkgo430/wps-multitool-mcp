@@ -14,6 +14,13 @@
   - 操作反馈：按钮点击后加载态 + 结果提示，不再点了没反应
   - AI 活动指示：队列 > 0 时标题区显示"AI 执行中"脉冲动画
   - 卡片间距/分组微调
+
+  v3.1（2026-10-28 决策者修复轮 · 第六任）：
+  - 修复状态闪跳：v3.0 改版后 render 仍写已移除的 target 区块（target-name/target-lock
+    在 markup 里已不存在）→ 每 2 秒抛 TypeError → 被 poll 的 catch 误报"连不上桥"。
+    死代码删除；render 全体套 try/catch，渲染错误只进 console，不再冒充连接错误
+  - 最近改动：摘要与动作名同文不重复显示；同一秒内同动作同结果折叠为 ×N
+  - 滚动条按主题着色；文档列表空态改用户语言
 -->
 <style>
   :root {
@@ -123,6 +130,10 @@
   @keyframes spin { to { transform: rotate(360deg) } }
 
   .log { max-height: 200px; overflow-y: auto; margin: -4px 0; }
+  .log::-webkit-scrollbar { width: 8px; }
+  .log::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+  .log::-webkit-scrollbar-track { background: transparent; }
+  .item .x { color: var(--dim); font-weight: 600; }
   .log .item { display: flex; gap: 8px; padding: 5px 0; font-size: 12px; align-items: baseline; }
   .log .item + .item { border-top: 1px dashed var(--border); }
   .log .t { color: var(--dim); font-variant-numeric: tabular-nums; flex-shrink: 0; font-size: 11px; }
@@ -236,7 +247,7 @@ function tip(msg, kind) {
 function listDocs() {
   try {
     var A = window.Application;
-    if (!A) { $('doclist').innerHTML = '<div class="doc-empty">拿不到 WPS 对象</div>'; return; }
+    if (!A) { $('doclist').innerHTML = '<div class="doc-empty">在 WPS 内打开面板可查看文档列表</div>'; return; }
     var items = [];
     if (A.Documents) {
       var n = A.Documents.Count;
@@ -273,6 +284,11 @@ function listDocs() {
 }
 
 function render(d) {
+  // 渲染错误只进 console —— 不许被 poll 的 catch 误判成"连不上桥"（v3.1 闪跳修复）
+  try { renderImpl(d); } catch (e) { if (window.console && console.warn) console.warn('panel render:', e && e.message); }
+}
+
+function renderImpl(d) {
   $('hdr').className = (d.uptimeMs > 0) ? 'hdr on' : 'hdr';
 
   $('v-bridge').innerHTML = d.uptimeMs > 0
@@ -298,30 +314,25 @@ function render(d) {
   if (!recent.length) {
     log.innerHTML = '<div class="empty">暂无记录</div>';
   } else {
-    log.innerHTML = recent.map(function (e) {
-      return '<div class="item' + (e.ok ? '' : ' fail') + '">' +
-        '<span class="t">' + fmtTime(e.t) + '</span>' +
-        '<span class="a">' + esc(e.action) + '</span>' +
-        '<span class="s">' + esc(e.summary) + '</span></div>';
-    }).join('');
+    log.innerHTML = (function () {
+      var rows = [];
+      for (var i = 0; i < recent.length; i++) {
+        var e = recent[i];
+        var s = (e.summary && e.summary !== e.action) ? e.summary : '';
+        var p = rows[rows.length - 1];
+        if (p && p.a === e.action && p.s === s && p.ok === e.ok && fmtTime(p.t) === fmtTime(e.t)) { p.n++; continue; }
+        rows.push({ a: e.action, s: s, ok: e.ok, t: e.t, n: 1 });
+      }
+      return rows.map(function (r) {
+        return '<div class="item' + (r.ok ? '' : ' fail') + '">' +
+          '<span class="t">' + fmtTime(r.t) + '</span>' +
+          '<span class="a">' + esc(r.a) + (r.n > 1 ? ' <span class="x">×' + r.n + '</span>' : '') + '</span>' +
+          (r.s ? '<span class="s">' + esc(r.s) + '</span>' : '') + '</div>';
+      }).join('');
+    })();
   }
 
-  // 操作目标
-  var target = null;
-  for (var i = recent.length - 1; i >= 0; i--) {
-    var m = /@(.+)$/.exec(recent[i].summary || '');
-    if (m) { target = m[1]; break; }
-  }
-  var box = $('target');
-  if (target) {
-    box.className = 'target';
-    $('target-name').textContent = target;
-    $('target-lock').textContent = '锁定';
-  } else {
-    box.className = 'target none';
-    $('target-name').textContent = '未锁定（跟随活动文档）';
-    $('target-lock').textContent = '未锁定';
-  }
+  // 操作目标：v3.0 起由文档列表的 🔒 活动文档标记承担，此处不再渲染（原 target-* 元素已移除）
 }
 
 function poll() {
