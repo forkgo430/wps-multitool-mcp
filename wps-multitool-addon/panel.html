@@ -18,6 +18,8 @@
   v3.2（2026-10-28 决策者实测轮 · 第六任）：
   - 文档列表图标 emoji（📝📊📽🔒）全部换内联 SVG —— WPS 内嵌老内核对 emoji 渲染不稳，
     矢量图保真且跟随主题色；空态文案同步调整
+  - 文档切换器兑现"点选"：点条目 = Activate 切成活动文档（事件委托 + data-app/idx），
+    失败走 tip 如实回报；快照按钮在无 ActiveXObject 的内核给引导话术
   - （部署副本过期问题：WPS 内装的是 v2.3 旧面板，重跑 deploy-addon.ps1 即更新到本版）
 
   v3.1（2026-10-28 决策者修复轮 · 第六任）：
@@ -89,7 +91,7 @@
     display: flex; align-items: center; gap: 6px; padding: 6px 8px;
     border-radius: 6px; cursor: pointer; transition: background .1s; font-size: 12px;
   }
-  .doc-item:hover { background: var(--accent-bg); }
+  .doc-item:hover { background: var(--accent-bg); cursor: pointer; }
   .doc-item.active { background: var(--accent-bg); font-weight: 500; }
   .doc-item .ico { flex-shrink: 0; font-size: 11px; display: inline-flex; align-items: center; }
   .doc-item .ico svg { display: block; color: var(--dim); }
@@ -212,7 +214,7 @@
     <div class="kv"><span class="k">作者</span><span>赢容</span></div>
     <div class="kv"><span class="k">许可</span><span>MIT</span></div>
     <ul>
-      <li>287 个 MCP 工具，默认只列 40 个基础工具</li>
+      <li>288 个 MCP 工具，默认只列 40 个基础工具</li>
       <li>常驻桥进程，冷启动后 2~3ms/次</li>
       <li>快照 / 撤销 / 导出 / 诊断</li>
     </ul>
@@ -269,26 +271,26 @@ function listDocs() {
       var n = A.Documents.Count;
       for (var i = 1; i <= n; i++) {
         var d = A.Documents.Item(i);
-        items.push({ app: 'word', name: d.Name || '未命名', active: A.ActiveDocument && A.ActiveDocument.Name === d.Name });
+        items.push({ app: 'word', idx: i, name: d.Name || '未命名', active: A.ActiveDocument && A.ActiveDocument.Name === d.Name });
       }
     }
     if (A.Workbooks) {
       var wn = A.Workbooks.Count;
       for (var j = 1; j <= wn; j++) {
         var w = A.Workbooks.Item(j);
-        items.push({ app: 'excel', name: w.Name || '未命名', active: A.ActiveWorkbook && A.ActiveWorkbook.Name === w.Name });
+        items.push({ app: 'excel', idx: j, name: w.Name || '未命名', active: A.ActiveWorkbook && A.ActiveWorkbook.Name === w.Name });
       }
     }
     if (A.Presentations) {
       var pn = A.Presentations.Count;
       for (var k = 1; k <= pn; k++) {
         var pr = A.Presentations.Item(k);
-        items.push({ app: 'ppt', name: pr.Name || '未命名', active: A.ActivePresentation && A.ActivePresentation.Name === pr.Name });
+        items.push({ app: 'ppt', idx: k, name: pr.Name || '未命名', active: A.ActivePresentation && A.ActivePresentation.Name === pr.Name });
       }
     }
     if (!items.length) { $('doclist').innerHTML = '<div class="doc-empty">没有打开的文档</div>'; return; }
     $('doclist').innerHTML = items.map(function (it) {
-      return '<div class="doc-item' + (it.active ? ' active' : '') + '">' +
+      return '<div class="doc-item' + (it.active ? ' active' : '') + '" data-app="' + it.app + '" data-idx="' + it.idx + '">' +
         '<span class="ico">' + (DOC_ICONS[it.app] || '') + '</span>' +
         '<span class="nm">' + esc(it.name) + '</span>' +
         (it.active ? '<span class="tag">' + DOC_ICONS.lock + ' 当前</span>' : '') +
@@ -422,6 +424,31 @@ function stamp() {
 
 poll();
 setInterval(poll, 2000);
+
+// 文档切换器：点选 = 把该文档切成活动文档（v3.2 兑现头部注释"点选可查看"）
+// 事件委托挂在 #doclist 上——列表每 2 秒重渲染，逐项绑会丢
+document.getElementById('doclist').addEventListener('click', function (ev) {
+  var item = ev.target.closest ? ev.target.closest('.doc-item') : null;
+  if (!item) return;
+  var A = window.Application;
+  if (!A) { tip('请在 WPS 内打开面板'); return; }
+  var app = item.getAttribute('data-app');
+  var idx = Number(item.getAttribute('data-idx'));
+  var col = app === 'word' ? A.Documents : app === 'excel' ? A.Workbooks : A.Presentations;
+  if (!col || !col.Item) { tip('该类型在当前宿主不可见'); return; }
+  try {
+    var d = col.Item(idx);
+    if (d && d.Activate) {
+      d.Activate();
+      tip('已切换到 ' + (d.Name || ('第 ' + idx + ' 份')));
+    } else {
+      tip('此文档不支持切换');
+    }
+    listDocs();
+  } catch (e) {
+    tip('切换失败：' + (e && e.message ? e.message : e));
+  }
+});
 </script>
 </body>
 </html>

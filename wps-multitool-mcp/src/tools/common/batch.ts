@@ -35,6 +35,7 @@ import {
   ToolWarning,
 } from '../../types/tools';
 import { toolRegistry, ToolRegistry } from '../../server/tool-registry';
+import { reportProgress } from '../../server/progress-context';
 // 风险判据只有一份：与单工具写入的自动快照共用（口径不一致会让人以为单调用也安全）
 import { snapshotRiskOf } from '../../server/auto-snapshot';
 import { isDestructiveAction, isIdempotentAction } from '../../bridge/cancellable';
@@ -211,6 +212,10 @@ export const batchHandler: ToolHandler = async (args: Args): Promise<ToolCallRes
     const step = steps[i];
     const label = step.tool || step.action || `第${i + 1}步`;
 
+    // 进度通知（2026-10-28 评审兑现）：客户端传了 progressToken 就能看到"第 n/N 步"，
+    // 没传是 no-op。单 COM 调用型工具（导出等）无中间进度，不硬造。
+    reportProgress(i, steps.length, `第 ${i + 1}/${steps.length} 步 · ${label}`);
+
     if (!step.tool && !step.action) {
       warnings.push({ step: `第${i + 1}步`, message: '没给 tool 也没给 action，跳过' });
       lines.push(`${i + 1}. ${label} — 跳过（没给 tool 也没给 action）`);
@@ -269,6 +274,7 @@ export const batchHandler: ToolHandler = async (args: Args): Promise<ToolCallRes
   }
 
   const summary = `批量执行完成：${okCount}/${steps.length} 步成功。`;
+  reportProgress(steps.length, steps.length, summary);
   const body = [summary, '', ...lines].join('\n');
 
   if (okCount === 0) {
