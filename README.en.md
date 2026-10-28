@@ -73,7 +73,7 @@ Four conveniences built in:
 
 - **One sentence routes the work**: `wps_route_intent` maps "make me a report" to the presentation group — and says so when it can't
 - **Search tools in Chinese**: `wps_search_tools` results carry `notFor` counter-examples to separate near-named tools
-- **Every tool carries safety labels**: all 287 marked read-only / destructive / idempotent
+- **Every tool carries safety labels**: every tool is marked read-only / destructive / idempotent
 - **Renames don't break old calls**: old names auto-resolve, parameters migrate with them
 
 <!-- AUTO:tool-table:start -->
@@ -86,7 +86,7 @@ Four conveniences built in:
 | Built-in | 7 (already counted above) | connection check, generic method, data cache |
 <!-- AUTO:tool-table:end -->
 
-The full list of all 287 tools (name / confirmation level / real-machine verification status) lives in
+The full list of tools (name / confirmation level / real-machine verification status) lives in
 **[TOOLS.md](TOOLS.md)**, generated from the registry. Old tool names keep working — they auto-resolve
 to the new tools with parameters migrated.
 
@@ -96,7 +96,7 @@ to the new tools with parameters migrated.
 <!-- AUTO:tool-stats:start -->
 - **288 tools** (7 built-in + 281 specialized); **only 40 listed by default** (essential ∩ live-verified, load on demand — see `scripts/manual/basic-tier-verify.js`)
 - Distribution (by tool group, built-ins counted in their app group): Common 26 (incl. core) / Word 69 / Excel 91 / PPT 102
-- Annotations (measured): read-only 51 / destructive 36 / non-idempotent 111 — coverage 287/288
+- Annotations (measured): read-only 51 / destructive 36 / non-idempotent 112 — coverage 288/288
 <!-- AUTO:tool-stats:end -->
 
 </details>

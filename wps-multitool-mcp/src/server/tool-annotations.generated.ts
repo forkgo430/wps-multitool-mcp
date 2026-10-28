@@ -142,6 +142,7 @@ export const TOOL_ACTIONS: Readonly<Record<string, readonly string[]>> = {
   "wps_ppt_auto_layout": ['autoLayout'],
   "wps_ppt_beautify": ['beautifySlide'],
   "wps_ppt_beautify_all_slides": ['beautifyAllSlides'],
+  "wps_ppt_build_deck": [],
   "wps_ppt_close_presentation": ['closePresentation'],
   "wps_ppt_copy_slide": ['duplicateSlide'],
   "wps_ppt_create_3d_text": ['create3DText'],

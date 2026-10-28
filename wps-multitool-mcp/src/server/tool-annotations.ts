@@ -60,6 +60,15 @@ const cache = new Map<string, ToolAnnotations | undefined>();
  *   非只读、破坏性、非幂等。名字推断在这里不是"保守"，是"猜错了"。
  */
 const EXTRA_ANNOTATIONS: Record<string, ToolAnnotations> = {
+  // deckkit 引擎（E2）：无 ps1 action 的编排工具——自身不直接调 COM，逐动作经 callTool
+  //  走真入口（每个子动作各自的注解/快照护栏生效）。入口本身按最坏情况给：非只读、非幂等
+  //  （中途失败会留下半成品文稿）；破坏性与 wps_common_batch 同口径：不标（子动作各自定）。
+  wps_ppt_build_deck: {
+    readOnlyHint: false,
+    destructiveHint: false,
+    idempotentHint: false,
+    openWorldHint: false,
+  },
   wps_execute_method: {
     readOnlyHint: false,
     destructiveHint: true,

@@ -72,7 +72,7 @@ irm https://cdn.jsdelivr.net/gh/forkgo430/wps-multitool-mcp@main/scripts/install
 
 - **一句话定方向**：`wps_route_intent` 把"帮我做个汇报"映射到演示组，认不出来它会明说
 - **用中文搜工具**：`wps_search_tools` 结果带 `notFor` 反例，近名工具靠它分
-- **工具自带安全标签**：287 个都标明只读 / 会改动 / 可否重复执行
+- **工具自带安全标签**：全部工具都标明只读 / 会改动 / 可否重复执行（精确数字见下方统计）
 - **改名不砸旧调用**：旧名字自动解析到新工具，参数一并搬运
 
 <!-- AUTO:tool-table:start -->
@@ -85,7 +85,7 @@ irm https://cdn.jsdelivr.net/gh/forkgo430/wps-multitool-mcp@main/scripts/install
 | 内置 | 7（已计入上方各组） | 连接检查/万能方法调用/数据缓存 |
 <!-- AUTO:tool-table:end -->
 
-全部 287 个工具的完整清单（名称 / 是否需要确认 / 真机验证状态）见 **[TOOLS.md](TOOLS.md)**，
+全部工具的完整清单（名称 / 是否需要确认 / 真机验证状态）见 **[TOOLS.md](TOOLS.md)**，
 由注册表自动生成。旧名字调用会自动解析到新工具，参数一并搬运。
 
 <details>
@@ -94,7 +94,7 @@ irm https://cdn.jsdelivr.net/gh/forkgo430/wps-multitool-mcp@main/scripts/install
 <!-- AUTO:tool-stats:start -->
 - **288 个工具**（7 个内置 + 281 个专业/组工具）；**默认只列 40 个**（基础档 ∩ 真机验证，按需加载 —— 口径与校验见 `scripts/manual/basic-tier-verify.js`）
 - 分布（按工具组，内置计入对应组）：通用 26（含 core）/ Word 69 / Excel 91 / PPT 102
-- 注解（实测）：只读 51 / 破坏性 36 / 非幂等 111，覆盖 287/288
+- 注解（实测）：只读 51 / 破坏性 36 / 非幂等 112，覆盖 288/288
 <!-- AUTO:tool-stats:end -->
 
 </details>

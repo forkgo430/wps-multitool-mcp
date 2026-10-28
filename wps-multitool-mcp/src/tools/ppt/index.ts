@@ -28,6 +28,7 @@
  * - 数据可视化Tools: create_progress_bar, create_gauge, create_mini_charts, create_donut_chart,
  *   auto_layout, smart_distribute, create_grid
  * - 表格Tools: insert_table, set_table_cell, get_table_cell, set_table_style, set_table_cell_style, set_table_row_style
+ * - deckkit 引擎Tools: build_ppt_deck（JSON 页面描述 → 整套演示文稿，E2 骨架）
  * - 高级美化Tools: apply_color_scheme, auto_beautify_slide, beautify_all_slides, create_kpi_cards, create_styled_table, add_title_decoration, add_page_indicator, set_background_gradient
  */
 
@@ -45,6 +46,7 @@ import { miscTools } from './misc';
 import { dataVizTools } from './data-viz';
 import { tableTools } from './table';
 import { beautifyAdvancedTools } from './beautify-advanced';
+import { deckTools } from './deckkit';
 
 /**
  * 所有PPT相关的Tools
@@ -70,6 +72,7 @@ export const pptTools: RegisteredTool[] = [
   ...dataVizTools,
   ...tableTools,
   ...beautifyAdvancedTools,
+  ...deckTools,
 ];
 
 // 分别导出，方便按需使用
@@ -86,6 +89,7 @@ export { miscTools } from './misc';
 export { dataVizTools } from './data-viz';
 export { tableTools } from './table';
 export { beautifyAdvancedTools } from './beautify-advanced';
+export { deckTools } from './deckkit';
 
 // 导出单独的定义和处理器，方便测试
 export {

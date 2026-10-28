@@ -3,7 +3,7 @@
 > 本文件由 `wps-multitool-mcp/scripts/manual/gen-tools-doc.js` 从**运行时注册表**生成，请勿手改。
 > 改完工具跑一次 `node scripts/manual/gen-tools-doc.js`；CI 会重跑并 `git diff --exit-code`，对不上就红。
 
-**287 个工具**（7 内置 + 280 专业/组工具）· 默认列出 40 个 · 注解覆盖 287/287 · 真机验证 200/287
+**288 个工具**（7 内置 + 281 专业/组工具）· 默认列出 40 个 · 注解覆盖 288/288 · 真机验证 278/288
 
 | 标记 | 含义 |
 |---|---|
@@ -104,7 +104,7 @@
 | `wps_word_proofread_basic` |  | R | live | 对中文文本进行基础校对，检测常见问题。<br><sub>别名：校对基础 / 基础</sub> |
 | `wps_word_replace_bookmark_content` |  | DN | live | 替换Word文档中书签的内容。通过书签名定位，替换书签范围内的文本，保持原有格式。<br><sub>别名：替换书签内容 / 书签 / 内容</sub> |
 | `wps_word_replace_range` |  | DN | live | 按字符范围精确替换Word文档中的文本。<br><sub>别名：替换区域 / 区域 / 范围</sub> |
-| `wps_word_review_mode` |  | — | static | 开启/关闭/查询这份文档的修订模式。 |
+| `wps_word_review_mode` |  | — | live | 开启/关闭/查询这份文档的修订模式。 |
 | `wps_word_revisions` |  | DN | live | 处理文档的修订（tracked changes）：列出 / 全部接受 / 全部拒绝 / 单条接受或拒绝。<br><sub>别名：修订 / 批注 / 审阅</sub> |
 | `wps_word_set_cell_borders` |  | — | live | 设置表格单元格的边框。<br><sub>别名：设置单元格borders / 设定单元格borders / 单元格</sub> |
 | `wps_word_set_columns` |  | — | live | 设置分栏（整节等宽多栏）。<br><sub>别名：设置列 / 设定列 / 列</sub> |
@@ -118,7 +118,7 @@
 | `wps_word_smart_fill_field` |  | — | live | 智能填写Word模板中的字段。自动识别关键字附近的填写模式，在正确位置插入内容并保持原有格式。<br><sub>别名：智能填充域 / 填充 / 域</sub> |
 | `wps_word_split_cell` |  | N | live | 拆分一个已合并的单元格。<br><sub>别名：拆分单元格 / 分割单元格 / 单元格</sub> |
 | `wps_word_table_row_col` |  | N | live | 在表格里插入或删除行/列。<br><sub>别名：表格行col / 行</sub> |
-| `wps_word_undo` |  | DN | static | 按步撤销这份文档里最近的编辑。 |
+| `wps_word_undo` |  | DN | live | 按步撤销这份文档里最近的编辑。 |
 | `wps_word_update_fields` |  | — | live | 刷新文档里的所有域：目录、图表目录、交叉引用、页码等。<br><sub>别名：更新域 / 刷新域 / 域</sub> |
 
 ## Excel（91）
@@ -136,7 +136,7 @@
 | `wps_excel_switch_workbook` | 是 | — | live | 切换到指定名称的Excel工作簿。<br><sub>别名：切换工作簿 / 工作簿 / 表格文件</sub> |
 | `wps_excel_write_range` | 是 | — | live | 向Excel指定范围写入数据。数据格式为二维数组，从指定单元格开始向右下方填充。<br><sub>别名：批量写 / 写区域 / 一次写一片</sub> |
 | `wps_excel_add_comment` |  | N | live | 给单元格添加批注（同一格已有批注会被覆盖）。<br><sub>别名：添加批注 / 新增批注 / 加批注</sub> |
-| `wps_excel_add_slicer` |  | N | static | 给已创建的 Excel 表格添加切片器（按某列筛选的按钮面板）。<br><sub>别名：添加slicer / 新增slicer / 加slicer</sub> |
+| `wps_excel_add_slicer` |  | N | live | 给已创建的 Excel 表格添加切片器（按某列筛选的按钮面板）。<br><sub>别名：添加slicer / 新增slicer / 加slicer</sub> |
 | `wps_excel_auto_fill` |  | — | live | [DEPRECATED·改用 wps_excel_fill_series] 自动填充单元格区域。根据源区域的数据模式自动填充到…<br><sub>别名：自动填充 / 填充</sub> |
 | `wps_excel_auto_filter` |  | — | live | 对Excel指定范围应用自动筛选。<br><sub>别名：自动筛选 / 筛选 / 过滤</sub> |
 | `wps_excel_auto_fit` |  | — | live | 按内容自动调整行高/列宽（等同 Excel 里双击列边界）。<br><sub>别名：自适应 / 自动调整列宽 / 自动列宽</sub> |
@@ -149,7 +149,7 @@
 | `wps_excel_copy_sheet` |  | N | live | 复制当前工作簿中的指定工作表。可指定新名称和插入位置。<br><sub>别名：复制工作表 / 拷贝工作表 / 工作表</sub> |
 | `wps_excel_create_pivot_table` |  | N | live | 创建Excel透视表，用于数据汇总和分析。<br><sub>别名：创建数据透视表表格 / 新建数据透视表表格 / 生成数据透视表表格</sub> |
 | `wps_excel_create_sheet` |  | N | live | 在当前工作簿中创建新的工作表。可指定名称和插入位置。<br><sub>别名：创建工作表 / 新建工作表 / 生成工作表</sub> |
-| `wps_excel_create_table` |  | N | static | 把一块区域创建为"Excel 表格"（结构化引用区）。<br><sub>别名：创建表格 / 新建表格 / 生成表格</sub> |
+| `wps_excel_create_table` |  | N | live | 把一块区域创建为"Excel 表格"（结构化引用区）。<br><sub>别名：创建表格 / 新建表格 / 生成表格</sub> |
 | `wps_excel_create_workbook` |  | N | live | 新建一个空白Excel工作簿。<br><sub>别名：创建工作簿 / 新建工作簿 / 生成工作簿</sub> |
 | `wps_excel_delete_cell_comment` |  | DN | live | 删除Excel单元格上的批注。<br><sub>别名：删除单元格批注 / 删掉单元格批注 / 去掉单元格批注</sub> |
 | `wps_excel_delete_chart` |  | DN | live | 删除工作表上的图表。<br><sub>别名：删图表 / 删除图表 / 把图删了</sub> |
@@ -217,7 +217,7 @@
 | `wps_excel_update_pivot_table` |  | — | live | 更新已有透视表的配置，包括添加/移除字段、修改聚合方式等。<br><sub>别名：更新数据透视表表格 / 刷新数据透视表表格 / 数据透视表</sub> |
 | `wps_get_active_workbook` |  | R | live | 获取当前打开的WPS表格工作簿信息<br><sub>别名：当前工作簿 / 活动工作簿 / 打开的是哪个表格</sub> |
 
-## PPT（101）
+## PPT（102）
 
 | 工具 | 默认档 | 注解 | 验证 | 说明 |
 |---|---|---|---|---|
@@ -229,99 +229,100 @@
 | `wps_ppt_get_slide_count` | 是 | R | live | 获取演示文稿中的幻灯片总数。<br><sub>别名：获取幻灯片count / 读取幻灯片count / 查看幻灯片count</sub> |
 | `wps_ppt_insert_image` | 是 | N | live | 在幻灯片中插入图片。<br><sub>别名：插入图片 / 加图片 / 新增图片</sub> |
 | `wps_ppt_set_slide_title` | 是 | — | live | 设置幻灯片的标题文本。<br><sub>别名：设置标题 / 改标题 / 设置幻灯片标题</sub> |
-| `wps_get_active_presentation` |  | R | static | 获取当前打开的WPS演示文稿信息<br><sub>别名：当前演示文稿 / 活动演示 / 打开的是哪个PPT</sub> |
-| `wps_ppt_add_master_element` |  | N | static | 向母版中添加新元素。<br><sub>别名：添加母版element / 新增母版element / 加母版element</sub> |
-| `wps_ppt_add_page_indicator` |  | N | static | 为演示文稿添加页码指示器。<br><sub>别名：添加页面指示器 / 新增页面指示器 / 加页面指示器</sub> |
+| `wps_get_active_presentation` |  | R | live | 获取当前打开的WPS演示文稿信息<br><sub>别名：当前演示文稿 / 活动演示 / 打开的是哪个PPT</sub> |
+| `wps_ppt_add_master_element` |  | N | live | 向母版中添加新元素。<br><sub>别名：添加母版element / 新增母版element / 加母版element</sub> |
+| `wps_ppt_add_page_indicator` |  | N | live | 为演示文稿添加页码指示器。<br><sub>别名：添加页面指示器 / 新增页面指示器 / 加页面指示器</sub> |
 | `wps_ppt_add_ppt_hyperlink` |  | N | static | 为幻灯片中的形状添加超链接。<br><sub>别名：添加超链接 / 新增超链接 / 加超链接</sub> |
 | `wps_ppt_add_shape` |  | N | live | 在幻灯片中添加形状。<br><sub>别名：添加形状 / 新增形状 / 加形状</sub> |
-| `wps_ppt_add_textbox` |  | N | static | 在幻灯片中添加文本框。<br><sub>别名：加文本框 / 插入文本框 / 添加文本框</sub> |
-| `wps_ppt_add_title_decoration` |  | N | static | 为幻灯片标题添加装饰性元素。<br><sub>别名：添加标题装饰 / 新增标题装饰 / 加标题装饰</sub> |
+| `wps_ppt_add_textbox` |  | N | live | 在幻灯片中添加文本框。<br><sub>别名：加文本框 / 插入文本框 / 添加文本框</sub> |
+| `wps_ppt_add_title_decoration` |  | N | live | 为幻灯片标题添加装饰性元素。<br><sub>别名：添加标题装饰 / 新增标题装饰 / 加标题装饰</sub> |
 | `wps_ppt_align_objects` |  | — | live | [DEPRECATED·改用 wps_ppt_align_shapes] 对齐幻灯片中的对象。<br><sub>别名：对齐objects</sub> |
-| `wps_ppt_align_shapes` |  | — | static | 对齐幻灯片中的多个形状。<br><sub>别名：对齐形状 / 形状</sub> |
-| `wps_ppt_apply_color_scheme` |  | — | static | 为幻灯片应用统一配色方案。<br><sub>别名：应用颜色scheme / 套用颜色scheme / 颜色</sub> |
-| `wps_ppt_auto_beautify_slide` |  | — | static | 自动美化指定的单页幻灯片。<br><sub>别名：自动美化幻灯片 / 美化 / 幻灯片</sub> |
-| `wps_ppt_auto_layout` |  | — | static | 自动调整幻灯片中所有元素的布局。<br><sub>别名：自动版式 / 版式 / 布局</sub> |
-| `wps_ppt_beautify` |  | — | static | 一键美化幻灯片，优化排版、配色、字体和间距。<br><sub>别名：美化 / 美化单页</sub> |
-| `wps_ppt_beautify_all_slides` |  | — | static | 批量美化演示文稿中的所有幻灯片。<br><sub>别名：美化全部 / 整篇美化 / 美化all幻灯片</sub> |
-| `wps_ppt_close_presentation` |  | DN | static | 关闭演示文稿。可指定文稿名称，不指定则关闭当前活动文稿。<br><sub>别名：关闭演示文稿 / 演示文稿 / PPT</sub> |
-| `wps_ppt_copy_slide` |  | N | static | 复制幻灯片到指定位置。<br><sub>别名：复制幻灯片 / 拷贝幻灯片 / 幻灯片</sub> |
+| `wps_ppt_align_shapes` |  | — | live | 对齐幻灯片中的多个形状。<br><sub>别名：对齐形状 / 形状</sub> |
+| `wps_ppt_apply_color_scheme` |  | — | live | 为幻灯片应用统一配色方案。<br><sub>别名：应用颜色scheme / 套用颜色scheme / 颜色</sub> |
+| `wps_ppt_auto_beautify_slide` |  | — | live | 自动美化指定的单页幻灯片。<br><sub>别名：自动美化幻灯片 / 美化 / 幻灯片</sub> |
+| `wps_ppt_auto_layout` |  | — | live | 自动调整幻灯片中所有元素的布局。<br><sub>别名：自动版式 / 版式 / 布局</sub> |
+| `wps_ppt_beautify` |  | — | live | 一键美化幻灯片，优化排版、配色、字体和间距。<br><sub>别名：美化 / 美化单页</sub> |
+| `wps_ppt_beautify_all_slides` |  | — | live | 批量美化演示文稿中的所有幻灯片。<br><sub>别名：美化全部 / 整篇美化 / 美化all幻灯片</sub> |
+| `wps_ppt_build_deck` |  | N | static | 按 JSON 页面描述一次性生成整套演示文稿（deckkit 引擎）。<br><sub>别名：生成整套PPT / 套模板生成 / 一键做PPT</sub> |
+| `wps_ppt_close_presentation` |  | DN | live | 关闭演示文稿。可指定文稿名称，不指定则关闭当前活动文稿。<br><sub>别名：关闭演示文稿 / 演示文稿 / PPT</sub> |
+| `wps_ppt_copy_slide` |  | N | live | 复制幻灯片到指定位置。<br><sub>别名：复制幻灯片 / 拷贝幻灯片 / 幻灯片</sub> |
 | `wps_ppt_create_3d_text` |  | N | static | 在幻灯片中创建带有3D效果的文字。<br><sub>别名：创建3d文本 / 新建3d文本 / 生成3d文本</sub> |
-| `wps_ppt_create_donut_chart` |  | N | static | 在幻灯片中创建环形图。<br><sub>别名：创建环形图图表 / 新建环形图图表 / 生成环形图图表</sub> |
-| `wps_ppt_create_flow_chart` |  | N | static | 在幻灯片中创建流程图。<br><sub>别名：创建流程图表 / 新建流程图表 / 生成流程图表</sub> |
-| `wps_ppt_create_gauge` |  | N | static | 在幻灯片中创建仪表盘图表。<br><sub>别名：创建仪表盘 / 新建仪表盘 / 生成仪表盘</sub> |
-| `wps_ppt_create_grid` |  | N | static | 在幻灯片中创建网格布局。<br><sub>别名：创建网格 / 新建网格 / 生成网格</sub> |
-| `wps_ppt_create_kpi_cards` |  | N | static | 在幻灯片上创建KPI指标卡片。<br><sub>别名：创建KPI卡片 / 新建KPI卡片 / 生成KPI卡片</sub> |
-| `wps_ppt_create_mini_charts` |  | N | static | 在幻灯片中创建迷你图表。<br><sub>别名：创建迷你图表 / 新建迷你图表 / 生成迷你图表</sub> |
-| `wps_ppt_create_org_chart` |  | N | static | 在幻灯片中创建组织架构图。<br><sub>别名：创建组织图表 / 新建组织图表 / 生成组织图表</sub> |
-| `wps_ppt_create_progress_bar` |  | N | static | 在幻灯片中创建进度条。<br><sub>别名：创建进度条 / 新建进度条 / 生成进度条</sub> |
-| `wps_ppt_create_styled_table` |  | N | static | 在幻灯片中创建带预设样式的精美表格。<br><sub>别名：创建styled表格 / 新建styled表格 / 生成styled表格</sub> |
-| `wps_ppt_create_timeline` |  | N | static | 在幻灯片中创建时间线。<br><sub>别名：创建时间轴 / 新建时间轴 / 生成时间轴</sub> |
-| `wps_ppt_delete_ppt_image` |  | DN | static | 删除幻灯片中指定的图片。<br><sub>别名：删除图片 / 删掉图片 / 去掉图片</sub> |
-| `wps_ppt_delete_shape` |  | DN | static | 删除幻灯片中指定的形状。<br><sub>别名：删除形状 / 删掉形状 / 去掉形状</sub> |
-| `wps_ppt_delete_slide` |  | DN | static | 删除指定的幻灯片。<br><sub>别名：删除幻灯片 / 删掉幻灯片 / 去掉幻灯片</sub> |
-| `wps_ppt_delete_textbox` |  | DN | static | 删除幻灯片上指定的文本框。<br><sub>别名：删除文本框 / 删掉文本框 / 去掉文本框</sub> |
-| `wps_ppt_distribute_shapes` |  | — | static | 等距分布幻灯片中的多个形状。<br><sub>别名：分布形状 / 等距分布形状 / 形状</sub> |
-| `wps_ppt_duplicate_shape` |  | N | static | 复制幻灯片中的指定形状。<br><sub>别名：复制形状 / 副本形状 / 形状</sub> |
-| `wps_ppt_find_ppt_text` |  | R | static | 在演示文稿中搜索指定文本。<br><sub>别名：查找文本 / 搜索文本 / 文本</sub> |
-| `wps_ppt_get_animations` |  | R | static | 获取幻灯片上所有动画效果的列表。<br><sub>别名：获取动画 / 读取动画 / 查看动画</sub> |
-| `wps_ppt_get_shapes` |  | R | static | 获取幻灯片中所有形状的列表信息。<br><sub>别名：获取形状 / 读取形状 / 查看形状</sub> |
-| `wps_ppt_get_slide_info` |  | R | static | 获取指定幻灯片的详细信息，包括布局、元素列表等。<br><sub>别名：获取幻灯片信息 / 读取幻灯片信息 / 查看幻灯片信息</sub> |
-| `wps_ppt_get_slide_master` |  | R | static | 获取当前演示文稿的母版信息。<br><sub>别名：获取幻灯片母版 / 读取幻灯片母版 / 查看幻灯片母版</sub> |
-| `wps_ppt_get_slide_notes` |  | R | static | 获取指定幻灯片的备注内容。<br><sub>别名：获取幻灯片备注 / 读取幻灯片备注 / 查看幻灯片备注</sub> |
-| `wps_ppt_get_slide_title` |  | R | static | 获取指定幻灯片的标题。<br><sub>别名：获取幻灯片标题 / 读取幻灯片标题 / 查看幻灯片标题</sub> |
-| `wps_ppt_get_table_cell` |  | R | static | 获取PPT表格中指定单元格的文本内容。<br><sub>别名：获取表格单元格 / 读取表格单元格 / 查看表格单元格</sub> |
-| `wps_ppt_get_textboxes` |  | R | static | 获取幻灯片上所有文本框的列表。<br><sub>别名：获取文本框 / 读取文本框 / 查看文本框</sub> |
-| `wps_ppt_group_shapes` |  | — | static | 将幻灯片中的多个形状组合为一个组。<br><sub>别名：组合形状 / 分组形状 / 形状</sub> |
+| `wps_ppt_create_donut_chart` |  | N | live | 在幻灯片中创建环形图。<br><sub>别名：创建环形图图表 / 新建环形图图表 / 生成环形图图表</sub> |
+| `wps_ppt_create_flow_chart` |  | N | live | 在幻灯片中创建流程图。<br><sub>别名：创建流程图表 / 新建流程图表 / 生成流程图表</sub> |
+| `wps_ppt_create_gauge` |  | N | live | 在幻灯片中创建仪表盘图表。<br><sub>别名：创建仪表盘 / 新建仪表盘 / 生成仪表盘</sub> |
+| `wps_ppt_create_grid` |  | N | live | 在幻灯片中创建网格布局。<br><sub>别名：创建网格 / 新建网格 / 生成网格</sub> |
+| `wps_ppt_create_kpi_cards` |  | N | live | 在幻灯片上创建KPI指标卡片。<br><sub>别名：创建KPI卡片 / 新建KPI卡片 / 生成KPI卡片</sub> |
+| `wps_ppt_create_mini_charts` |  | N | live | 在幻灯片中创建迷你图表。<br><sub>别名：创建迷你图表 / 新建迷你图表 / 生成迷你图表</sub> |
+| `wps_ppt_create_org_chart` |  | N | live | 在幻灯片中创建组织架构图。<br><sub>别名：创建组织图表 / 新建组织图表 / 生成组织图表</sub> |
+| `wps_ppt_create_progress_bar` |  | N | live | 在幻灯片中创建进度条。<br><sub>别名：创建进度条 / 新建进度条 / 生成进度条</sub> |
+| `wps_ppt_create_styled_table` |  | N | live | 在幻灯片中创建带预设样式的精美表格。<br><sub>别名：创建styled表格 / 新建styled表格 / 生成styled表格</sub> |
+| `wps_ppt_create_timeline` |  | N | live | 在幻灯片中创建时间线。<br><sub>别名：创建时间轴 / 新建时间轴 / 生成时间轴</sub> |
+| `wps_ppt_delete_ppt_image` |  | DN | live | 删除幻灯片中指定的图片。<br><sub>别名：删除图片 / 删掉图片 / 去掉图片</sub> |
+| `wps_ppt_delete_shape` |  | DN | live | 删除幻灯片中指定的形状。<br><sub>别名：删除形状 / 删掉形状 / 去掉形状</sub> |
+| `wps_ppt_delete_slide` |  | DN | live | 删除指定的幻灯片。<br><sub>别名：删除幻灯片 / 删掉幻灯片 / 去掉幻灯片</sub> |
+| `wps_ppt_delete_textbox` |  | DN | live | 删除幻灯片上指定的文本框。<br><sub>别名：删除文本框 / 删掉文本框 / 去掉文本框</sub> |
+| `wps_ppt_distribute_shapes` |  | — | live | 等距分布幻灯片中的多个形状。<br><sub>别名：分布形状 / 等距分布形状 / 形状</sub> |
+| `wps_ppt_duplicate_shape` |  | N | live | 复制幻灯片中的指定形状。<br><sub>别名：复制形状 / 副本形状 / 形状</sub> |
+| `wps_ppt_find_ppt_text` |  | R | live | 在演示文稿中搜索指定文本。<br><sub>别名：查找文本 / 搜索文本 / 文本</sub> |
+| `wps_ppt_get_animations` |  | R | live | 获取幻灯片上所有动画效果的列表。<br><sub>别名：获取动画 / 读取动画 / 查看动画</sub> |
+| `wps_ppt_get_shapes` |  | R | live | 获取幻灯片中所有形状的列表信息。<br><sub>别名：获取形状 / 读取形状 / 查看形状</sub> |
+| `wps_ppt_get_slide_info` |  | R | live | 获取指定幻灯片的详细信息，包括布局、元素列表等。<br><sub>别名：获取幻灯片信息 / 读取幻灯片信息 / 查看幻灯片信息</sub> |
+| `wps_ppt_get_slide_master` |  | R | live | 获取当前演示文稿的母版信息。<br><sub>别名：获取幻灯片母版 / 读取幻灯片母版 / 查看幻灯片母版</sub> |
+| `wps_ppt_get_slide_notes` |  | R | live | 获取指定幻灯片的备注内容。<br><sub>别名：获取幻灯片备注 / 读取幻灯片备注 / 查看幻灯片备注</sub> |
+| `wps_ppt_get_slide_title` |  | R | live | 获取指定幻灯片的标题。<br><sub>别名：获取幻灯片标题 / 读取幻灯片标题 / 查看幻灯片标题</sub> |
+| `wps_ppt_get_table_cell` |  | R | live | 获取PPT表格中指定单元格的文本内容。<br><sub>别名：获取表格单元格 / 读取表格单元格 / 查看表格单元格</sub> |
+| `wps_ppt_get_textboxes` |  | R | live | 获取幻灯片上所有文本框的列表。<br><sub>别名：获取文本框 / 读取文本框 / 查看文本框</sub> |
+| `wps_ppt_group_shapes` |  | — | live | 将幻灯片中的多个形状组合为一个组。<br><sub>别名：组合形状 / 分组形状 / 形状</sub> |
 | `wps_ppt_insert_ppt_chart` |  | N | live | 在幻灯片中插入数据图表。<br><sub>别名：插入图表 / 新增图表 / 加入图表</sub> |
-| `wps_ppt_insert_ppt_image` |  | N | static | [DEPRECATED·改用 wps_ppt_insert_image] 插入图片到幻灯片中。<br><sub>别名：插入图片 / 新增图片 / 加入图片</sub> |
-| `wps_ppt_insert_slide_image` |  | N | static | 在幻灯片中插入图片。<br><sub>别名：插入幻灯片图片 / 新增幻灯片图片 / 加入幻灯片图片</sub> |
-| `wps_ppt_insert_slides_from_file` |  | N | static | 从另一个 PPT 文件把整页幻灯片插入到【当前活动演示文稿】，并保留来源幻灯片的原始格式（字体/配色/版式/图片）。用于把多个…<br><sub>别名：插入幻灯片fromfile / 新增幻灯片fromfile / 加入幻灯片fromfile</sub> |
+| `wps_ppt_insert_ppt_image` |  | N | live | [DEPRECATED·改用 wps_ppt_insert_image] 插入图片到幻灯片中。<br><sub>别名：插入图片 / 新增图片 / 加入图片</sub> |
+| `wps_ppt_insert_slide_image` |  | N | live | 在幻灯片中插入图片。<br><sub>别名：插入幻灯片图片 / 新增幻灯片图片 / 加入幻灯片图片</sub> |
+| `wps_ppt_insert_slides_from_file` |  | N | live | 从另一个 PPT 文件把整页幻灯片插入到【当前活动演示文稿】，并保留来源幻灯片的原始格式（字体/配色/版式/图片）。用于把多个…<br><sub>别名：插入幻灯片fromfile / 新增幻灯片fromfile / 加入幻灯片fromfile</sub> |
 | `wps_ppt_insert_table` |  | N | live | 在幻灯片中插入表格。<br><sub>别名：插入表格 / 加表格 / 新增表格</sub> |
-| `wps_ppt_move_slide` |  | N | static | 移动幻灯片到指定位置。<br><sub>别名：移动幻灯片 / 幻灯片 / 页面</sub> |
-| `wps_ppt_open_presentation` |  | — | static | 打开指定路径的演示文稿文件。<br><sub>别名：打开演示文稿 / 演示文稿 / PPT</sub> |
-| `wps_ppt_remove_animation` |  | DN | static | 移除幻灯片中指定的动画效果。<br><sub>别名：删除动画 / 移除动画 / 去掉动画</sub> |
+| `wps_ppt_move_slide` |  | N | live | 移动幻灯片到指定位置。<br><sub>别名：移动幻灯片 / 幻灯片 / 页面</sub> |
+| `wps_ppt_open_presentation` |  | — | live | 打开指定路径的演示文稿文件。<br><sub>别名：打开演示文稿 / 演示文稿 / PPT</sub> |
+| `wps_ppt_remove_animation` |  | DN | live | 移除幻灯片中指定的动画效果。<br><sub>别名：删除动画 / 移除动画 / 去掉动画</sub> |
 | `wps_ppt_remove_ppt_hyperlink` |  | DN | static | 移除幻灯片中形状的超链接。<br><sub>别名：删除超链接 / 移除超链接 / 去掉超链接</sub> |
-| `wps_ppt_replace_ppt_image` |  | DN | static | 原位替换幻灯片中的某张图片：保留原图的位置、尺寸、旋转角度，删除旧图后在同一矩形内插入新图。用于在保持版式不变的前提下把模板里…<br><sub>别名：替换图片 / 换图 / 图片</sub> |
-| `wps_ppt_replace_ppt_text` |  | DN | static | 在演示文稿中查找并替换文本。<br><sub>别名：替换文本 / 文本 / 文字</sub> |
+| `wps_ppt_replace_ppt_image` |  | DN | live | 原位替换幻灯片中的某张图片：保留原图的位置、尺寸、旋转角度，删除旧图后在同一矩形内插入新图。用于在保持版式不变的前提下把模板里…<br><sub>别名：替换图片 / 换图 / 图片</sub> |
+| `wps_ppt_replace_ppt_text` |  | DN | live | 在演示文稿中查找并替换文本。<br><sub>别名：替换文本 / 文本 / 文字</sub> |
 | `wps_ppt_set_3d_depth` |  | — | static | 设置幻灯片中形状的3D挤出深度。<br><sub>别名：设置3d深度 / 设定3d深度 / 深度</sub> |
 | `wps_ppt_set_3d_material` |  | — | static | 设置幻灯片中形状的3D材质效果。<br><sub>别名：设置3d材质 / 设定3d材质 / 材质</sub> |
 | `wps_ppt_set_3d_rotation` |  | — | static | 设置幻灯片中形状的3D旋转效果。<br><sub>别名：设置3d旋转 / 设定3d旋转 / 旋转</sub> |
-| `wps_ppt_set_active_target` |  | — | static | 锁定后续所有 PPT 操作的【目标演示文稿】（按文件名）。锁定后，本服务器会给所有演示类调用自动注入该文稿名，底层精确定位，彻…<br><sub>别名：设置当前目标 / 设定当前目标 / 当前</sub> |
-| `wps_ppt_set_animation` |  | N | static | 给形状加动画，或调整已有动画的播放顺序（第 8 轮合并了动画族 5 个工具）。<br><sub>别名：设置动画 / 添加动画 / 加动画</sub> |
-| `wps_ppt_set_background` |  | — | static | 设置背景：某一页、整份文稿、或幻灯片母版。<br><sub>别名：设置背景 / 换背景 / 背景色</sub> |
-| `wps_ppt_set_font_color` |  | — | static | 设置幻灯片中指定形状的文字颜色。<br><sub>别名：设置字体颜色 / 设定字体颜色 / 字体</sub> |
-| `wps_ppt_set_image_style` |  | — | static | 设置幻灯片中指定图片的样式。<br><sub>别名：设置图片样式 / 设定图片样式 / 图片</sub> |
+| `wps_ppt_set_active_target` |  | — | live | 锁定后续所有 PPT 操作的【目标演示文稿】（按文件名）。锁定后，本服务器会给所有演示类调用自动注入该文稿名，底层精确定位，彻…<br><sub>别名：设置当前目标 / 设定当前目标 / 当前</sub> |
+| `wps_ppt_set_animation` |  | N | live | 给形状加动画，或调整已有动画的播放顺序（第 8 轮合并了动画族 5 个工具）。<br><sub>别名：设置动画 / 添加动画 / 加动画</sub> |
+| `wps_ppt_set_background` |  | — | live | 设置背景：某一页、整份文稿、或幻灯片母版。<br><sub>别名：设置背景 / 换背景 / 背景色</sub> |
+| `wps_ppt_set_font_color` |  | — | live | 设置幻灯片中指定形状的文字颜色。<br><sub>别名：设置字体颜色 / 设定字体颜色 / 字体</sub> |
+| `wps_ppt_set_image_style` |  | — | live | 设置幻灯片中指定图片的样式。<br><sub>别名：设置图片样式 / 设定图片样式 / 图片</sub> |
 | `wps_ppt_set_ppt_chart_data` |  | — | live | 更新幻灯片中已有图表的数据。<br><sub>别名：改图表数据 / 设置图表数据 / 设定图表数据</sub> |
 | `wps_ppt_set_ppt_chart_style` |  | — | live | 设置幻灯片中图表的样式属性。<br><sub>别名：设置图表样式 / 设定图表样式 / 图表</sub> |
-| `wps_ppt_set_ppt_date_time` |  | — | static | 设置演示文稿日期时间显示。<br><sub>别名：设置日期时间 / 设定日期时间 / 日期</sub> |
-| `wps_ppt_set_ppt_footer` |  | — | static | 设置演示文稿页脚文本。<br><sub>别名：设置页脚 / 设定页脚 / 页脚</sub> |
-| `wps_ppt_set_shape_border` |  | — | static | 设置幻灯片中指定形状的边框样式。<br><sub>别名：设置形状边框 / 设定形状边框 / 形状</sub> |
+| `wps_ppt_set_ppt_date_time` |  | — | live | 设置演示文稿日期时间显示。<br><sub>别名：设置日期时间 / 设定日期时间 / 日期</sub> |
+| `wps_ppt_set_ppt_footer` |  | — | live | 设置演示文稿页脚文本。<br><sub>别名：设置页脚 / 设定页脚 / 页脚</sub> |
+| `wps_ppt_set_shape_border` |  | — | live | 设置幻灯片中指定形状的边框样式。<br><sub>别名：设置形状边框 / 设定形状边框 / 形状</sub> |
 | `wps_ppt_set_shape_fill` |  | — | live | 设置幻灯片中指定形状的填充颜色。<br><sub>别名：设置形状填充 / 设定形状填充 / 形状</sub> |
-| `wps_ppt_set_shape_gradient` |  | — | static | 设置幻灯片中指定形状的渐变填充效果。<br><sub>别名：设置形状渐变 / 设定形状渐变 / 形状</sub> |
-| `wps_ppt_set_shape_position` |  | — | static | 设置幻灯片中指定形状的位置和大小。<br><sub>别名：设置形状位置 / 设定形状位置 / 形状</sub> |
+| `wps_ppt_set_shape_gradient` |  | — | live | 设置幻灯片中指定形状的渐变填充效果。<br><sub>别名：设置形状渐变 / 设定形状渐变 / 形状</sub> |
+| `wps_ppt_set_shape_position` |  | — | live | 设置幻灯片中指定形状的位置和大小。<br><sub>别名：设置形状位置 / 设定形状位置 / 形状</sub> |
 | `wps_ppt_set_shape_shadow` |  | — | static | 设置幻灯片中指定形状的阴影效果。<br><sub>别名：设置形状阴影 / 设定形状阴影 / 形状</sub> |
-| `wps_ppt_set_shape_style` |  | — | static | 设置幻灯片中形状的样式，包括填充颜色、边框颜色和边框粗细。<br><sub>别名：设置形状样式 / 设定形状样式 / 形状</sub> |
+| `wps_ppt_set_shape_style` |  | — | live | 设置幻灯片中形状的样式，包括填充颜色、边框颜色和边框粗细。<br><sub>别名：设置形状样式 / 设定形状样式 / 形状</sub> |
 | `wps_ppt_set_shape_text` |  | — | live | 设置幻灯片中指定形状的文字内容。<br><sub>别名：设置形状文本 / 设定形状文本 / 形状</sub> |
-| `wps_ppt_set_shape_transparency` |  | — | static | 设置幻灯片中指定形状的透明度。<br><sub>别名：设置形状透明度 / 设定形状透明度 / 形状</sub> |
-| `wps_ppt_set_shape_z_order` |  | — | static | 设置形状在幻灯片中的层级顺序（Z轴排列）。<br><sub>别名：设置形状z顺序 / 设定形状z顺序 / 形状</sub> |
-| `wps_ppt_set_slide_content` |  | — | static | 设置幻灯片的正文内容区域。<br><sub>别名：设置幻灯片内容 / 设定幻灯片内容 / 幻灯片</sub> |
-| `wps_ppt_set_slide_layout` |  | — | static | 设置幻灯片的版式布局。<br><sub>别名：设置幻灯片版式 / 设定幻灯片版式 / 幻灯片</sub> |
-| `wps_ppt_set_slide_number` |  | — | static | 设置幻灯片页码的显示状态和起始编号。<br><sub>别名：设置幻灯片数字 / 设定幻灯片数字 / 幻灯片</sub> |
-| `wps_ppt_set_slide_size` |  | — | static | 设置演示文稿的幻灯片尺寸（按像素给，内部换算成 WPS 的磅）。<br><sub>别名：设置幻灯片size / 设定幻灯片size / 幻灯片</sub> |
-| `wps_ppt_set_slide_subtitle` |  | — | static | 设置幻灯片的副标题。<br><sub>别名：设置幻灯片副标题 / 设定幻灯片副标题 / 幻灯片</sub> |
+| `wps_ppt_set_shape_transparency` |  | — | live | 设置幻灯片中指定形状的透明度。<br><sub>别名：设置形状透明度 / 设定形状透明度 / 形状</sub> |
+| `wps_ppt_set_shape_z_order` |  | — | live | 设置形状在幻灯片中的层级顺序（Z轴排列）。<br><sub>别名：设置形状z顺序 / 设定形状z顺序 / 形状</sub> |
+| `wps_ppt_set_slide_content` |  | — | live | 设置幻灯片的正文内容区域。<br><sub>别名：设置幻灯片内容 / 设定幻灯片内容 / 幻灯片</sub> |
+| `wps_ppt_set_slide_layout` |  | — | live | 设置幻灯片的版式布局。<br><sub>别名：设置幻灯片版式 / 设定幻灯片版式 / 幻灯片</sub> |
+| `wps_ppt_set_slide_number` |  | — | live | 设置幻灯片页码的显示状态和起始编号。<br><sub>别名：设置幻灯片数字 / 设定幻灯片数字 / 幻灯片</sub> |
+| `wps_ppt_set_slide_size` |  | — | live | 设置演示文稿的幻灯片尺寸（按像素给，内部换算成 WPS 的磅）。<br><sub>别名：设置幻灯片size / 设定幻灯片size / 幻灯片</sub> |
+| `wps_ppt_set_slide_subtitle` |  | — | live | 设置幻灯片的副标题。<br><sub>别名：设置幻灯片副标题 / 设定幻灯片副标题 / 幻灯片</sub> |
 | `wps_ppt_set_slide_theme` |  | — | static | 应用主题模板（换整套配色/字体/版式）。<br><sub>别名：设置幻灯片主题 / 设定幻灯片主题 / 幻灯片</sub> |
 | `wps_ppt_set_table_cell` |  | — | live | 设置PPT表格中指定单元格的文本内容。<br><sub>别名：设置表格单元格 / 设定表格单元格 / 表格</sub> |
-| `wps_ppt_set_table_cell_style` |  | — | static | 设置PPT表格中指定单元格的样式。<br><sub>别名：设置表格单元格样式 / 设定表格单元格样式 / 表格</sub> |
+| `wps_ppt_set_table_cell_style` |  | — | live | 设置PPT表格中指定单元格的样式。<br><sub>别名：设置表格单元格样式 / 设定表格单元格样式 / 表格</sub> |
 | `wps_ppt_set_table_row_style` |  | — | live | 设置PPT表格中指定行的样式。<br><sub>别名：设置表格行样式 / 设定表格行样式 / 表格</sub> |
-| `wps_ppt_set_table_style` |  | — | static | 设置PPT表格的整体样式。<br><sub>别名：设置表格样式 / 设定表格样式 / 表格</sub> |
-| `wps_ppt_set_textbox_style` |  | — | static | 设置文本框样式（字体大小、颜色、粗体等）。<br><sub>别名：设置文本框样式 / 设定文本框样式 / 文本框</sub> |
-| `wps_ppt_set_textbox_text` |  | — | static | 设置指定文本框的文本内容。<br><sub>别名：设置文本框文本 / 设定文本框文本 / 文本框</sub> |
-| `wps_ppt_set_transition` |  | — | static | 设置幻灯片切换效果：单页 or 整份文稿（第 8 轮合并了切换族 3 个工具）。<br><sub>别名：切换效果 / 切换动画 / 翻页效果</sub> |
-| `wps_ppt_smart_distribute` |  | — | static | 将指定形状进行等距分布排列。<br><sub>别名：智能分布 / 分布 / 等距分布</sub> |
+| `wps_ppt_set_table_style` |  | — | live | 设置PPT表格的整体样式。<br><sub>别名：设置表格样式 / 设定表格样式 / 表格</sub> |
+| `wps_ppt_set_textbox_style` |  | — | live | 设置文本框样式（字体大小、颜色、粗体等）。<br><sub>别名：设置文本框样式 / 设定文本框样式 / 文本框</sub> |
+| `wps_ppt_set_textbox_text` |  | — | live | 设置指定文本框的文本内容。<br><sub>别名：设置文本框文本 / 设定文本框文本 / 文本框</sub> |
+| `wps_ppt_set_transition` |  | — | live | 设置幻灯片切换效果：单页 or 整份文稿（第 8 轮合并了切换族 3 个工具）。<br><sub>别名：切换效果 / 切换动画 / 翻页效果</sub> |
+| `wps_ppt_smart_distribute` |  | — | live | 将指定形状进行等距分布排列。<br><sub>别名：智能分布 / 分布 / 等距分布</sub> |
 | `wps_ppt_start_slide_show` |  | N | static | 开始幻灯片放映。<br><sub>别名：开始幻灯片显示 / 启动幻灯片显示 / 幻灯片</sub> |
-| `wps_ppt_switch_presentation` |  | — | static | 切换到指定名称的演示文稿。<br><sub>别名：切换演示文稿 / 演示文稿 / PPT</sub> |
-| `wps_ppt_switch_slide` |  | — | static | 切换到指定的幻灯片页面。<br><sub>别名：切换幻灯片 / 幻灯片 / 页面</sub> |
-| `wps_ppt_unify_font` |  | — | static | 统一演示文稿中所有幻灯片的字体。<br><sub>别名：统一字体 / 字体</sub> |
+| `wps_ppt_switch_presentation` |  | — | live | 切换到指定名称的演示文稿。<br><sub>别名：切换演示文稿 / 演示文稿 / PPT</sub> |
+| `wps_ppt_switch_slide` |  | — | live | 切换到指定的幻灯片页面。<br><sub>别名：切换幻灯片 / 幻灯片 / 页面</sub> |
+| `wps_ppt_unify_font` |  | — | live | 统一演示文稿中所有幻灯片的字体。<br><sub>别名：统一字体 / 字体</sub> |
 
 ---
 

@@ -271,6 +271,14 @@ const CURATED: Record<
     aliases: ['加载组', '拉起组', '把PPT工具弄出来'],
     notFor: ['不是单个工具加载，是整组；只要一个工具也用这个'],
   },
+  wps_ppt_build_deck: {
+    aliases: ['生成整套PPT', '套模板生成', '一键做PPT'],
+    examples: ['按这份大纲生成一套演示文稿', '帮我生成5页的PPT'],
+    notFor: [
+      '不是单页微调——改某一页的文本/位置用 wps_ppt_set_textbox_text / wps_ppt_set_shape_position',
+      '不负责放映（wps_ppt_start_slide_show）与逐页导图（wps_ppt_export_slide_as_image），生成完可用后者复核',
+    ],
+  },
   wps_route_intent: {
     examples: ['我要改 Excel 里的公式，该开哪组', '这句话该用 word 还是 excel'],
     aliases: ['意图识别', '该用哪个组', '这句话是干嘛'],

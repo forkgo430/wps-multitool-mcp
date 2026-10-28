@@ -63,6 +63,9 @@ const chain = new AsyncLocalStorage<{ depth: number }>();
  *   wps_common_snapshot_*   —— 快照/恢复工具本身：给"建快照"再建一份快照没有意义。
  */
 const SELF_MANAGED = new Set([
+  // deckkit 引擎（E2）：build_ppt_deck 的每个展开步骤都经 callTool 各自过快照护栏，
+  //  入口再建一份是重复快照垃圾（与 batch 同理）。
+  'wps_ppt_build_deck',
   'wps_common_batch',
   'wps_common_snapshot_create',
   'wps_common_snapshot_restore',
