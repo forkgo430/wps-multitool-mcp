@@ -17,7 +17,10 @@ param(
 $ErrorActionPreference = 'Stop'
 
 $projectRoot = Split-Path -Parent $PSScriptRoot
-$addonSource = Join-Path $projectRoot 'wps-claude-addon'
+# 2026-10-28 修源路径：加载项目录已改名 wps-multitool-addon（wps-claude-addon 目录已不存在，
+# 旧路径导致"改了源目录也部署不上"——面板陈旧问题的根因之一）。目标目录名保持 wps-claude-addon_：
+# 那是 WPS publish.xml 里已注册的名字，改目标名要同步迁移 publish.xml，不值得。
+$addonSource = Join-Path $projectRoot 'wps-multitool-addon'
 $wpsAddonsPath = Join-Path $env:APPDATA 'kingsoft\wps\jsaddons'
 $addonTarget = Join-Path $wpsAddonsPath 'wps-claude-addon_'
 $publishXmlPath = Join-Path $wpsAddonsPath 'publish.xml'

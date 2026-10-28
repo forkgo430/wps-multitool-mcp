@@ -15,6 +15,11 @@
   - AI 活动指示：队列 > 0 时标题区显示"AI 执行中"脉冲动画
   - 卡片间距/分组微调
 
+  v3.2（2026-10-28 决策者实测轮 · 第六任）：
+  - 文档列表图标 emoji（📝📊📽🔒）全部换内联 SVG —— WPS 内嵌老内核对 emoji 渲染不稳，
+    矢量图保真且跟随主题色；空态文案同步调整
+  - （部署副本过期问题：WPS 内装的是 v2.3 旧面板，重跑 deploy-addon.ps1 即更新到本版）
+
   v3.1（2026-10-28 决策者修复轮 · 第六任）：
   - 修复状态闪跳：v3.0 改版后 render 仍写已移除的 target 区块（target-name/target-lock
     在 markup 里已不存在）→ 每 2 秒抛 TypeError → 被 poll 的 catch 误报"连不上桥"。
@@ -86,7 +91,10 @@
   }
   .doc-item:hover { background: var(--accent-bg); }
   .doc-item.active { background: var(--accent-bg); font-weight: 500; }
-  .doc-item .ico { flex-shrink: 0; font-size: 11px; }
+  .doc-item .ico { flex-shrink: 0; font-size: 11px; display: inline-flex; align-items: center; }
+  .doc-item .ico svg { display: block; color: var(--dim); }
+  .doc-item.active .ico svg { color: var(--accent); }
+  .tag svg { color: var(--ok); }
   .doc-item .nm { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .doc-item .tag {
     font-size: 10px; color: var(--accent); border: 1px solid currentColor;
@@ -177,7 +185,7 @@
 <div class="card">
   <h3>打开的文档</h3>
   <div class="doclist" id="doclist"><div class="doc-empty">轮询中…</div></div>
-  <div class="hint">列表来自 WPS COM 实时查询。🔒 标记 = 当前活动文档（AI 默认写这份）。</div>
+  <div class="hint">列表来自 WPS COM 实时查询。带「当前」标记的 = AI 默认写这份。</div>
 </div>
 
 <div class="card">
@@ -244,6 +252,14 @@ function tip(msg, kind) {
 }
 
 /* 文档切换器：通过 COM 查询打开的文档 */
+var DOC_ICONS = {
+  // 内联 SVG：WPS 内嵌内核（含老 CEF）对 emoji 渲染不稳，矢量图保真且跟随主题色（v3.2）
+  word: '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M4 1.5h5.5L13 5v9.5H4z" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M6.2 8h4.6M6.2 10.4h4.6M6.2 12.8h2.8" stroke="currentColor" stroke-width="1.2" fill="none"/></svg>',
+  excel: '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><rect x="2" y="2" width="12" height="12" rx="1" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M2 6.2h12M2 10.2h12M6.2 2v12M10.2 2v12" stroke="currentColor" stroke-width="1" fill="none"/></svg>',
+  ppt: '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><rect x="2" y="3" width="12" height="7.5" rx="1" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M8 10.5v2M5.5 13h5" stroke="currentColor" stroke-width="1.2" fill="none"/></svg>',
+  lock: '<svg viewBox="0 0 16 16" width="11" height="11" aria-hidden="true" style="vertical-align:-1px"><rect x="3.5" y="7" width="9" height="6.5" rx="1" fill="currentColor"/><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>'
+};
+
 function listDocs() {
   try {
     var A = window.Application;
@@ -253,29 +269,29 @@ function listDocs() {
       var n = A.Documents.Count;
       for (var i = 1; i <= n; i++) {
         var d = A.Documents.Item(i);
-        items.push({ app: '📝', name: d.Name || '未命名', active: A.ActiveDocument && A.ActiveDocument.Name === d.Name });
+        items.push({ app: 'word', name: d.Name || '未命名', active: A.ActiveDocument && A.ActiveDocument.Name === d.Name });
       }
     }
     if (A.Workbooks) {
       var wn = A.Workbooks.Count;
       for (var j = 1; j <= wn; j++) {
         var w = A.Workbooks.Item(j);
-        items.push({ app: '📊', name: w.Name || '未命名', active: A.ActiveWorkbook && A.ActiveWorkbook.Name === w.Name });
+        items.push({ app: 'excel', name: w.Name || '未命名', active: A.ActiveWorkbook && A.ActiveWorkbook.Name === w.Name });
       }
     }
     if (A.Presentations) {
       var pn = A.Presentations.Count;
       for (var k = 1; k <= pn; k++) {
         var pr = A.Presentations.Item(k);
-        items.push({ app: '📽', name: pr.Name || '未命名', active: A.ActivePresentation && A.ActivePresentation.Name === pr.Name });
+        items.push({ app: 'ppt', name: pr.Name || '未命名', active: A.ActivePresentation && A.ActivePresentation.Name === pr.Name });
       }
     }
     if (!items.length) { $('doclist').innerHTML = '<div class="doc-empty">没有打开的文档</div>'; return; }
     $('doclist').innerHTML = items.map(function (it) {
       return '<div class="doc-item' + (it.active ? ' active' : '') + '">' +
-        '<span class="ico">' + it.app + '</span>' +
+        '<span class="ico">' + (DOC_ICONS[it.app] || '') + '</span>' +
         '<span class="nm">' + esc(it.name) + '</span>' +
-        (it.active ? '<span class="tag">🔒 当前</span>' : '') +
+        (it.active ? '<span class="tag">' + DOC_ICONS.lock + ' 当前</span>' : '') +
         '</div>';
     }).join('');
   } catch (e) {
@@ -370,6 +386,11 @@ function act(what, btn) {
       } else if (what === 'snap') {
         var d3 = A.ActiveDocument;
         if (!d3 || !d3.FullName) { tip('文档未保存到磁盘，无法建快照'); return; }
+        if (typeof ActiveXObject === 'undefined') {
+          // CEF 等非 IE 内核没有 ActiveXObject —— 如实引导，不甩生硬报错（v3.2 实测轮）
+          tip('当前 WPS 内核不支持面板内建快照，请让 AI 用快照工具（等价能力）');
+          return;
+        }
         var fso = new ActiveXObject('Scripting.FileSystemObject');
         var sdir = d3.FullName.replace(/[^\\]*$/, '') + '.mcp-snapshots\\';
         if (!fso.FolderExists(sdir)) fso.CreateFolder(sdir);
