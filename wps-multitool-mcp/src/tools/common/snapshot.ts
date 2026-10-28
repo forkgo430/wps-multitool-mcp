@@ -147,10 +147,17 @@ export function readOpLog(): SnapshotRecord[] {
 async function getActiveState(
   app?: 'word' | 'excel' | 'ppt'
 ): Promise<{ ok: true; state: DocState } | { ok: false; error: string }> {
-  const r = await wpsClient.executeMethod<DocState>(
-    'getActiveDocumentState',
-    app ? { app } : {}
-  );
+  let r: Awaited<ReturnType<typeof wpsClient.executeMethod<DocState>>>;
+  try {
+    r = await wpsClient.executeMethod<DocState>(
+      'getActiveDocumentState',
+      app ? { app } : {}
+    );
+  } catch (e) {
+    // 无 WPS/无 PowerShell 的环境（如 CI 的 Linux runner）走的是异常而非 success:false——
+    // 归为"拿不到状态"，让快照降级走"建不了快照不阻断"的既定语义（2026-10-28 CI 实抓）
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
   if (!r.success) return { ok: false, error: r.error || '拿不到活动文档状态' };
   const data = (r.data ?? undefined) as DocState | undefined;
   if (!data) return { ok: false, error: '拿不到活动文档状态（返回空）' };
