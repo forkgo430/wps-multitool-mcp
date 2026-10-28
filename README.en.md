@@ -3,7 +3,7 @@
 [简体中文](README.md) | **English**
 
 <!-- AUTO:badges:start -->
-[![CI](https://github.com/forkgo430/wps-multitool-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/forkgo430/wps-multitool-mcp/actions/workflows/ci.yml) [![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE) [![npm](https://img.shields.io/npm/v/wps-multitool-mcp)](https://www.npmjs.com/package/wps-multitool-mcp) [![release](https://img.shields.io/github/v/release/forkgo430/wps-multitool-mcp)](https://github.com/forkgo430/wps-multitool-mcp/releases) [![tools](https://img.shields.io/badge/tools-287-brightgreen.svg)](#capabilities) [![platform](https://img.shields.io/badge/platform-Windows%20only-lightgrey.svg)](#requirements)
+[![CI](https://github.com/forkgo430/wps-multitool-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/forkgo430/wps-multitool-mcp/actions/workflows/ci.yml) [![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE) [![npm](https://img.shields.io/npm/v/wps-multitool-mcp)](https://www.npmjs.com/package/wps-multitool-mcp) [![release](https://img.shields.io/github/v/release/forkgo430/wps-multitool-mcp)](https://github.com/forkgo430/wps-multitool-mcp/releases) [![tools](https://img.shields.io/badge/tools-288-brightgreen.svg)](#capabilities) [![platform](https://img.shields.io/badge/platform-Windows%20only-lightgrey.svg)](#requirements)
 <!-- AUTO:badges:end -->
 
 > Let AI directly drive the WPS Office documents you have open right now — Writer, Spreadsheets, Presentation.
@@ -73,7 +73,7 @@ Four conveniences built in:
 
 - **One sentence routes the work**: `wps_route_intent` maps "make me a report" to the presentation group — and says so when it can't
 - **Search tools in Chinese**: `wps_search_tools` results carry `notFor` counter-examples to separate near-named tools
-- **Every tool carries safety labels**: all 284 marked read-only / destructive / idempotent
+- **Every tool carries safety labels**: all 287 marked read-only / destructive / idempotent
 - **Renames don't break old calls**: old names auto-resolve, parameters migrate with them
 
 <!-- AUTO:tool-table:start -->
@@ -81,12 +81,12 @@ Four conveniences built in:
 |-----|-------|-----------|
 | Excel | 91 | formulas, data, charts, pivot tables, sheets, formatting, workbooks, rows/columns, comments & protection, image export |
 | Word | 69 | formatting, content, document management, headers/footers, comments, bookmarks, tables, templates, academic layout, revisions, index, cross-references |
-| PPT | 101 | slides, shapes, images, tables, beautify, animations, charts, 3D, data viz, image export |
+| PPT | 102 | slides, shapes, images, tables, beautify, animations, charts, 3D, data viz, image export |
 | Common | 26 | save, connection check, text selection, format conversion, tool groups, intent routing, batch |
 | Built-in | 7 (already counted above) | connection check, generic method, data cache |
 <!-- AUTO:tool-table:end -->
 
-The full list of all 284 tools (name / confirmation level / real-machine verification status) lives in
+The full list of all 287 tools (name / confirmation level / real-machine verification status) lives in
 **[TOOLS.md](TOOLS.md)**, generated from the registry. Old tool names keep working — they auto-resolve
 to the new tools with parameters migrated.
 
@@ -94,9 +94,9 @@ to the new tools with parameters migrated.
 <summary><b>Scale (measured from the registry)</b></summary>
 
 <!-- AUTO:tool-stats:start -->
-- **287 tools** (7 built-in + 280 specialized); **only 40 listed by default** (essential ∩ live-verified, load on demand — see `scripts/manual/basic-tier-verify.js`)
-- Distribution (by tool group, built-ins counted in their app group): Common 26 (incl. core) / Word 69 / Excel 91 / PPT 101
-- Annotations (measured): read-only 51 / destructive 36 / non-idempotent 111 — coverage 287/287
+- **288 tools** (7 built-in + 281 specialized); **only 40 listed by default** (essential ∩ live-verified, load on demand — see `scripts/manual/basic-tier-verify.js`)
+- Distribution (by tool group, built-ins counted in their app group): Common 26 (incl. core) / Word 69 / Excel 91 / PPT 102
+- Annotations (measured): read-only 51 / destructive 36 / non-idempotent 111 — coverage 287/288
 <!-- AUTO:tool-stats:end -->
 
 </details>
