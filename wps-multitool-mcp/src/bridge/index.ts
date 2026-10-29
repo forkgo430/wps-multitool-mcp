@@ -245,9 +245,22 @@ function recordLog(app: string, action: string, params: Record<string, unknown>,
 //
 // 安全边界：
 //   - 只绑 127.0.0.1，不对局域网/公网暴露
-//   - 只读（GET），没有写操作
+//   - 只读（GET），没有写操作 —— 唯一例外：2026-10-29 加的 POST /hold（面板"暂停 AI"
+//     按钮），影响面只有暂停/恢复命令排队，不涉任何数据；仍只绑 127.0.0.1
 //   - 返回内容不含文档正文（摘要已截断到 24 字）
 const HTTP_PORT = parseInt(process.env.WPS_BRIDGE_HTTP_PORT || '27731', 10);
+
+// 协作暂停（2026-10-29，所有者批准的面板增强）：用户在面板点"暂停 AI"后，
+// 命令通道里排着的请求挂起不执行，恢复后按原序继续——用户想先打完自己那段时用。
+// 不丢请求；MCP 客户端自身的超时（120 秒）是硬上限，暂停超过它按客户端超时算。
+let hold = false;
+
+function waitWhileHold(): Promise<void> {
+  return new Promise((resolve) => {
+    const tick = () => (hold ? setTimeout(tick, 150) : resolve());
+    tick();
+  });
+}
 
 function bridgeStatusPayload(): Record<string, unknown> {
   const childrenList = childStats() as Array<Record<string, unknown>>;
@@ -267,6 +280,7 @@ function bridgeStatusPayload(): Record<string, unknown> {
     queued,
     queueMax: queueMax(),
     queueTimeoutMs: queueTimeoutMs(),
+    hold,
     appsRunning: running,
     children: childrenList,
     recent: LOG.slice(-50).reverse(),
@@ -277,6 +291,24 @@ function startHttpEndpoint(): void {
   const http = require('http') as typeof import('http');
   const server = http.createServer((req, res) => {
     const url = (req.url || '/').split('?')[0];
+    if (req.method === 'POST' && url === '/hold') {
+      // 面板"暂停 AI"开关。localhost 专属 + 影响面仅暂停/恢复排队；
+      // Content-Type 用 text/plain（简单请求不过预检），体是 JSON。
+      let body = '';
+      req.on('data', (c) => (body += c));
+      req.on('end', () => {
+        let on = false;
+        try { on = !!JSON.parse(body || '{}').on; } catch { /* 非法体按 false */ }
+        hold = on;
+        res.writeHead(200, {
+          'Content-Type': 'application/json; charset=utf-8',
+          'Access-Control-Allow-Origin': 'null',
+          'Cache-Control': 'no-store',
+        });
+        res.end(JSON.stringify({ ok: true, hold }));
+      });
+      return;
+    }
     if (url === '/status' || url === '/') {
       res.writeHead(200, {
         'Content-Type': 'application/json; charset=utf-8',
@@ -363,6 +395,9 @@ async function handleRequest(
     writeLine(sock, { id, success: r.ok, data: { cancelled: r.ok, reason: r.reason } });
     return;
   }
+
+  // 暂停闸门：只挡真正的执行路径——状态查询和取消不受影响（暂停期间也要能取消）
+  await waitWhileHold();
 
   const app = normalizeApp(req.app);
   try {

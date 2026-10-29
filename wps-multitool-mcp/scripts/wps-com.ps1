@@ -1070,7 +1070,12 @@ switch ($Action) {
                         $dir = ""; try { $dir = [string]$book.Path } catch {}
                         $saved = $true; try { $saved = [bool]$book.Saved } catch {}
                         $ro = $false; try { $ro = [bool]$book.ReadOnly } catch {}
-                        $cand += @{ app = "excel"; name = [string]$book.Name; fullName = $full; dir = $dir; saved = $saved; readOnly = $ro; hasPath = (-not [string]::IsNullOrEmpty($dir)) }
+                        # editProbe：协作安全网的文档指纹（2026-10-29）。excel 用 UsedRange 的
+                        # 地址+行列数 —— 只有结构性增删会动它，改单元格值不会（诚实局限：
+                        # 值级人工编辑在此探测不到）。取不到就 $null，守卫侧按降级处理。
+                        $probe = $null
+                        try { $ur = $book.ActiveSheet.UsedRange; $probe = "$($ur.Address)|$($ur.Rows.Count)x$($ur.Columns.Count)" } catch {}
+                        $cand += @{ app = "excel"; name = [string]$book.Name; fullName = $full; dir = $dir; saved = $saved; readOnly = $ro; hasPath = (-not [string]::IsNullOrEmpty($dir)); editProbe = $probe }
                     }
                 } catch {}
             }
@@ -1086,7 +1091,11 @@ switch ($Action) {
                         $dir = ""; try { $dir = [string]$doc.Path } catch {}
                         $saved = $true; try { $saved = [bool]$doc.Saved } catch {}
                         $ro = $false; try { $ro = [bool]$doc.ReadOnly } catch {}
-                        $cand += @{ app = "word"; name = [string]$doc.Name; fullName = $full; dir = $dir; saved = $saved; readOnly = $ro; hasPath = (-not [string]::IsNullOrEmpty($dir)) }
+                        # editProbe：word 用正文流末位（Content.End，O(1)）——插入/删除会移动它，
+                        # 纯格式调整不会（诚实局限：排版级人工编辑探测不到）。
+                        $probe = $null
+                        try { $probe = [string]$doc.Content.End } catch {}
+                        $cand += @{ app = "word"; name = [string]$doc.Name; fullName = $full; dir = $dir; saved = $saved; readOnly = $ro; hasPath = (-not [string]::IsNullOrEmpty($dir)); editProbe = $probe }
                     }
                 } catch {}
             }
@@ -1102,7 +1111,10 @@ switch ($Action) {
                         $dir = ""; try { $dir = [string]$pres.Path } catch {}
                         $saved = $true; try { $saved = [bool]$pres.Saved } catch {}
                         $ro = $false; try { $ro = [bool]$pres.ReadOnly } catch {}
-                        $cand += @{ app = "ppt"; name = [string]$pres.Name; fullName = $full; dir = $dir; saved = $saved; readOnly = $ro; hasPath = (-not [string]::IsNullOrEmpty($dir)) }
+                        # editProbe：ppt 用页数 —— 增删页会动它，改页内文字不会（诚实局限）。
+                        $probe = $null
+                        try { $probe = [string]$pres.Slides.Count } catch {}
+                        $cand += @{ app = "ppt"; name = [string]$pres.Name; fullName = $full; dir = $dir; saved = $saved; readOnly = $ro; hasPath = (-not [string]::IsNullOrEmpty($dir)); editProbe = $probe }
                     }
                 } catch {}
             }

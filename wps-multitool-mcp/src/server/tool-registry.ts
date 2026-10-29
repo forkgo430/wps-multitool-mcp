@@ -34,6 +34,8 @@ import { getToolMeta, expandQuery } from './tool-metadata';
 import { resolveToolAlias, isToolAlias, applyAliasParams, TOOL_ALIASES } from './tool-aliases.generated';
 import { withAutoSnapshot } from './auto-snapshot';
 import { runWithTarget } from './target-context';
+import { collabGuardCheckBefore, collabGuardNoteAfter, appOfToolName } from './collab-guard';
+import { getToolAnnotations } from './tool-annotations';
 
 /**
  * 中文相似度用的字符 bigram 集合。
@@ -597,9 +599,24 @@ export class ToolRegistry {
       // target 也要在这一层兜住：67 个 word handler 都只挑自己认识的字段，
       // 不会把 args.target 转发下去（那是好事，handler 不该管路由）。
       // 用 ALS 而不是全局变量：callTool 并发可达，全局变量会把 A 的 target 漂给 B。
-      const result = await runWithTarget(callArgs.target, () =>
-        withAutoSnapshot(name, () => tool.handler(callArgs))
-      );
+      // 协作安全网（2026-10-29，决策者实现，所有者批准的三件协作增强之一）：
+      // 写入类工具执行前比对文档指纹，期间有人工编辑就往 warnings 写提醒（不阻断）；
+      // 执行后重新存档指纹——不存的话 AI 自己的修改会被下一次误报成"人工编辑"。
+      // 只读工具不探测；探测失败静默降级（collab-guard 内部吞掉，参照 Linux CI 教训）。
+      const result = await runWithTarget(callArgs.target, async () => {
+        const writeClassified = getToolAnnotations(name)?.readOnlyHint !== true;
+        const app = appOfToolName(name);
+        const preWarnings = writeClassified ? await collabGuardCheckBefore(app) : [];
+        const res = await withAutoSnapshot(name, () => tool.handler(callArgs));
+        if (writeClassified) await collabGuardNoteAfter(app);
+        if (preWarnings.length) {
+          res.warnings = [
+            ...preWarnings.map((message) => ({ step: '协作检测', message })),
+            ...(res.warnings ?? []),
+          ];
+        }
+        return res;
+      });
 
       const duration = Date.now() - startTime;
       logger.info(`Tool executed: ${name}`, { id, duration, success: result.success });

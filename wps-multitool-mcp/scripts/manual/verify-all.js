@@ -45,6 +45,7 @@ const FAST = [
   ['alias-verify.js', '工具别名（旧名可解析/不列出/不计入）'],
   ['param-shape-verify.js', '参数形状（TS 传了 PS 不读）'],
   ['auto-snapshot-verify.js', '单工具写入自动快照（mock COM）'],
+  ['collab-guard-verify.js', '协作安全网：人工编辑检测与修订建议（mock COM）'],
   ['word-target-verify.js', 'word target 参数链路（mock COM）'],
   ['tool-groups-test.js', '工具组加载'],
   ['intent-test.js', '意图识别词表'],
