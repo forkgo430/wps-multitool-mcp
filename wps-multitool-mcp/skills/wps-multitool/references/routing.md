@@ -76,6 +76,19 @@
 **先搜再读 `notFor`**，不要凭名字挑：不同工具管的是幻灯片背景 / 母版背景 /
 图表区背景，纯色 / 图片 / 渐变又是三回事；动画分普通 / 预设 / 强调 / 顺序 / 清除。
 
+## 1.0.4 新工具的入口（检索词为实测结果）
+
+| 需求 | 用 | 怎么命中 |
+|---|---|---|
+| 撤销上一步 | `wps_word_undo`（撤销前自动建快照） | 搜「撤销」目前命中的是快照恢复类——**按完整工具名调用**最稳 |
+| 开/关修订模式 | `wps_word_enable_track_changes` / 查状态 `wps_word_get_track_changes_status` | 搜「修订模式」 |
+| 看/接受/拒绝已有修订 | `wps_word_revisions` | 搜「修订」「审阅」 |
+| 建 Excel 表（套表格样式/筛选） | `wps_excel_create_table` | 搜「建表」——**与 Word 的 `wps_word_insert_table` 近名**，两个都会出，读 notFor 分清 |
+| 加切片器 | `wps_excel_add_slicer` | 搜「切片器」 |
+| 生成整套演示 | `wps_ppt_build_deck`（10 种页型/三主题/生成后溢出检查） | 搜「生成整套PPT」「一键做PPT」 |
+
+这些工具**不在直答层**（`wps_route_intent` 的高频单动作表里还没有它们），走搜索或直接按工具名调。
+
 ## 搜索返回什么
 
 ```
