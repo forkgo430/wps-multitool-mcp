@@ -47,7 +47,7 @@ More examples:
 - "Unify the whole deck to Source Han Sans and add page numbers"
 - "Generate a table of contents and cross-references for this paper"
 
-Want a side panel (snapshot / undo / status) inside WPS? Install the add-in:
+Want a side panel (snapshot / undo / pause AI / status) inside WPS? Install the add-in:
 
 ```powershell
 irm https://cdn.jsdelivr.net/gh/forkgo430/wps-multitool-mcp@main/scripts/install.ps1 | iex
@@ -68,6 +68,7 @@ irm https://cdn.jsdelivr.net/gh/forkgo430/wps-multitool-mcp@main/scripts/install
 | Formulas, beyond writing them | Generate formulas and diagnose why one fails. Array formulas; pivot tables fully supported |
 | Export | Slides as images, charts and ranges as images, format conversion, PDF |
 | Batch execution with snapshots | `wps_common_batch` runs multiple steps; destructive steps snapshot first, so you can roll back |
+| Sharing one document with the AI, without collisions | Before writing, the AI checks whether you just edited the document (and re-reads if so); you can hit "pause AI" in the side panel anytime to type your own part; AI writes can carry tracked changes for you to review line by line |
 
 Four conveniences built in:
 

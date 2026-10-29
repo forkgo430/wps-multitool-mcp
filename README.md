@@ -46,7 +46,7 @@ npx -y wps-multitool-mcp
 - "整份 PPT 统一成思源黑体，每页加上页码"
 - "给这篇论文生成目录和交叉引用"
 
-想要侧边面板（快照 / 撤销 / 状态），再装加载项：
+想要侧边面板（快照 / 撤销 / 暂停 AI / 状态），再装加载项：
 
 ```powershell
 irm https://cdn.jsdelivr.net/gh/forkgo430/wps-multitool-mcp@main/scripts/install.ps1 | iex
@@ -67,6 +67,7 @@ irm https://cdn.jsdelivr.net/gh/forkgo430/wps-multitool-mcp@main/scripts/install
 | 公式不止能写 | 能生成公式，也能诊断公式为什么报错。数组公式、透视表的建刷改查清都有 |
 | 导出 | 演示单页出图，表格的图表和区域出图，格式转换，转 PDF |
 | 批量执行带快照 | `wps_common_batch` 一次跑多步，碰上破坏性动作先存快照，事后能退回磁盘那一版 |
+| 和 AI 共用一份文档不打架 | AI 动笔前会看文档是不是刚被你改过（改了就先提醒它重新看），你随时能从面板点"暂停 AI"先写自己的，AI 的写入还能套修订痕迹由你逐条审 |
 
 用起来省事的四个设计：
 
