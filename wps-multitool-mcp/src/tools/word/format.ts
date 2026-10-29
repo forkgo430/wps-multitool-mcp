@@ -13,7 +13,6 @@
  * - wps_word_set_page_setup: 设置页面布局
  */
 
-import { v4 as uuidv4 } from 'uuid';
 import {
   ToolDefinition,
   ToolHandler,
@@ -21,9 +20,8 @@ import {
   ToolCategory,
   RegisteredTool,
 } from '../../types/tools';
-import { wpsClient } from '../../client/wps-client';
-import { WpsAppType } from '../../types/wps';
 import { WORD_TARGET_PROPERTY } from './target';
+import { call, ok, fail, errText } from './helpers';
 
 /**
  * 应用样式到选中区域
@@ -78,45 +76,9 @@ export const applyStyleHandler: ToolHandler = async (
     range?: { start: number; end: number };
   };
 
-  try {
-    const response = await wpsClient.executeMethod<{
-      success: boolean;
-      message: string;
-      affectedText: string;
-    }>(
-      'applyStyle',
-      { styleName: style_name, range },
-      WpsAppType.WRITER
-    );
-
-    if (response.success && response.data) {
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [
-          {
-            type: 'text',
-            text: `样式应用成功！\n样式: ${style_name}\n影响的文本: ${response.data.affectedText}`,
-          },
-        ],
-      };
-    } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `应用样式失败: ${response.error}` }],
-        error: response.error,
-      };
-    }
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `应用样式出错: ${errMsg}` }],
-      error: errMsg,
-    };
-  }
+  const r = await call<{ affectedText: string }>('applyStyle', { styleName: style_name, range });
+  if (!r.ok) return fail(errText('应用样式失败', r), r.error);
+  return ok(`样式应用成功！\n样式: ${style_name}\n影响的文本: ${r.data?.affectedText}`, r.warnings);
 };
 
 /**
@@ -185,69 +147,30 @@ export const setFontHandler: ToolHandler = async (
   // 至少要设置一个属性吧
   if (!font_name && !font_size && bold === undefined && italic === undefined &&
       underline === undefined && !color) {
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: '请至少指定一个字体属性（如 font_name、font_size、bold 等）' }],
-      error: '没有指定任何字体属性',
-    };
+    return fail('请至少指定一个字体属性（如 font_name、font_size、bold 等）', '没有指定任何字体属性');
   }
 
-  try {
-    const response = await wpsClient.executeMethod<{
-      success: boolean;
-      message: string;
-      settings: Record<string, unknown>;
-    }>(
-      'setFont',
-      {
-        fontName: font_name,
-        fontSize: font_size,
-        bold,
-        italic,
-        underline,
-        color,
-        range: range || 'selection',
-      },
-      WpsAppType.WRITER
-    );
-
-    if (response.success && response.data) {
-      const settings = response.data.settings;
-      let settingStr = '';
-      if (settings.fontName) settingStr += `字体: ${settings.fontName}\n`;
-      if (settings.fontSize) settingStr += `字号: ${settings.fontSize}\n`;
-      if (settings.bold !== undefined) settingStr += `加粗: ${settings.bold ? '是' : '否'}\n`;
-      if (settings.italic !== undefined) settingStr += `斜体: ${settings.italic ? '是' : '否'}\n`;
-      if (settings.color) settingStr += `颜色: ${settings.color}\n`;
-
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [
-          {
-            type: 'text',
-            text: `字体格式设置成功！\n${settingStr}`,
-          },
-        ],
-      };
-    } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `设置字体失败: ${response.error}` }],
-        error: response.error,
-      };
+  const r = await call<{ settings: Record<string, unknown> }>(
+    'setFont',
+    {
+      fontName: font_name,
+      fontSize: font_size,
+      bold,
+      italic,
+      underline,
+      color,
+      range: range || 'selection',
     }
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `设置字体出错: ${errMsg}` }],
-      error: errMsg,
-    };
-  }
+  );
+  if (!r.ok) return fail(errText('设置字体失败', r), r.error);
+  const settings = r.data?.settings ?? {};
+  let settingStr = '';
+  if (settings.fontName) settingStr += `字体: ${settings.fontName}\n`;
+  if (settings.fontSize) settingStr += `字号: ${settings.fontSize}\n`;
+  if (settings.bold !== undefined) settingStr += `加粗: ${settings.bold ? '是' : '否'}\n`;
+  if (settings.italic !== undefined) settingStr += `斜体: ${settings.italic ? '是' : '否'}\n`;
+  if (settings.color) settingStr += `颜色: ${settings.color}\n`;
+  return ok(`字体格式设置成功！\n${settingStr}`, r.warnings);
 };
 
 /**
@@ -295,49 +218,19 @@ export const generateTocHandler: ToolHandler = async (
     include_page_numbers?: boolean;
   };
 
-  try {
-    const response = await wpsClient.executeMethod<{
-      success: boolean;
-      message: string;
-      levels: number;
-    }>(
-      'generateTOC',
-      {
-        position: position || 'start',
-        levels: levels || 3,
-        includePageNumbers: include_page_numbers !== false,
-      },
-      WpsAppType.WRITER
-    );
-
-    if (response.success && response.data) {
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [
-          {
-            type: 'text',
-            text: `目录生成成功！\n包含标题级别: 1-${response.data.levels}\n位置: ${position === 'cursor' ? '当前光标位置' : '文档开头'}`,
-          },
-        ],
-      };
-    } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `生成目录失败: ${response.error}` }],
-        error: response.error,
-      };
+  const r = await call<{ levels: number }>(
+    'generateTOC',
+    {
+      position: position || 'start',
+      levels: levels || 3,
+      includePageNumbers: include_page_numbers !== false,
     }
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `生成目录出错: ${errMsg}` }],
-      error: errMsg,
-    };
-  }
+  );
+  if (!r.ok) return fail(errText('生成目录失败', r), r.error);
+  return ok(
+    `目录生成成功！\n包含标题级别: 1-${r.data?.levels}\n位置: ${position === 'cursor' ? '当前光标位置' : '文档开头'}`,
+    r.warnings
+  );
 };
 
 /**
@@ -375,44 +268,9 @@ export const insertBookmarkHandler: ToolHandler = async (
 ): Promise<ToolCallResult> => {
   const { name } = args as { name: string };
 
-  try {
-    const response = await wpsClient.executeMethod<{
-      success: boolean;
-      message: string;
-    }>(
-      'insertBookmark',
-      { name },
-      WpsAppType.WRITER
-    );
-
-    if (response.success) {
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [
-          {
-            type: 'text',
-            text: `书签插入成功！\n书签名称: ${name}`,
-          },
-        ],
-      };
-    } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `插入书签失败: ${response.error}` }],
-        error: response.error,
-      };
-    }
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `插入书签出错: ${errMsg}` }],
-      error: errMsg,
-    };
-  }
+  const r = await call('insertBookmark', { name });
+  if (!r.ok) return fail(errText('插入书签失败', r), r.error);
+  return ok(`书签插入成功！\n书签名称: ${name}`, r.warnings);
 };
 
 /**
@@ -471,61 +329,22 @@ export const setPageSetupHandler: ToolHandler = async (
 
   if (!orientation && marginTop === undefined && marginBottom === undefined &&
       marginLeft === undefined && marginRight === undefined) {
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: '请至少指定一个页面设置属性（如 orientation、marginTop 等）' }],
-      error: '没有指定任何页面设置属性',
-    };
+    return fail('请至少指定一个页面设置属性（如 orientation、marginTop 等）', '没有指定任何页面设置属性');
   }
 
-  try {
-    const response = await wpsClient.executeMethod<{
-      success: boolean;
-      message: string;
-      settings: Record<string, unknown>;
-    }>(
-      'setPageSetup',
-      { orientation, marginTop, marginBottom, marginLeft, marginRight },
-      WpsAppType.WRITER
-    );
-
-    if (response.success && response.data) {
-      const s = response.data.settings;
-      let desc = '';
-      if (s.orientation) desc += `页面方向: ${s.orientation === 'landscape' ? '横向' : '纵向'}\n`;
-      if (s.marginTop !== undefined) desc += `上边距: ${s.marginTop}pt\n`;
-      if (s.marginBottom !== undefined) desc += `下边距: ${s.marginBottom}pt\n`;
-      if (s.marginLeft !== undefined) desc += `左边距: ${s.marginLeft}pt\n`;
-      if (s.marginRight !== undefined) desc += `右边距: ${s.marginRight}pt\n`;
-
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [
-          {
-            type: 'text',
-            text: `页面布局设置成功！\n${desc}`,
-          },
-        ],
-      };
-    } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `设置页面布局失败: ${response.error}` }],
-        error: response.error,
-      };
-    }
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `设置页面布局出错: ${errMsg}` }],
-      error: errMsg,
-    };
-  }
+  const r = await call<{ settings: Record<string, unknown> }>(
+    'setPageSetup',
+    { orientation, marginTop, marginBottom, marginLeft, marginRight }
+  );
+  if (!r.ok) return fail(errText('设置页面布局失败', r), r.error);
+  const s = r.data?.settings ?? {};
+  let desc = '';
+  if (s.orientation) desc += `页面方向: ${s.orientation === 'landscape' ? '横向' : '纵向'}\n`;
+  if (s.marginTop !== undefined) desc += `上边距: ${s.marginTop}pt\n`;
+  if (s.marginBottom !== undefined) desc += `下边距: ${s.marginBottom}pt\n`;
+  if (s.marginLeft !== undefined) desc += `左边距: ${s.marginLeft}pt\n`;
+  if (s.marginRight !== undefined) desc += `右边距: ${s.marginRight}pt\n`;
+  return ok(`页面布局设置成功！\n${desc}`, r.warnings);
 };
 
 /**

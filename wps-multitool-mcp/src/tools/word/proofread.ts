@@ -12,7 +12,6 @@
  * - wps_word_proofread_basic: 基础文本校对（正则检测错别字/语病）
  */
 
-import { v4 as uuidv4 } from 'uuid';
 import {
   ToolDefinition,
   ToolHandler,
@@ -20,9 +19,8 @@ import {
   ToolCategory,
   RegisteredTool,
 } from '../../types/tools';
-import { wpsClient } from '../../client/wps-client';
-import { WpsAppType } from '../../types/wps';
 import { WORD_TARGET_PROPERTY } from './target';
+import { call, ok, fail, errText } from './helpers';
 
 export const enableTrackChangesDefinition: ToolDefinition = {
   name: 'wps_word_enable_track_changes',
@@ -52,45 +50,14 @@ export const enableTrackChangesHandler: ToolHandler = async (
   const { enable } = args as { enable?: boolean };
   const enabled = typeof enable === 'boolean' ? enable : true;
 
-  try {
-    const response = await wpsClient.executeMethod<{
-      trackChanges: boolean;
-      active: boolean;
-    }>(
-      'enableTrackChanges',
-      { enable: enabled },
-      WpsAppType.WRITER
-    );
-
-    if (response.success && response.data) {
-      const status = response.data.active ? '已开启' : '已关闭';
-      const hint = response.data.active ? '所有后续修改将被跟踪记录。' : '后续修改将不再被跟踪。';
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [
-          {
-            type: 'text',
-            text: `修订模式${status}！${hint}`,
-          },
-        ],
-      };
-    }
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `设置修订模式失败: ${response.error}` }],
-      error: response.error,
-    };
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `设置修订模式出错: ${errMsg}` }],
-      error: errMsg,
-    };
-  }
+  const r = await call<{ trackChanges: boolean; active: boolean }>(
+    'enableTrackChanges',
+    { enable: enabled }
+  );
+  if (!r.ok) return fail(errText('设置修订模式失败', r), r.error);
+  const status = r.data?.active ? '已开启' : '已关闭';
+  const hint = r.data?.active ? '所有后续修改将被跟踪记录。' : '后续修改将不再被跟踪。';
+  return ok(`修订模式${status}！${hint}`, r.warnings);
 };
 
 export const getTrackChangesStatusDefinition: ToolDefinition = {
@@ -111,45 +78,14 @@ export const getTrackChangesStatusDefinition: ToolDefinition = {
 export const getTrackChangesStatusHandler: ToolHandler = async (
   _args: Record<string, unknown>
 ): Promise<ToolCallResult> => {
-  try {
-    const response = await wpsClient.executeMethod<{
-      trackChanges: boolean;
-      revisionCount: number;
-    }>(
-      'getTrackChangesStatus',
-      {},
-      WpsAppType.WRITER
-    );
-
-    if (response.success && response.data) {
-      const d = response.data;
-      const status = d.trackChanges ? '已开启' : '已关闭';
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [
-          {
-            type: 'text',
-            text: `修订模式: ${status}\n当前修订数量: ${d.revisionCount}`,
-          },
-        ],
-      };
-    }
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `获取修订状态失败: ${response.error}` }],
-      error: response.error,
-    };
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `获取修订状态出错: ${errMsg}` }],
-      error: errMsg,
-    };
-  }
+  const r = await call<{ trackChanges: boolean; revisionCount: number }>(
+    'getTrackChangesStatus',
+    {}
+  );
+  if (!r.ok) return fail(errText('获取修订状态失败', r), r.error);
+  const d = r.data!;
+  const status = d.trackChanges ? '已开启' : '已关闭';
+  return ok(`修订模式: ${status}\n当前修订数量: ${d.revisionCount}`, r.warnings);
 };
 
 export const replaceRangeDefinition: ToolDefinition = {
@@ -195,90 +131,35 @@ export const replaceRangeHandler: ToolHandler = async (
   };
 
   if (start_pos === undefined || end_pos === undefined) {
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: '必须指定起始和结束位置！' }],
-      error: '缺少位置参数',
-    };
+    return fail('必须指定起始和结束位置！', '缺少位置参数');
   }
 
   if (typeof start_pos !== 'number' || typeof end_pos !== 'number' || !Number.isInteger(start_pos) || !Number.isInteger(end_pos)) {
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: '起始和结束位置必须是整数！' }],
-      error: '位置参数类型错误',
-    };
+    return fail('起始和结束位置必须是整数！', '位置参数类型错误');
   }
 
   if (start_pos < 0 || end_pos < 0) {
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: '位置参数不能为负数！' }],
-      error: '位置参数为负数',
-    };
+    return fail('位置参数不能为负数！', '位置参数为负数');
   }
 
   if (start_pos >= end_pos) {
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: '起始位置必须小于结束位置！' }],
-      error: '位置范围无效',
-    };
+    return fail('起始位置必须小于结束位置！', '位置范围无效');
   }
 
   if (text == null) {
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: '替换文本不能为 null！' }],
-      error: '替换文本为 null',
-    };
+    return fail('替换文本不能为 null！', '替换文本为 null');
   }
 
-  try {
-    const response = await wpsClient.executeMethod<{
-      startPos: number;
-      endPos: number;
-      originalText: string;
-      newText: string;
-    }>(
-      'replaceRange',
-      { startPos: start_pos, endPos: end_pos, text },
-      WpsAppType.WRITER
-    );
-
-    if (response.success && response.data) {
-      const d = response.data;
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [
-          {
-            type: 'text',
-            text: `替换成功！\n原文: "${d.originalText}"\n修改为: "${d.newText}"\n位置: ${d.startPos}-${d.endPos}`,
-          },
-        ],
-      };
-    }
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `替换失败: ${response.error}` }],
-      error: response.error,
-    };
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `替换出错: ${errMsg}` }],
-      error: errMsg,
-    };
-  }
+  const r = await call<{ startPos: number; endPos: number; originalText: string; newText: string }>(
+    'replaceRange',
+    { startPos: start_pos, endPos: end_pos, text }
+  );
+  if (!r.ok || !r.data) return fail(`替换失败: ${r.error}`, r.error);
+  const d = r.data;
+  return ok(
+    `替换成功！\n原文: "${d.originalText}"\n修改为: "${d.newText}"\n位置: ${d.startPos}-${d.endPos}`,
+    r.warnings
+  );
 };
 
 export const proofreadBasicDefinition: ToolDefinition = {
@@ -737,67 +618,29 @@ export const proofreadBasicHandler: ToolHandler = async (
   };
 
   if (!text || text.trim() === '') {
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: '文本内容不能为空！' }],
-      error: '文本内容为空',
-    };
+    return fail('文本内容不能为空！', '文本内容为空');
   }
 
   if (text.length > 50000) {
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: '文本过长（超过50000字符），请分批处理，每批不超过50000字符。' }],
-      error: '文本过长',
-    };
+    return fail('文本过长（超过50000字符），请分批处理，每批不超过50000字符。', '文本过长');
   }
 
-  try {
-    const baseOffset = typeof start_offset === 'number' ? start_offset : 0;
-    const issues = runBasicProofreading(text, baseOffset);
+  const baseOffset = typeof start_offset === 'number' ? start_offset : 0;
+  const issues = runBasicProofreading(text, baseOffset);
 
-    if (issues.length === 0) {
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [
-          {
-            type: 'text',
-            text: '基础校对完成，未发现明显问题。',
-          },
-        ],
-      };
-    }
-
-    const lines = issues.map(
-      (issue, i) =>
-        `${i + 1}. [${issue.severity === 'style' ? '建议' : '错误'}][${issue.type}] 位置 ${issue.offset}\n` +
-        `   原文: "${issue.original}"\n` +
-        `   建议: "${issue.suggestion}"\n` +
-        `   上下文: ${issue.context}`
-    );
-
-    return {
-      id: uuidv4(),
-      success: true,
-      content: [
-        {
-          type: 'text',
-          text: `基础校对完成，发现 ${issues.length} 个问题：\n\n${lines.join('\n\n')}`,
-        },
-      ],
-    };
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `基础校对出错: ${errMsg}` }],
-      error: errMsg,
-    };
+  if (issues.length === 0) {
+    return ok('基础校对完成，未发现明显问题。');
   }
+
+  const lines = issues.map(
+    (issue, i) =>
+      `${i + 1}. [${issue.severity === 'style' ? '建议' : '错误'}][${issue.type}] 位置 ${issue.offset}\n` +
+      `   原文: "${issue.original}"\n` +
+      `   建议: "${issue.suggestion}"\n` +
+      `   上下文: ${issue.context}`
+  );
+
+  return ok(`基础校对完成，发现 ${issues.length} 个问题：\n\n${lines.join('\n\n')}`);
 };
 
 export const proofreadTools: RegisteredTool[] = [
