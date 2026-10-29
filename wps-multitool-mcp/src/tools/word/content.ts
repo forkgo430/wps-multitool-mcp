@@ -389,54 +389,6 @@ export const setParagraphHandler: ToolHandler = async (
 };
 
 /**
- * 获取当前活动文档信息
- */
-export const getActiveDocumentDefinition: ToolDefinition = {
-  name: 'wps_word_get_active_document',
-  description: '获取当前WPS Writer活动文档的基本信息',
-  category: ToolCategory.DOCUMENT,
-  inputSchema: {
-    type: 'object',
-    properties: { target: WORD_TARGET_PROPERTY, },
-  },
-};
-
-export const getActiveDocumentHandler: ToolHandler = async (
-  _args: Record<string, unknown>
-): Promise<ToolCallResult> => {
-  try {
-    const response = await wpsClient.executeMethod<{
-      success: boolean;
-      name: string;
-      path: string;
-      pageCount: number;
-      wordCount: number;
-    }>(
-      'getActiveDocument',
-      {},
-      WpsAppType.WRITER
-    );
-    if (response.success && response.data) {
-      const d = response.data;
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [{ type: 'text', text: `当前文档: ${d.name}\n路径: ${d.path}\n页数: ${d.pageCount}\n字数: ${d.wordCount}` }],
-      };
-    }
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `获取文档信息失败: ${response.error}` }],
-      error: response.error,
-    };
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return { id: uuidv4(), success: false, content: [{ type: 'text', text: `获取文档信息出错: ${errMsg}` }], error: errMsg };
-  }
-};
-
-/**
  * 在文档中插入图片
  */
 export const insertImageDefinition: ToolDefinition = {
@@ -557,45 +509,6 @@ export const insertPageBreakHandler: ToolHandler = async (
     };
   } catch (e: any) {
     return { id: uuidv4(), success: false, content: [{ type: 'text', text: `插入分页符出错: ${e.message}` }], error: e.message };
-  }
-};
-
-export const setFontStyleDefinition: ToolDefinition = {
-  name: 'wps_word_set_font_style',
-  description:
-    '[DEPRECATED·改用 wps_word_set_font] 设置选中文字的字体样式属性\n\n' +
-    '什么时候用：已被 wps_word_set_font 取代（同一个 setFont 动作），' +
-    '旧参数是 fontName/fontSize，新工具用 font_name/font_size，而且多了 range/color/underline —— 别两个混着用。',
-  category: ToolCategory.DOCUMENT,
-  inputSchema: {
-    type: 'object',
-    properties: {
-      target: WORD_TARGET_PROPERTY,
-      fontName: { type: 'string', description: '字体名称' },
-      fontSize: { type: 'number', description: '字号' },
-      bold: { type: 'boolean', description: '是否加粗' },
-      italic: { type: 'boolean', description: '是否斜体' },
-    },
-    required: [],
-  },
-};
-
-export const setFontStyleHandler: ToolHandler = async (
-  args: Record<string, unknown>
-): Promise<ToolCallResult> => {
-  try {
-    const response = await wpsClient.executeMethod<{ success: boolean; message: string }>(
-      'setFont',
-      args,
-      WpsAppType.WRITER
-    );
-    return {
-      id: uuidv4(),
-      success: response.success,
-      content: [{ type: 'text', text: response.success ? '字体已设置' : (response.data as any)?.message || '设置失败' }],
-    };
-  } catch (e: any) {
-    return { id: uuidv4(), success: false, content: [{ type: 'text', text: `设置字体出错: ${e.message}` }], error: e.message };
   }
 };
 
@@ -1013,10 +926,8 @@ export const contentTools: RegisteredTool[] = [
   { definition: findReplaceDefinition, handler: findReplaceHandler },
   { definition: insertTableDefinition, handler: insertTableHandler },
   { definition: setParagraphDefinition, handler: setParagraphHandler },
-  { definition: getActiveDocumentDefinition, handler: getActiveDocumentHandler },
   { definition: insertImageDefinition, handler: insertImageHandler },
   { definition: insertPageBreakDefinition, handler: insertPageBreakHandler },
-  { definition: setFontStyleDefinition, handler: setFontStyleHandler },
   { definition: insertCommentDefinition, handler: insertCommentHandler },
   { definition: setTextColorDefinition, handler: setTextColorHandler },
   { definition: getParagraphsDefinition, handler: getParagraphsHandler },

@@ -286,7 +286,7 @@ export const proofreadBasicDefinition: ToolDefinition = {
   description: `对中文文本进行基础校对，检测常见问题。
 使用正则规则快速检测，纯本地校验，无需 API 调用。
 
-检测范围：
+检测范围（分两级：确定错误用[错误]标，风格建议用[建议]标——风格不当错误报）：
 - 常见易混淆字（的/得/地、在/再 等）
 - 重复字符（如"了了"、"的的"）
 - 重复标点（如。。、，，、！！、？？）
@@ -326,8 +326,14 @@ interface ProofreadIssue {
   original: string;
   suggestion: string;
   type: string;
+  severity: 'error' | 'style';
   context: string;
 }
+
+// 规则分级（2026-10-30 word-audit §三.1）：确定错误 vs 风格建议必须分开报——
+// 校对工具把风格当错误报，比不报更伤信任。默认 error，口语化/多字/少字默认 style，
+// 个别例外在规则里用 severity 覆盖（如"的的程度"是确定错误）。
+const STYLE_TYPES = new Set(['口语化', '多字', '少字']);
 
 function runBasicProofreading(text: string, baseOffset: number = 0): ProofreadIssue[] {
   const issues: ProofreadIssue[] = [];
@@ -336,6 +342,7 @@ function runBasicProofreading(text: string, baseOffset: number = 0): ProofreadIs
     pattern: RegExp;
     type: string;
     getSuggestion: (match: string) => string;
+    severity?: 'error' | 'style';
   };
 
   const rules: Rule[] = [
@@ -534,11 +541,8 @@ function runBasicProofreading(text: string, baseOffset: number = 0): ProofreadIs
       type: '的地得混淆',
       getSuggestion: () => '变得',
     },
-    {
-      pattern: /做的/g,
-      type: '的地得混淆',
-      getSuggestion: () => '做得',
-    },
+    // 2026-10-30 删除原"做的→做得"规则：它会打中"我做的模型""做的东西"这类
+    // 正确的定语用法——误报比漏报更伤校对工具的信誉（word-audit §三.1）。
     {
       pattern: /签定(合同|协议|合约|约定)/g,
       type: '法律术语',
@@ -607,11 +611,13 @@ function runBasicProofreading(text: string, baseOffset: number = 0): ProofreadIs
     {
       pattern: /偏离程度的很/g,
       type: '多字',
+      severity: 'error',
       getSuggestion: () => '偏离程度很',
     },
     {
       pattern: /的的程度/g,
       type: '多字',
+      severity: 'error',
       getSuggestion: () => '的程度',
     },
     {
@@ -712,6 +718,7 @@ function runBasicProofreading(text: string, baseOffset: number = 0): ProofreadIs
           original: orig,
           suggestion,
           type: rule.type,
+          severity: rule.severity ?? (STYLE_TYPES.has(rule.type) ? 'style' : 'error'),
           context: `...${beforeCtx}[${orig}]${afterCtx}...`,
         });
       }
@@ -766,7 +773,7 @@ export const proofreadBasicHandler: ToolHandler = async (
 
     const lines = issues.map(
       (issue, i) =>
-        `${i + 1}. [${issue.type}] 位置 ${issue.offset}\n` +
+        `${i + 1}. [${issue.severity === 'style' ? '建议' : '错误'}][${issue.type}] 位置 ${issue.offset}\n` +
         `   原文: "${issue.original}"\n` +
         `   建议: "${issue.suggestion}"\n` +
         `   上下文: ${issue.context}`

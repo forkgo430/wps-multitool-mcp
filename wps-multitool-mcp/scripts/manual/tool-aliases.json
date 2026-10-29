@@ -50,7 +50,7 @@
   "aliases": {
     "wps_common_ping": "wps_check_connection",
     "wps_common_wire_check": "wps_check_connection",
-    "wps_get_active_document": "wps_word_get_active_document",
+    "wps_get_active_document": "wps_word_get_document_stats",
     "wps_get_cell_value": "wps_excel_get_cell_value",
     "wps_set_cell_value": "wps_excel_set_cell_value",
     "wps_excel_zoom": "wps_excel_set_zoom",
@@ -90,6 +90,12 @@
       "to": "wps_ppt_set_transition",
       "set": { "target": "slide" }
     },
+
+    "wps_word_set_font_style": {
+      "to": "wps_word_set_font",
+      "rename": { "fontName": "font_name", "fontSize": "font_size" }
+    },
+    "wps_word_get_active_document": "wps_word_get_document_stats",
     "wps_ppt_apply_transition_to_all": {
       "to": "wps_ppt_set_transition",
       "set": { "target": "all" }

@@ -3,7 +3,7 @@
 > 本文件由 `wps-multitool-mcp/scripts/manual/gen-tools-doc.js` 从**运行时注册表**生成，请勿手改。
 > 改完工具跑一次 `node scripts/manual/gen-tools-doc.js`；CI 会重跑并 `git diff --exit-code`，对不上就红。
 
-**289 个工具**（7 内置 + 282 专业/组工具）· 默认列出 40 个 · 注解覆盖 289/289 · 真机验证 278/289
+**287 个工具**（7 内置 + 280 专业/组工具）· 默认列出 40 个 · 注解覆盖 287/287 · 真机验证 276/287
 
 | 标记 | 含义 |
 |---|---|
@@ -47,7 +47,7 @@
 | `wps_get_cached_data` |  | R | live | 从MCP Server获取缓存的数据，用于跨应用数据传递。<br><sub>别名：取暂存数据 / 读缓存 / 取暂存结果</sub> |
 | `wps_list_cache` |  | R | live | 列出MCP Server中所有缓存的数据键名<br><sub>别名：看缓存列表 / 暂存了哪些 / 列出cache</sub> |
 
-## Word（69）
+## Word（67）
 
 | 工具 | 默认档 | 注解 | 验证 | 说明 |
 |---|---|---|---|---|
@@ -77,7 +77,6 @@
 | `wps_word_find_in_document` |  | R | live | 在Word文档中查找文本并返回位置信息，不执行替换操作。<br><sub>别名：查找in文档 / 搜索in文档 / 文档</sub> |
 | `wps_word_format_table` |  | — | live | 设置文档里某个表格的样式 / 表头加粗 / 边框。<br><sub>别名：格式表格 / 表格</sub> |
 | `wps_word_generate_toc` |  | N | live | 根据文档中的标题样式自动生成目录。<br><sub>别名：生成目录 / 插入目录 / 自动目录</sub> |
-| `wps_word_get_active_document` |  | R | live | 获取当前WPS Writer活动文档的基本信息<br><sub>别名：获取当前文档 / 读取当前文档 / 查看当前文档</sub> |
 | `wps_word_get_bookmarks` |  | R | live | 列出文档里所有书签：名称、位置、锚定文本。<br><sub>别名：书签列表 / 有哪些书签 / 查看书签</sub> |
 | `wps_word_get_cell_text` |  | R | live | 读取表格里某个单元格的文本。表格类操作前先读一下，确认坐标对不对。<br><sub>别名：获取单元格文本 / 读取单元格文本 / 查看单元格文本</sub> |
 | `wps_word_get_comments` |  | R | live | 列出文档里所有批注：序号、作者、日期、内容、所批注的原文片段。<br><sub>别名：看批注 / 批注列表 / 有哪些批注</sub> |
@@ -109,7 +108,6 @@
 | `wps_word_set_cell_borders` |  | — | live | 设置表格单元格的边框。<br><sub>别名：设置单元格borders / 设定单元格borders / 单元格</sub> |
 | `wps_word_set_columns` |  | — | live | 设置分栏（整节等宽多栏）。<br><sub>别名：设置列 / 设定列 / 列</sub> |
 | `wps_word_set_font` |  | — | live | 设置字体格式，包括字体名称、字号、加粗、斜体、颜色等。<br><sub>别名：设置字体 / 设定字体 / 字体</sub> |
-| `wps_word_set_font_style` |  | — | live | [DEPRECATED·改用 wps_word_set_font] 设置选中文字的字体样式属性<br><sub>别名：设置字体样式 / 设定字体样式 / 字体</sub> |
 | `wps_word_set_heading_numbering` |  | — | live | 给标题加章节自动编号（1. / 1.1. / 1.1.1. 这种）。<br><sub>别名：设置标题编号 / 设定标题编号 / 标题</sub> |
 | `wps_word_set_line_spacing` |  | — | live | 设置段落行距。<br><sub>别名：设置行距间距 / 设定行距间距 / 行距</sub> |
 | `wps_word_set_page_setup` |  | — | live | 设置文档页面布局，包括页面方向和边距。<br><sub>别名：设置页面设置 / 设定页面设置 / 页面</sub> |
