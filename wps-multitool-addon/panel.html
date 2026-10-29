@@ -15,6 +15,12 @@
   - AI 活动指示：队列 > 0 时标题区显示"AI 执行中"脉冲动画
   - 卡片间距/分组微调
 
+  v3.3（2026-10-29 决策者协作轮 · 第六任）：
+  - 新增"暂停 AI"按钮：走桥的 POST /hold，暂停期间命令排队不执行、不丢失，
+    恢复后按原序继续（配合桥端同日上线的暂停闸门）
+  - （协作检测：AI 写入前若发现文档被人工改过，会在工具回包的 warnings 里提醒——
+    那部分在桥/服务端，不在本页面）
+
   v3.2（2026-10-28 决策者实测轮 · 第六任）：
   - 文档列表图标 emoji（📝📊📽🔒）全部换内联 SVG —— WPS 内嵌老内核对 emoji 渲染不稳，
     矢量图保真且跟随主题色；空态文案同步调整
@@ -198,6 +204,7 @@
     <button onclick="act('pdf',this)">导出 PDF</button>
     <button onclick="act('snap',this)">快照</button>
     <button class="w" onclick="act('unstick',this)">解除卡死</button>
+    <button class="w" id="btnHold" onclick="toggleHold()">暂停 AI</button>
   </div>
   <div class="hint">更多能力用 MCP 工具调用，默认列 40 个基础工具。</div>
 </div>
@@ -420,6 +427,20 @@ function stamp() {
   function p(n) { return (n < 10 ? '0' : '') + n; }
   return d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + '_' +
          p(d.getHours()) + p(d.getMinutes()) + p(d.getSeconds());
+}
+
+// 协作暂停（v3.3）：点"暂停 AI"→ 桥的命令队列挂起（已排队的命令不丢、不执行），
+// 再点"继续执行"恢复。AI 想干活时你会发现自己在排队——这就是它的本意。
+var heldState = false;
+function renderHold() {
+  var b = document.getElementById('btnHold');
+  if (b) { b.textContent = heldState ? '继续执行' : '暂停 AI'; b.className = heldState ? 'p' : 'w'; }
+}
+function toggleHold() {
+  fetch('http://127.0.0.1:' + (window.__PORT__ || 27731) + '/hold', { method: 'POST', body: JSON.stringify({ on: !heldState }) })
+    .then(function (r) { return r.json(); })
+    .then(function (d) { heldState = !!d.hold; renderHold(); tip(heldState ? '已暂停：AI 的命令会排队，等你点"继续执行"' : '已恢复：AI 继续执行'); })
+    .catch(function () { tip('桥未连接，暂停不可用'); });
 }
 
 poll();
