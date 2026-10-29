@@ -11,7 +11,7 @@
  *
  * 为什么用 AsyncLocalStorage 而不是改工具签名
  * ------------------------------------------
- * 同 cancel-context.ts 的理由：288 个工具一个签名都不改。
+ * 同 cancel-context.ts 的理由：289 个工具一个签名都不改。
  * 服务器在 CallTool handler 里调 runWithProgress 把回调挂进上下文，
  * 工具深处（batch.ts / 导出工具）调 reportProgress 取出来用。
  * 客户端没传 progressToken 时 reporter 是 no-op，零开销。
