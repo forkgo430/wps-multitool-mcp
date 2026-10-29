@@ -249,6 +249,8 @@ interface TaskPackage {
   task: string;
   title: string;
   match: string[];
+  /** 反例词（第 3 期学术五件套新增）：命中即排除本包——即使触发词也命中（反例优先）。缺省视为无反例 */
+  not_for?: string[];
   steps: Array<{ action: string; app: string; note?: string; inline?: boolean; snapshot?: boolean }>;
   confirm_before: string[];
 }
@@ -288,6 +290,8 @@ export interface TaskPackageMatch {
   steps: TaskPackage['steps'];
   confirm_before: string[];
   matched: string[];
+  /** 反例边界随包带回：模型据此知道这个包"不接什么活" */
+  not_for: string[];
 }
 
 /** 纯函数：短路口匹配（不含 IO，便于测试）。命中即返回，多条命中取关键词数最多的。 */
@@ -309,21 +313,25 @@ export function matchDirectRoute(task: string): DirectMatch | null {
   return { tool: best.route.tool, app: best.route.app, params, matched: best.hits, note: best.route.note };
 }
 
-/** 纯函数：任务包匹配。多个命中取命中关键词最多的一个，其余进 alternatives。 */
+/** 纯函数：任务包匹配。多个命中先比命中词个数，平手比命中词总长（长短语更特异——
+ * 防「期刊论文格式」被 paper_format 的「论文格式」抢走）；not_for 词命中即排除（反例优先）。 */
 export function matchTaskPackage(task: string): { best: TaskPackageMatch | null; alternatives: TaskPackageMatch[] } {
   const text = (task || '').toLowerCase();
   const scored: Array<{ pkg: TaskPackage; hits: string[] }> = [];
   for (const pkg of loadTaskPackages()) {
+    if (pkg.not_for?.some((kw) => text.includes(kw.toLowerCase()))) continue;
     const hits = pkg.match.filter((kw) => text.includes(kw.toLowerCase()));
     if (hits.length) scored.push({ pkg, hits });
   }
-  scored.sort((a, b) => b.hits.length - a.hits.length);
+  const specificity = (hits: string[]) => hits.reduce((n, k) => n + k.length, 0);
+  scored.sort((a, b) => (b.hits.length - a.hits.length) || (specificity(b.hits) - specificity(a.hits)));
   const toMatch = ({ pkg, hits }: { pkg: TaskPackage; hits: string[] }): TaskPackageMatch => ({
     task: pkg.task,
     title: pkg.title,
     steps: pkg.steps,
     confirm_before: pkg.confirm_before,
     matched: hits,
+    not_for: pkg.not_for ?? [],
   });
   if (!scored.length) return { best: null, alternatives: [] };
   return {

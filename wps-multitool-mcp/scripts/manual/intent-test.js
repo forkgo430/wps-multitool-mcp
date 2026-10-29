@@ -145,6 +145,64 @@ for (const [text, taskName] of pkgCases) {
   check('confirm_before 在回包里', Array.isArray(pl.result.confirm_before), JSON.stringify(pl.result.confirm_before));
 }
 
+console.log('\n=== 三层意图：学术五件套（第 3 期任务包扩容 12→17，每包配触发词与反例）===');
+{
+  const acCases = [
+    ['帮我搭一个学位论文骨架，章节和题注都要', 'thesis_skeleton'],
+    ['开题报告的框架帮我列一下', 'thesis_skeleton'],
+    ['把读过的文献整理成一张文献矩阵表', 'literature_matrix'],
+    ['综述表格化，作者/方法/结论三列', 'literature_matrix'],
+    ['帮我做一份毕业答辩PPT', 'defense_deck'],
+    ['论文答辩演示生成一下', 'defense_deck'],
+    ['按期刊投稿格式排一下这篇文章', 'journal_format'],
+    ['实验室组会报告帮我写一份', 'group_meeting_report'],
+    ['组会汇报用PPT讲进展', 'group_meeting_report'],
+  ];
+  for (const [text, taskName] of acCases) {
+    const m = matchTaskPackage(text);
+    check('学术包「' + text + '」→ ' + taskName,
+      !!m.best && m.best.task === taskName && m.best.steps.length >= 2,
+      m.best ? 'steps=' + m.best.steps.length + ' matched=' + m.best.matched.join(',') : '未命中');
+  }
+  // 反例（not_for 命中即排除）：不该进学术包的话术
+  const antiCases = [
+    ['给毕业论文排个版', 'thesis_skeleton'],
+    ['参考文献排版弄一下', 'literature_matrix'],
+    ['把这份演示美化一下', 'defense_deck'],
+    ['写一份本周工作周报', 'group_meeting_report'],
+    ['学位论文格式调一下', 'journal_format'],
+  ];
+  for (const [text, taskName] of antiCases) {
+    const m = matchTaskPackage(text);
+    check('反例「' + text + '」不落入 ' + taskName, !m.best || m.best.task !== taskName,
+      m.best ? '落入 ' + m.best.task : '无命中（降级）');
+  }
+  // 特异度 tie-break：长短语命中优先于子串包含的既有包
+  const mTie = matchTaskPackage('按期刊论文格式排一下');
+  check('tie-break：「期刊论文格式」→ journal_format 而非 paper_format',
+    !!mTie.best && mTie.best.task === 'journal_format', mTie.best ? mTie.best.task + ' matched=' + mTie.best.matched.join(',') : '未命中');
+  const mTie2 = matchTaskPackage('学位论文骨架搭一下');
+  check('tie-break：「学位论文骨架」→ thesis_skeleton 而非 paper_format',
+    !!mTie2.best && mTie2.best.task === 'thesis_skeleton', mTie2.best ? mTie2.best.task + ' matched=' + mTie2.best.matched.join(',') : '未命中');
+  // 真相源与边界字段
+  const fs = require('fs');
+  const pkgs = JSON.parse(fs.readFileSync(path.join(ROOT, 'src', 'server', 'task-packages.json'), 'utf8')).packages;
+  const need = ['thesis_skeleton', 'literature_matrix', 'defense_deck', 'journal_format', 'group_meeting_report'];
+  const ids = pkgs.map((p) => p.task);
+  check('任务包真相源 17 包且学术五件套在列', need.every((n) => ids.includes(n)) && pkgs.length === 17, 'total=' + pkgs.length);
+  check('学术五件套每包配 not_for 反例 + 触发词 ≥ 4 + 步骤带 note',
+    pkgs.filter((p) => need.includes(p.task)).every((p) => Array.isArray(p.not_for) && p.not_for.length >= 1 && p.match.length >= 4 && p.steps.every((s) => s.note)));
+  // handler 链路：学术话术走到 task_package 层且回包带反例边界
+  const h3 = await routeIntentHandler({ task: '帮我做一份毕业答辩PPT' });
+  const pl3 = JSON.parse(h3.content[0].text);
+  check('handler 走通：答辩PPT → task_package（defense_deck）',
+    pl3.type === 'task_package' && pl3.result.task === 'defense_deck', JSON.stringify({ type: pl3.type, task: pl3.result && pl3.result.task }));
+  check('回包带 not_for 边界（模型据此避坑）', Array.isArray(pl3.result.not_for) && pl3.result.not_for.length >= 1, JSON.stringify(pl3.result.not_for));
+  // 答辩演示对接 deckkit：steps 里确实指向 build_ppt_deck
+  const dd = pkgs.find((p) => p.task === 'defense_deck');
+  check('defense_deck 对接 build_ppt_deck（deckkit 引擎）', dd.steps.some((s) => s.action === 'build_ppt_deck' && s.app === 'ppt'));
+}
+
 console.log('\n=== 三层意图：置信度 / 降级回归 ===');
 {
   const h = await routeIntentHandler({ task: '随手写点什么' });

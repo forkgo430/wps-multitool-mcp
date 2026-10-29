@@ -17,6 +17,19 @@
     "  compare_analysis —— 对比=读数+公式+图表+导出，与 weekly_report 同链路不同措辞",
     "  template_fill    —— 模板填字段=打开+替换+另存，S1 Word #108/#120/#129 + Common #280",
     "",
+    "学术五件套（第 3 期任务卡，排在 deckkit E3 之后）：",
+    "  thesis_skeleton  —— 章级样式+题注+交叉引用走 addCaption 的 SEQ 层（10-28 探针已证图表目录能收集）；",
+    "  literature_matrix—— 文献矩阵表（作者/方法/结论三列起步），insertTable 的 rows/cols/data 直接带内容",
+    "                     （ps1 实读 $p.rows/$p.cols/$p.data——B5 红线 6：动作名不拍脑袋编）",
+    "  defense_deck     —— 对接 deckkit 的 build_ppt_deck（wps_ppt_build_deck 工具，theme 缺省学术蓝）+ 逐页导图复核",
+    "  journal_format   —— 自研中文期刊版式规范（字体/行距/图表编号/字数区间都是自创口径，note 里逐条标注，",
+    "                     投稿前须对目标刊复核）；行距走 setParagraph（ps1 无 setLineSpacing 动作）",
+    "  group_meeting_report —— 周报包的学术变体（三段式：进展/卡点/计划）",
+    "",
+    "not_for（第 3 期新字段）：反例词命中即【排除】本包——即使触发词也命中（反例优先）。",
+    "用途：学术包与既有包子串交叠时的边界（如「期刊论文格式」同时含「论文格式」，靠 match 词总长",
+    "特异度 tie-break 定胜负；not_for 则兜住「学位论文格式」这类不该进期刊包的话术）。",
+    "",
     "steps 里的 action 是【Windows 注册工具的语义名】（Linux 侧由动作层映射到 jsAsynCall method）；",
     "app 是会话路由（word/excel/ppt/common）；confirm_before 列破坏性动作（执行前应征询）；",
     "snapshot 列写动作前建议自动快照（auto-snapshot 机制对齐）。"
@@ -171,6 +184,80 @@
         { "action": "saveAs", "app": "common", "note": "另存成品" }
       ],
       "confirm_before": []
+    },
+    {
+      "task": "thesis_skeleton",
+      "title": "学位论文骨架",
+      "match": ["论文骨架", "论文框架", "论文结构", "开题报告", "学位论文骨架", "毕业论文骨架", "论文提纲"],
+      "steps": [
+        { "action": "createDocument", "app": "word", "snapshot": true, "note": "建论文文档" },
+        { "action": "addHeading", "app": "word", "note": "章级骨架：摘要/绪论/相关工作/方法/实验/结论/参考文献（章/节/小节三级，逐章录入）" },
+        { "action": "setHeadingNumbering", "app": "word", "note": "章级自动编号（第X章/X.X/X.X.X）" },
+        { "action": "addCaption", "app": "word", "note": "图表题注走 SEQ 层——图表目录靠它收集（10-28 探针已证）" },
+        { "action": "insertCrossReference", "app": "word", "note": "正文引用题注（改编号自动跟）" },
+        { "action": "insertTableOfFigures", "app": "word", "note": "图表目录（收集 SEQ 题注）" },
+        { "action": "getOutline", "app": "word", "note": "结构复核" },
+        { "action": "save", "app": "common", "note": "保存" }
+      ],
+      "not_for": ["论文排版", "论文格式"],
+      "confirm_before": ["createDocument"]
+    },
+    {
+      "task": "literature_matrix",
+      "title": "综述表格化（文献矩阵）",
+      "match": ["文献矩阵", "文献表格", "文献综述表", "综述表格", "文献整理表", "文献汇总表"],
+      "steps": [
+        { "action": "openDocument", "app": "word", "note": "打开综述文档" },
+        { "action": "insertTable", "app": "word", "note": "文献矩阵表：作者/方法/结论三列起步（行数按文献数，data 直接带表头与条目）" },
+        { "action": "formatTable", "app": "word", "note": "表头加粗、三线表口径（自研规范）" },
+        { "action": "save", "app": "common", "note": "保存" }
+      ],
+      "not_for": ["参考文献排版", "引用格式"],
+      "confirm_before": []
+    },
+    {
+      "task": "defense_deck",
+      "title": "答辩演示",
+      "match": ["答辩PPT", "答辩演示", "答辩幻灯", "毕业答辩", "论文答辩", "答辩稿"],
+      "steps": [
+        { "action": "build_ppt_deck", "app": "ppt", "note": "deckkit 生成答辩骨架（wps_ppt_build_deck 工具：标题/章节/要点/结论四页型；theme 缺省学术蓝，可选 gov-red/business-gray）" },
+        { "action": "exportSlideAsImage", "app": "ppt", "inline": true, "note": "逐页出图人工复核" },
+        { "action": "save", "app": "common", "note": "保存" }
+      ],
+      "not_for": ["演示美化", "美化PPT"],
+      "confirm_before": []
+    },
+    {
+      "task": "journal_format",
+      "title": "期刊投稿格式化",
+      "match": ["期刊投稿", "期刊格式", "期刊排版", "投稿格式", "期刊论文格式", "杂志投稿"],
+      "steps": [
+        { "action": "openDocument", "app": "word", "note": "打开稿件" },
+        { "action": "setPageSetup", "app": "word", "note": "A4；边距上下 2.54cm、左右 3.17cm（自研通稿口径）" },
+        { "action": "setDefaultFont", "app": "word", "note": "中文宋体、西文 Times New Roman（自研口径，投稿前对目标刊复核）" },
+        { "action": "setParagraph", "app": "word", "note": "正文 1.5 倍行距（自研口径）" },
+        { "action": "applyStyle", "app": "word", "note": "标题黑体小二居中、一级节标题黑体四号（自研规范）" },
+        { "action": "addCaption", "app": "word", "note": "图表编号规则：图题在图下、表题在表上，全文连续编号（自研规则）" },
+        { "action": "getDocumentStats", "app": "word", "note": "字数核查：常见期刊正文 6000~12000 字区间（自研口径，供投稿前自查）" },
+        { "action": "save", "app": "common", "note": "保存" }
+      ],
+      "not_for": ["学位论文", "毕业论文"],
+      "confirm_before": []
+    },
+    {
+      "task": "group_meeting_report",
+      "title": "组会报告",
+      "match": ["组会报告", "组会汇报", "组会PPT", "组会纪要", "实验室组会", "组会总结"],
+      "steps": [
+        { "action": "getRangeData", "app": "excel", "note": "读本周实验数据/进度表" },
+        { "action": "createChart", "app": "excel", "note": "数据进展图" },
+        { "action": "exportChartAsImage", "app": "excel", "inline": true, "note": "导出图片供插入" },
+        { "action": "createDocument", "app": "word", "snapshot": true, "note": "建组会报告（自研三段式：本周进展/问题与卡点/下周计划）" },
+        { "action": "insertText", "app": "word", "note": "正文写入（图表图插 insertImage）" },
+        { "action": "convertToPDF", "app": "common", "note": "导 PDF 发导师" }
+      ],
+      "not_for": ["工作周报", "周报"],
+      "confirm_before": ["createDocument"]
     }
   ]
 }
