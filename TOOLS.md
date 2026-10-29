@@ -3,7 +3,7 @@
 > 本文件由 `wps-multitool-mcp/scripts/manual/gen-tools-doc.js` 从**运行时注册表**生成，请勿手改。
 > 改完工具跑一次 `node scripts/manual/gen-tools-doc.js`；CI 会重跑并 `git diff --exit-code`，对不上就红。
 
-**288 个工具**（7 内置 + 281 专业/组工具）· 默认列出 40 个 · 注解覆盖 288/288 · 真机验证 278/288
+**289 个工具**（7 内置 + 282 专业/组工具）· 默认列出 40 个 · 注解覆盖 289/289 · 真机验证 278/289
 
 | 标记 | 含义 |
 |---|---|
@@ -217,7 +217,7 @@
 | `wps_excel_update_pivot_table` |  | — | live | 更新已有透视表的配置，包括添加/移除字段、修改聚合方式等。<br><sub>别名：更新数据透视表表格 / 刷新数据透视表表格 / 数据透视表</sub> |
 | `wps_get_active_workbook` |  | R | live | 获取当前打开的WPS表格工作簿信息<br><sub>别名：当前工作簿 / 活动工作簿 / 打开的是哪个表格</sub> |
 
-## PPT（102）
+## PPT（103）
 
 | 工具 | 默认档 | 注解 | 验证 | 说明 |
 |---|---|---|---|---|
@@ -271,6 +271,7 @@
 | `wps_ppt_get_slide_notes` |  | R | live | 获取指定幻灯片的备注内容。<br><sub>别名：获取幻灯片备注 / 读取幻灯片备注 / 查看幻灯片备注</sub> |
 | `wps_ppt_get_slide_title` |  | R | live | 获取指定幻灯片的标题。<br><sub>别名：获取幻灯片标题 / 读取幻灯片标题 / 查看幻灯片标题</sub> |
 | `wps_ppt_get_table_cell` |  | R | live | 获取PPT表格中指定单元格的文本内容。<br><sub>别名：获取表格单元格 / 读取表格单元格 / 查看表格单元格</sub> |
+| `wps_ppt_get_textbox_metrics` |  | R | static | 获取指定页全部文本框的排版度量（结构化 JSON，只读）：每框 index/name/text/left/top/width/…<br><sub>别名：获取文本框metrics / 读取文本框metrics / 查看文本框metrics</sub> |
 | `wps_ppt_get_textboxes` |  | R | live | 获取幻灯片上所有文本框的列表。<br><sub>别名：获取文本框 / 读取文本框 / 查看文本框</sub> |
 | `wps_ppt_group_shapes` |  | — | live | 将幻灯片中的多个形状组合为一个组。<br><sub>别名：组合形状 / 分组形状 / 形状</sub> |
 | `wps_ppt_insert_ppt_chart` |  | N | live | 在幻灯片中插入数据图表。<br><sub>别名：插入图表 / 新增图表 / 加入图表</sub> |

@@ -28,7 +28,8 @@
  * - 数据可视化Tools: create_progress_bar, create_gauge, create_mini_charts, create_donut_chart,
  *   auto_layout, smart_distribute, create_grid
  * - 表格Tools: insert_table, set_table_cell, get_table_cell, set_table_style, set_table_cell_style, set_table_row_style
- * - deckkit 引擎Tools: build_ppt_deck（JSON 页面描述 → 整套演示文稿，E2 骨架）
+ * - deckkit 引擎Tools: build_ppt_deck（JSON 页面描述 → 整套演示文稿；E2 骨架 + E3 主题三套/生成后溢出检查）、
+ *   get_textbox_metrics（文本框排版度量，溢出检查读回通道，只读）
  * - 高级美化Tools: apply_color_scheme, auto_beautify_slide, beautify_all_slides, create_kpi_cards, create_styled_table, add_title_decoration, add_page_indicator, set_background_gradient
  */
 

@@ -174,6 +174,7 @@ export const TOOL_ACTIONS: Readonly<Record<string, readonly string[]>> = {
   "wps_ppt_get_slide_notes": ['getSlideNotes'],
   "wps_ppt_get_slide_title": ['getSlideTitle'],
   "wps_ppt_get_table_cell": ['getPptTableCell'],
+  "wps_ppt_get_textbox_metrics": ['getTextBoxes'],
   "wps_ppt_get_textboxes": ['getTextBoxes'],
   "wps_ppt_group_shapes": ['groupShapes'],
   "wps_ppt_insert_image": ['insertPptImage'],

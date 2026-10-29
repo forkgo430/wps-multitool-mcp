@@ -279,6 +279,13 @@ const CURATED: Record<
       '不负责放映（wps_ppt_start_slide_show）与逐页导图（wps_ppt_export_slide_as_image），生成完可用后者复核',
     ],
   },
+  wps_ppt_get_textbox_metrics: {
+    examples: ['看看第2页的文字有没有超框', '量一下这页文本框的排版'],
+    notFor: [
+      '只读诊断工具，不改任何内容——要改字号用 wps_ppt_set_textbox_style',
+      '与 wps_ppt_get_textboxes 近名：本工具多回 boundWidth/boundHeight/fontSize（文字实际包围盒），用于溢出判断',
+    ],
+  },
   wps_route_intent: {
     examples: ['我要改 Excel 里的公式，该开哪组', '这句话该用 word 还是 excel'],
     aliases: ['意图识别', '该用哪个组', '这句话是干嘛'],

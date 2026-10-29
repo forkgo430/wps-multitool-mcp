@@ -39,7 +39,8 @@ export const deleteTextboxHandler: ToolHandler = async (
   try {
     const response = await wpsClient.executeMethod<{ message: string }>(
       'deleteTextBox',
-      { slideIndex, textboxIndex },
+      // 桥侧按扁平 shapeIndex 定位（读 $p.shapeIndex），此前发 textboxIndex 桥读不到，工具恒败（E3 顺修）
+      { slideIndex, shapeIndex: textboxIndex },
       WpsAppType.PRESENTATION
     );
     if (!response.success) {
@@ -118,7 +119,8 @@ export const setTextboxTextHandler: ToolHandler = async (
   try {
     const response = await wpsClient.executeMethod<{ message: string }>(
       'setTextBoxText',
-      { slideIndex, textboxIndex, text },
+      // 桥侧按扁平 shapeIndex 定位（读 $p.shapeIndex），此前发 textboxIndex 桥读不到，工具恒败（E3 顺修）
+      { slideIndex, shapeIndex: textboxIndex, text },
       WpsAppType.PRESENTATION
     );
     if (!response.success) {
@@ -159,9 +161,21 @@ export const setTextboxStyleHandler: ToolHandler = async (
     slideIndex: number; textboxIndex: number; style: Record<string, unknown>;
   };
   try {
+    // 桥侧读扁平 $p.shapeIndex/$p.fontSize/...（不是 textboxIndex、也不是 style 嵌套）——
+    // 此前发 { textboxIndex, style:{...} } 桥全部读不到，工具恒败（E3 顺修，deckkit 缩字重排走这里）。
+    // 键名映射：fontColor→color、align→alignment，其余同名直传。
+    // style 缺省当空对象：注解生成器观测 handler 时传空参，这里一炸动作名就记不到（实测 288/289 的教训）。
+    const s = (style ?? {}) as Record<string, unknown>;
+    const wire: Record<string, unknown> = { slideIndex, shapeIndex: textboxIndex };
+    if (s.fontSize !== undefined) wire.fontSize = s.fontSize;
+    if (s.fontName !== undefined) wire.fontName = s.fontName;
+    if (s.bold !== undefined) wire.bold = s.bold;
+    if (s.italic !== undefined) wire.italic = s.italic;
+    if (s.fontColor !== undefined) wire.color = s.fontColor;
+    if (s.align !== undefined) wire.alignment = s.align;
     const response = await wpsClient.executeMethod<{ message: string }>(
       'setTextBoxStyle',
-      { slideIndex, textboxIndex, style },
+      wire,
       WpsAppType.PRESENTATION
     );
     if (!response.success) {

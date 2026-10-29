@@ -5337,7 +5337,14 @@ switch ($Action) {
             if ($shape.HasTextFrame) {
                 $text = ""
                 try { $text = $shape.TextFrame.TextRange.Text } catch {}
-                $textBoxes += @{ name = $shape.Name; index = $i; text = $text; left = $shape.Left; top = $shape.Top; width = $shape.Width; height = $shape.Height }
+                # E3 增补（deckkit 生成后溢出检查的读回依据，引擎探针 seg2 证过 BoundHeight 可判溢出）：
+                # boundWidth/boundHeight = 文字实际包围盒（超框判据），fontSize = 当前字号（缩字档位基准）。
+                # 取不到时回 null——调用方按字段缺失降级，勿当硬失败。老桥没有这几行。
+                $bw = $null; $bh = $null; $fs = $null
+                try { $bw = [math]::Round($shape.BoundWidth, 2) } catch {}
+                try { $bh = [math]::Round($shape.BoundHeight, 2) } catch {}
+                try { $fs = $shape.TextFrame.TextRange.Font.Size } catch {}
+                $textBoxes += @{ name = $shape.Name; index = $i; text = $text; left = $shape.Left; top = $shape.Top; width = $shape.Width; height = $shape.Height; boundWidth = $bw; boundHeight = $bh; fontSize = $fs }
             }
         }
         Output-Json @{ success = $true; data = @{ slideIndex = $slideIndex; textBoxes = $textBoxes; count = $textBoxes.Count } }
