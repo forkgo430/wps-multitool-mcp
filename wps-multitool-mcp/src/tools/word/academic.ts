@@ -16,40 +16,18 @@
  * 已有的不重复造：导出 PDF 走 convertToPDF，页边距/纸张走 setPageSetup，字数统计走 getDocumentStats。
  *
  * 说明：本组工具全部走 WpsAppType.WRITER，桥会据此路由到 word 那一路常驻子进程。
+ * 2026-10-30：收尾风格统一到 helpers（本文件的 toResult/errText 局部助手并入），
+ * 并补上 warnings 透传——此前本组会把 PS 侧的警告丢掉。
  */
 
-import { v4 as uuidv4 } from 'uuid';
 import {
   ToolDefinition,
   ToolHandler,
-  ToolCallResult,
   ToolCategory,
   RegisteredTool,
 } from '../../types/tools';
-import { wpsClient } from '../../client/wps-client';
-import { WpsAppType } from '../../types/wps';
 import { WORD_TARGET_PROPERTY } from './target';
-
-/** 统一收尾：把后端响应用一致的方式转成 ToolCallResult */
-function toResult(
-  ok: boolean,
-  text: string,
-  error?: string
-): ToolCallResult {
-  return {
-    id: uuidv4(),
-    success: ok,
-    content: [{ type: 'text', text }],
-    ...(error ? { error } : {}),
-  };
-}
-
-/** 统一错误文本：后端 error 优先，其次异常消息 */
-function errText(responseError: unknown, caught: unknown): string {
-  if (responseError) return String(responseError);
-  if (caught instanceof Error) return caught.message;
-  return String(caught);
-}
+import { call, ok, fail, errMsg } from './helpers';
 
 // ==================== 1. 标题与大纲 ====================
 
@@ -79,19 +57,14 @@ export const addHeadingDefinition: ToolDefinition = {
 
 export const addHeadingHandler: ToolHandler = async (args) => {
   try {
-    const r = await wpsClient.executeMethod<{ level: number; text: string }>(
+    const r = await call<{ level: number; text: string }>(
       'addHeading',
-      { text: String(args.text ?? ''), level: args.level ?? 1 },
-      WpsAppType.WRITER
+      { text: String(args.text ?? ''), level: args.level ?? 1 }
     );
-    if (r.success) {
-      const d = r.data!;
-      return toResult(true, `已插入 ${d.level} 级标题：${d.text}`);
-    }
-    return toResult(false, `插入标题失败：${r.error}`, r.error);
+    if (!r.ok) return fail(`插入标题失败：${r.error}`, r.error);
+    return ok(`已插入 ${r.data!.level} 级标题：${r.data!.text}`, r.warnings);
   } catch (e) {
-    const m = errText(null, e);
-    return toResult(false, `插入标题异常：${m}`, m);
+    return fail(`插入标题异常：${errMsg(e)}`, errMsg(e));
   }
 };
 
@@ -107,26 +80,22 @@ export const getOutlineDefinition: ToolDefinition = {
 参数：
 - limit: 最多返回多少个标题，默认 500`,
   category: ToolCategory.DOCUMENT,
-  inputSchema: {
-    type: 'object',
-    properties: { target: WORD_TARGET_PROPERTY,  limit: { type: 'number', description: '最多返回标题数，默认 500' } },
-  },
+  inputSchema: { type: 'object', properties: { target: WORD_TARGET_PROPERTY,  limit: { type: 'number', description: '最多返回标题数，默认 500' } } },
 };
 
 export const getOutlineHandler: ToolHandler = async (args) => {
   try {
-    const r = await wpsClient.executeMethod<{
-      headings: Array<{ index: number; level: number; text: string }>;
-      count: number;
-    }>('getOutline', { limit: args.limit ?? 500 }, WpsAppType.WRITER);
-    if (!r.success) return toResult(false, `抽取大纲失败：${r.error}`, r.error);
+    const r = await call<{ headings: Array<{ index: number; level: number; text: string }>; count: number }>(
+      'getOutline',
+      { limit: args.limit ?? 500 }
+    );
+    if (!r.ok) return fail(`抽取大纲失败：${r.error}`, r.error);
     const hs = r.data?.headings ?? [];
-    if (!hs.length) return toResult(true, '文档里没有带大纲级别的标题（先用 add_heading 建立层级）');
+    if (!hs.length) return ok('文档里没有带大纲级别的标题（先用 add_heading 建立层级）', r.warnings);
     const lines = hs.map((h) => `${'  '.repeat(Math.max(0, h.level - 1))}${h.level}. ${h.text}   [段 ${h.index}]`);
-    return toResult(true, `大纲（共 ${hs.length} 个标题）：\n${lines.join('\n')}`);
+    return ok(`大纲（共 ${hs.length} 个标题）：\n${lines.join('\n')}`, r.warnings);
   } catch (e) {
-    const m = errText(null, e);
-    return toResult(false, `抽取大纲异常：${m}`, m);
+    return fail(`抽取大纲异常：${errMsg(e)}`, errMsg(e));
   }
 };
 
@@ -153,16 +122,14 @@ export const insertParagraphDefinition: ToolDefinition = {
 
 export const insertParagraphHandler: ToolHandler = async (args) => {
   try {
-    const r = await wpsClient.executeMethod<{ paragraphs: number }>(
+    const r = await call<{ paragraphs: number }>(
       'insertParagraph',
-      { text: String(args.text ?? ''), index: args.index },
-      WpsAppType.WRITER
+      { text: String(args.text ?? ''), index: args.index }
     );
-    if (!r.success) return toResult(false, `插入段落失败：${r.error}`, r.error);
-    return toResult(true, `已插入段落，当前共 ${r.data?.paragraphs} 段`);
+    if (!r.ok) return fail(`插入段落失败：${r.error}`, r.error);
+    return ok(`已插入段落，当前共 ${r.data?.paragraphs} 段`, r.warnings);
   } catch (e) {
-    const m = errText(null, e);
-    return toResult(false, `插入段落异常：${m}`, m);
+    return fail(`插入段落异常：${errMsg(e)}`, errMsg(e));
   }
 };
 
@@ -186,16 +153,14 @@ export const deleteParagraphDefinition: ToolDefinition = {
 
 export const deleteParagraphHandler: ToolHandler = async (args) => {
   try {
-    const r = await wpsClient.executeMethod<{ deleted: number; paragraphs: number }>(
+    const r = await call<{ deleted: number; paragraphs: number }>(
       'deleteParagraph',
-      { index: args.index, count: args.count ?? 1 },
-      WpsAppType.WRITER
+      { index: args.index, count: args.count ?? 1 }
     );
-    if (!r.success) return toResult(false, `删除段落失败：${r.error}`, r.error);
-    return toResult(true, `已删除 ${r.data?.deleted} 段，当前共 ${r.data?.paragraphs} 段`);
+    if (!r.ok) return fail(`删除段落失败：${r.error}`, r.error);
+    return ok(`已删除 ${r.data?.deleted} 段，当前共 ${r.data?.paragraphs} 段`, r.warnings);
   } catch (e) {
-    const m = errText(null, e);
-    return toResult(false, `删除段落异常：${m}`, m);
+    return fail(`删除段落异常：${errMsg(e)}`, errMsg(e));
   }
 };
 
@@ -235,35 +200,24 @@ export const addCaptionDefinition: ToolDefinition = {
 
 export const addCaptionHandler: ToolHandler = async (args) => {
   try {
-    const r = await wpsClient.executeMethod<{
-      label: string;
-      text: string;
-      mode?: string;
-      caption?: string;
-      note?: string;
-      nativeError?: string;
-    }>(
+    const r = await call<{ label: string; text: string; mode?: string; caption?: string; note?: string; nativeError?: string }>(
       'addCaption',
       {
         text: String(args.text ?? ''),
         label: args.label ?? '图',
         position: args.position ?? 'below',
         newParagraph: args.newParagraph ?? false,
-      },
-      WpsAppType.WRITER
+      }
     );
-    if (!r.success) return toResult(false, `插入题注失败：${r.error}`, r.error);
+    if (!r.ok) return fail(`插入题注失败：${r.error}`, r.error);
     const d = r.data!;
     const shown = d.caption ?? d.text ?? '';
-    return toResult(
-      true,
-      d.mode === 'manual'
-        ? `已插入题注（手工模式）：${shown}\n注意：${d.note ?? '原生题注接口不可用，已退化为文本'}`
-        : `已插入题注：${shown}`
-    );
+    const text = d.mode === 'manual'
+      ? `已插入题注（手工模式）：${shown}\n注意：${d.note ?? '原生题注接口不可用，已退化为文本'}`
+      : `已插入题注：${shown}`;
+    return ok(text, r.warnings);
   } catch (e) {
-    const m = errText(null, e);
-    return toResult(false, `插入题注异常：${m}`, m);
+    return fail(`插入题注异常：${errMsg(e)}`, errMsg(e));
   }
 };
 
@@ -288,16 +242,14 @@ export const addFootnoteDefinition: ToolDefinition = {
 
 export const addFootnoteHandler: ToolHandler = async (args) => {
   try {
-    const r = await wpsClient.executeMethod<{ total: number; index: number }>(
+    const r = await call<{ total: number; index: number }>(
       'addFootnote',
-      { text: String(args.text ?? ''), atEnd: args.atEnd ?? false },
-      WpsAppType.WRITER
+      { text: String(args.text ?? ''), atEnd: args.atEnd ?? false }
     );
-    if (!r.success) return toResult(false, `插入脚注失败：${r.error}`, r.error);
-    return toResult(true, `已插入脚注（文档现有 ${r.data?.total} 条脚注）`);
+    if (!r.ok) return fail(`插入脚注失败：${r.error}`, r.error);
+    return ok(`已插入脚注（文档现有 ${r.data?.total} 条脚注）`, r.warnings);
   } catch (e) {
-    const m = errText(null, e);
-    return toResult(false, `插入脚注异常：${m}`, m);
+    return fail(`插入脚注异常：${errMsg(e)}`, errMsg(e));
   }
 };
 
@@ -316,19 +268,14 @@ export const insertTableOfFiguresDefinition: ToolDefinition = {
 
 export const insertTableOfFiguresHandler: ToolHandler = async (args) => {
   try {
-    const r = await wpsClient.executeMethod<{ label: string; total: number }>(
-      'insertTableOfFigures',
-      { label: args.label ?? '图' },
-      WpsAppType.WRITER
-    );
-    if (!r.success) return toResult(false, `生成图表目录失败：${r.error}`, r.error);
-    return toResult(
-      true,
-      `已在文末生成"${r.data?.label}"目录（文档现有 ${r.data?.total} 个图表目录）。若内容为空，先给图/表加题注再 update_fields。`
+    const r = await call<{ label: string; total: number }>('insertTableOfFigures', { label: args.label ?? '图' });
+    if (!r.ok) return fail(`生成图表目录失败：${r.error}`, r.error);
+    return ok(
+      `已在文末生成"${r.data?.label}"目录（文档现有 ${r.data?.total} 个图表目录）。若内容为空，先给图/表加题注再 update_fields。`,
+      r.warnings
     );
   } catch (e) {
-    const m = errText(null, e);
-    return toResult(false, `生成图表目录异常：${m}`, m);
+    return fail(`生成图表目录异常：${errMsg(e)}`, errMsg(e));
   }
 };
 
@@ -346,22 +293,16 @@ export const updateFieldsDefinition: ToolDefinition = {
 
 export const updateFieldsHandler: ToolHandler = async () => {
   try {
-    const r = await wpsClient.executeMethod<{
-      fields: number;
-      toc: number;
-      tof: number;
-      errors: string[];
-    }>('updateFields', {}, WpsAppType.WRITER);
-    if (!r.success) return toResult(false, `刷新域失败：${r.error}`, r.error);
+    const r = await call<{ fields: number; toc: number; tof: number; errors: string[] }>('updateFields', {});
+    if (!r.ok) return fail(`刷新域失败：${r.error}`, r.error);
     const d = r.data;
     const errs = d?.errors?.length ? `\n部分项刷新报错：\n  - ${d.errors.join('\n  - ')}` : '';
-    return toResult(
-      true,
-      `已刷新：域 ${d?.fields ?? 0} 个，目录 ${d?.toc ?? 0} 个，图表目录 ${d?.tof ?? 0} 个${errs}`
+    return ok(
+      `已刷新：域 ${d?.fields ?? 0} 个，目录 ${d?.toc ?? 0} 个，图表目录 ${d?.tof ?? 0} 个${errs}`,
+      r.warnings
     );
   } catch (e) {
-    const m = errText(null, e);
-    return toResult(false, `刷新域异常：${m}`, m);
+    return fail(`刷新域异常：${errMsg(e)}`, errMsg(e));
   }
 };
 
@@ -389,16 +330,14 @@ export const setColumnsDefinition: ToolDefinition = {
 
 export const setColumnsHandler: ToolHandler = async (args) => {
   try {
-    const r = await wpsClient.executeMethod<{ columns: number }>(
+    const r = await call<{ columns: number }>(
       'setColumns',
-      { count: args.count ?? 2, spacing: args.spacing, lineBetween: args.lineBetween },
-      WpsAppType.WRITER
+      { count: args.count ?? 2, spacing: args.spacing, lineBetween: args.lineBetween }
     );
-    if (!r.success) return toResult(false, `设置分栏失败：${r.error}`, r.error);
-    return toResult(true, `已设为 ${r.data?.columns} 栏`);
+    if (!r.ok) return fail(`设置分栏失败：${r.error}`, r.error);
+    return ok(`已设为 ${r.data?.columns} 栏`, r.warnings);
   } catch (e) {
-    const m = errText(null, e);
-    return toResult(false, `设置分栏异常：${m}`, m);
+    return fail(`设置分栏异常：${errMsg(e)}`, errMsg(e));
   }
 };
 
@@ -426,17 +365,15 @@ export const setDefaultFontDefinition: ToolDefinition = {
 
 export const setDefaultFontHandler: ToolHandler = async (args) => {
   try {
-    const r = await wpsClient.executeMethod<{ name: string; eastAsia: string; size: number }>(
+    const r = await call<{ name: string; eastAsia: string; size: number }>(
       'setDefaultFont',
-      { eastAsia: args.eastAsia, ascii: args.ascii, name: args.name, size: args.size },
-      WpsAppType.WRITER
+      { eastAsia: args.eastAsia, ascii: args.ascii, name: args.name, size: args.size }
     );
-    if (!r.success) return toResult(false, `设置默认字体失败：${r.error}`, r.error);
+    if (!r.ok) return fail(`设置默认字体失败：${r.error}`, r.error);
     const d = r.data!;
-    return toResult(true, `默认字体已设为：中文 ${d.eastAsia || '-'} / 西文 ${d.name || '-'}，字号 ${d.size || '-'}`);
+    return ok(`默认字体已设为：中文 ${d.eastAsia || '-'} / 西文 ${d.name || '-'}，字号 ${d.size || '-'}`, r.warnings);
   } catch (e) {
-    const m = errText(null, e);
-    return toResult(false, `设置默认字体异常：${m}`, m);
+    return fail(`设置默认字体异常：${errMsg(e)}`, errMsg(e));
   }
 };
 
@@ -458,20 +395,15 @@ export const setHeadingNumberingDefinition: ToolDefinition = {
 
 export const setHeadingNumberingHandler: ToolHandler = async (args) => {
   try {
-    const r = await wpsClient.executeMethod<{ levels: number; mode?: string }>(
-      'setHeadingNumbering',
-      { levels: args.levels ?? 3 },
-      WpsAppType.WRITER
-    );
-    if (!r.success) return toResult(false, `设置章节编号失败：${r.error}`, r.error);
-    return toResult(
-      true,
+    const r = await call<{ levels: number; mode?: string }>('setHeadingNumbering', { levels: args.levels ?? 3 });
+    if (!r.ok) return fail(`设置章节编号失败：${r.error}`, r.error);
+    return ok(
       `已给 1-${r.data?.levels} 级标题挂上自动编号（用大纲编号库现成模板，方式：${r.data?.mode ?? 'unknown'}）。` +
-        '若编号样式不合意，可在 WPS 里用「开始 → 多级列表」手动挑一个。'
+        '若编号样式不合意，可在 WPS 里用「开始 → 多级列表」手动挑一个。',
+      r.warnings
     );
   } catch (e) {
-    const m = errText(null, e);
-    return toResult(false, `设置章节编号异常：${m}`, m);
+    return fail(`设置章节编号异常：${errMsg(e)}`, errMsg(e));
   }
 };
 
@@ -499,16 +431,14 @@ export const addListDefinition: ToolDefinition = {
 export const addListHandler: ToolHandler = async (args) => {
   try {
     const items = Array.isArray(args.items) ? (args.items as string[]) : [];
-    const r = await wpsClient.executeMethod<{ type: string; count: number }>(
+    const r = await call<{ type: string; count: number }>(
       'addList',
-      { items, type: args.type ?? 'bullet' },
-      WpsAppType.WRITER
+      { items, type: args.type ?? 'bullet' }
     );
-    if (!r.success) return toResult(false, `插入列表失败：${r.error}`, r.error);
-    return toResult(true, `已插入 ${r.data?.count} 条${r.data?.type === 'number' ? '编号' : '项目符号'}列表`);
+    if (!r.ok) return fail(`插入列表失败：${r.error}`, r.error);
+    return ok(`已插入 ${r.data?.count} 条${r.data?.type === 'number' ? '编号' : '项目符号'}列表`, r.warnings);
   } catch (e) {
-    const m = errText(null, e);
-    return toResult(false, `插入列表异常：${m}`, m);
+    return fail(`插入列表异常：${errMsg(e)}`, errMsg(e));
   }
 };
 
@@ -536,35 +466,30 @@ export const formatTableDefinition: ToolDefinition = {
 
 export const formatTableHandler: ToolHandler = async (args) => {
   try {
-    const r = await wpsClient.executeMethod<{
-      tableIndex: number;
-      applied: { style: boolean; headerBold: boolean; borders: boolean };
-    }>(
+    const r = await call<{ tableIndex: number; applied: { style: boolean; headerBold: boolean; borders: boolean } }>(
       'formatTable',
       {
         tableIndex: args.tableIndex ?? 1,
         style: args.style,
         headerBold: args.headerBold ?? false,
         borders: args.borders ?? false,
-      },
-      WpsAppType.WRITER
+      }
     );
-    if (!r.success) return toResult(false, `设置表格样式失败：${r.error}`, r.error);
+    if (!r.ok) return fail(`设置表格样式失败：${r.error}`, r.error);
     const a = r.data!.applied;
     const done = [
       a.style ? '套用样式' : null,
       a.headerBold ? '表头加粗' : null,
       a.borders ? '加边框' : null,
     ].filter(Boolean);
-    return toResult(
-      true,
+    return ok(
       done.length
         ? `第 ${r.data?.tableIndex} 个表格已应用：${done.join('、')}`
-        : `第 ${r.data?.tableIndex} 个表格没有可应用的项（未指定 style/headerBold/borders，或应用失败）`
+        : `第 ${r.data?.tableIndex} 个表格没有可应用的项（未指定 style/headerBold/borders，或应用失败）`,
+      r.warnings
     );
   } catch (e) {
-    const m = errText(null, e);
-    return toResult(false, `设置表格样式异常：${m}`, m);
+    return fail(`设置表格样式异常：${errMsg(e)}`, errMsg(e));
   }
 };
 

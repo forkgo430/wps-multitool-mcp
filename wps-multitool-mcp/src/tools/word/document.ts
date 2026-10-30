@@ -2,8 +2,7 @@
  * Input: 文档管理工具参数
  * Output: 文档操作结果
  * Pos: Word 文档管理工具实现。一旦我被修改，请更新我的头部注释，以及所属文件夹的md。
- * Word文档管理Tools
- * 处理文档的打开、切换、获取列表等管理操作
+ * Word文档管理Tools（2026-10-30 收尾风格统一到 helpers，warnings 一路透传）
  *
  * 包含：
  * - wps_word_get_open_documents: 获取所有已打开的文档列表
@@ -12,12 +11,10 @@
  * - wps_word_get_document_text: 获取文档文本内容
  * - wps_word_insert_header: 设置页眉内容
  * - wps_word_insert_footer: 设置页脚内容
- * - wps_word_generate_doc_toc: 自动生成文档目录
  * - wps_word_insert_section_break: 插入分节符
  * - wps_word_set_line_spacing: 设置行距
  */
 
-import { v4 as uuidv4 } from 'uuid';
 import {
   ToolDefinition,
   ToolHandler,
@@ -25,9 +22,9 @@ import {
   ToolCategory,
   RegisteredTool,
 } from '../../types/tools';
-import { wpsClient, setWordTarget } from '../../client/wps-client';
-import { WpsAppType } from '../../types/wps';
+import { setWordTarget } from '../../client/wps-client';
 import { WORD_TARGET_PROPERTY } from './target';
+import { call, ok, fail } from './helpers';
 
 /**
  * 获取所有已打开的文档列表
@@ -50,63 +47,26 @@ export const getOpenDocumentsDefinition: ToolDefinition = {
 export const getOpenDocumentsHandler: ToolHandler = async (
   _args: Record<string, unknown>
 ): Promise<ToolCallResult> => {
-  try {
-    const response = await wpsClient.executeMethod<{
-      success: boolean;
-      message: string;
-      documents: Array<{ name: string; path: string; active: boolean }>;
-    }>(
-      'getOpenDocuments',
-      {},
-      WpsAppType.WRITER
-    );
+  const r = await call<{ documents: Array<{ name: string; path: string; active: boolean }> }>(
+    'getOpenDocuments',
+    {}
+  );
+  if (!r.ok) return fail(`获取文档列表失败: ${r.error}`, r.error);
 
-    if (response.success && response.data) {
-      const docs = response.data.documents;
-      if (!docs || docs.length === 0) {
-        return {
-          id: uuidv4(),
-          success: true,
-          content: [{ type: 'text', text: '当前没有打开任何文档' }],
-          // 第 1 期第 2 章第 4 轮（A9）：把 PS 侧的 warnings 传出去。
-          // 以前这个 handler 只看 data，warnings 被整个丢掉 —— 于是 PS 特意提示的
-          // "这可能是 ROT 重注册窗口，别据此判断文档没了"根本到不了模型眼前。
-          // warnings 与 success 正交：success 仍为 true，但调用方必须念给用户听。
-          warnings: response.warnings,
-        };
-      }
-
-      const docList = docs
-        .map((doc, i) => `${i + 1}. ${doc.name}${doc.active ? ' (当前活动)' : ''}\n   路径: ${doc.path}`)
-        .join('\n');
-
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [
-          {
-            type: 'text',
-            text: `已打开的文档列表 (共${docs.length}个):\n${docList}`,
-          },
-        ],
-      };
-    } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `获取文档列表失败: ${response.error}` }],
-        error: response.error,
-      };
-    }
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `获取文档列表出错: ${errMsg}` }],
-      error: errMsg,
-    };
+  const docs = r.data?.documents;
+  if (!docs || docs.length === 0) {
+    // 第 1 期第 2 章第 4 轮（A9）：把 PS 侧的 warnings 传出去。
+    // 以前这个 handler 只看 data，warnings 被整个丢掉 —— 于是 PS 特意提示的
+    // "这可能是 ROT 重注册窗口，别据此判断文档没了"根本到不了模型眼前。
+    // warnings 与 success 正交：success 仍为 true，但调用方必须念给用户听。
+    return ok('当前没有打开任何文档', r.warnings);
   }
+
+  const docList = docs
+    .map((doc, i) => `${i + 1}. ${doc.name}${doc.active ? ' (当前活动)' : ''}\n   路径: ${doc.path}`)
+    .join('\n');
+
+  return ok(`已打开的文档列表 (共${docs.length}个):\n${docList}`, r.warnings);
 };
 
 /**
@@ -140,55 +100,15 @@ export const switchDocumentHandler: ToolHandler = async (
   const { name } = args as { name: string };
 
   if (!name || name.trim() === '') {
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: '文档名称不能为空！' }],
-      error: '文档名称为空',
-    };
+    return fail('文档名称不能为空！', '文档名称为空');
   }
 
-  try {
-    const response = await wpsClient.executeMethod<{
-      success: boolean;
-      message: string;
-    }>(
-      'switchDocument',
-      { name },
-      WpsAppType.WRITER
-    );
-
-    if (response.success) {
-      // 锁定目标：之后所有 word 调用都会自动带上 documentName，
-      // 避免 ActiveDocument 在多文档场景下漂移/返回空壳。
-      setWordTarget(name);
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [
-          {
-            type: 'text',
-            text: `已切换到文档: ${name}（后续 word 操作将锁定此文档）`,
-          },
-        ],
-      };
-    } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `切换文档失败: ${response.error}` }],
-        error: response.error,
-      };
-    }
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `切换文档出错: ${errMsg}` }],
-      error: errMsg,
-    };
-  }
+  const r = await call('switchDocument', { name });
+  if (!r.ok) return fail(`切换文档失败: ${r.error}`, r.error);
+  // 锁定目标：之后所有 word 调用都会自动带上 documentName，
+  // 避免 ActiveDocument 在多文档场景下漂移/返回空壳。
+  setWordTarget(name);
+  return ok(`已切换到文档: ${name}（后续 word 操作将锁定此文档）`, r.warnings);
 };
 
 /**
@@ -222,58 +142,13 @@ export const openDocumentHandler: ToolHandler = async (
   const { filePath } = args as { filePath: string };
 
   if (!filePath || filePath.trim() === '') {
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: '文件路径不能为空！' }],
-      error: '文件路径为空',
-    };
+    return fail('文件路径不能为空！', '文件路径为空');
   }
 
-  try {
-    const params = {
-      filePath,
-      path: filePath,
-    };
-
-    const response = await wpsClient.executeMethod<{
-      success: boolean;
-      message: string;
-      documentName: string;
-    }>(
-      'openDocument',
-      params,
-      WpsAppType.WRITER
-    );
-
-    if (response.success && response.data) {
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [
-          {
-            type: 'text',
-            text: `文档打开成功！\n文件: ${response.data.documentName || filePath}`,
-          },
-        ],
-      };
-    } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `打开文档失败: ${response.error}` }],
-        error: response.error,
-      };
-    }
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `打开文档出错: ${errMsg}` }],
-      error: errMsg,
-    };
-  }
+  // 只发 path：PS 侧只读这个键（filePath 死键已按 param-shape 门禁清理）
+  const r = await call<{ documentName: string }>('openDocument', { path: filePath });
+  if (!r.ok) return fail(`打开文档失败: ${r.error}`, r.error);
+  return ok(`文档打开成功！\n文件: ${r.data?.documentName || filePath}`, r.warnings);
 };
 
 /**
@@ -311,54 +186,18 @@ export const getDocumentTextHandler: ToolHandler = async (
 ): Promise<ToolCallResult> => {
   const { start, end } = args as { start?: number; end?: number };
 
-  try {
-    const params: Record<string, unknown> = {};
-    if (start !== undefined) params.start = start;
-    if (end !== undefined) params.end = end;
+  const params: Record<string, unknown> = {};
+  if (start !== undefined) params.start = start;
+  if (end !== undefined) params.end = end;
 
-    const response = await wpsClient.executeMethod<{
-      success: boolean;
-      message: string;
-      text: string;
-      length: number;
-    }>(
-      'getDocumentText',
-      params,
-      WpsAppType.WRITER
-    );
+  const r = await call<{ text: string; length: number }>('getDocumentText', params);
+  if (!r.ok) return fail(`获取文档文本失败: ${r.error}`, r.error);
 
-    if (response.success && response.data) {
-      const rangeInfo = start !== undefined || end !== undefined
-        ? `\n范围: ${start ?? 0} - ${end ?? '末尾'}`
-        : '';
+  const rangeInfo = start !== undefined || end !== undefined
+    ? `\n范围: ${start ?? 0} - ${end ?? '末尾'}`
+    : '';
 
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [
-          {
-            type: 'text',
-            text: `文档文本内容 (${response.data.length}字符)${rangeInfo}:\n\n${response.data.text}`,
-          },
-        ],
-      };
-    } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `获取文档文本失败: ${response.error}` }],
-        error: response.error,
-      };
-    }
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `获取文档文本出错: ${errMsg}` }],
-      error: errMsg,
-    };
-  }
+  return ok(`文档文本内容 (${r.data?.length}字符)${rangeInfo}:\n\n${r.data?.text}`, r.warnings);
 };
 
 /**
@@ -397,47 +236,12 @@ export const insertHeaderHandler: ToolHandler = async (
   const { text, section = 1 } = args as { text: string; section?: number };
 
   if (!text) {
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: '页眉文本不能为空！' }],
-      error: '页眉文本为空',
-    };
+    return fail('页眉文本不能为空！', '页眉文本为空');
   }
 
-  try {
-    const response = await wpsClient.executeMethod<{
-      success: boolean;
-      message: string;
-    }>(
-      'insertHeader',
-      { text, section },
-      WpsAppType.WRITER
-    );
-
-    if (response.success) {
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [{ type: 'text', text: `页眉已设置: "${text}" (第${section}节)` }],
-      };
-    } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `设置页眉失败: ${response.error}` }],
-        error: response.error,
-      };
-    }
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `设置页眉出错: ${errMsg}` }],
-      error: errMsg,
-    };
-  }
+  const r = await call('insertHeader', { text, section });
+  if (!r.ok) return fail(`设置页眉失败: ${r.error}`, r.error);
+  return ok(`页眉已设置: "${text}" (第${section}节)`, r.warnings);
 };
 
 /**
@@ -476,47 +280,12 @@ export const insertFooterHandler: ToolHandler = async (
   const { text, section = 1 } = args as { text: string; section?: number };
 
   if (!text) {
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: '页脚文本不能为空！' }],
-      error: '页脚文本为空',
-    };
+    return fail('页脚文本不能为空！', '页脚文本为空');
   }
 
-  try {
-    const response = await wpsClient.executeMethod<{
-      success: boolean;
-      message: string;
-    }>(
-      'insertFooter',
-      { text, section },
-      WpsAppType.WRITER
-    );
-
-    if (response.success) {
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [{ type: 'text', text: `页脚已设置: "${text}" (第${section}节)` }],
-      };
-    } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `设置页脚失败: ${response.error}` }],
-        error: response.error,
-      };
-    }
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `设置页脚出错: ${errMsg}` }],
-      error: errMsg,
-    };
-  }
+  const r = await call('insertFooter', { text, section });
+  if (!r.ok) return fail(`设置页脚失败: ${r.error}`, r.error);
+  return ok(`页脚已设置: "${text}" (第${section}节)`, r.warnings);
 };
 
 /**
@@ -570,61 +339,16 @@ export const insertSectionBreakHandler: ToolHandler = async (
   };
   const psType = toPsType[breakType];
   if (!psType) {
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [
-        {
-          type: 'text',
-          text: `[勿重试·先改参数] 不认识的分节符类型「${breakType}」。可用：nextPage / continuous / evenPage / oddPage`,
-        },
-      ],
-      error: 'breakType 非法',
-    };
+    return fail(`[勿重试·先改参数] 不认识的分节符类型「${breakType}」。可用：nextPage / continuous / evenPage / oddPage`, 'breakType 非法');
   }
 
-  try {
-    const response = await wpsClient.executeMethod<{
-      type?: string;
-      code?: number;
-    }>(
-      // 第 1 期第 2 章第 2 轮修：原先调 'insertSectionBreak'，ps1 里【没有这个动作】（零命中）
-      // → 每次 Unknown action，工具从未生效。insertPageBreak 本来就支持分节（type=section/
-      // sectionContinuous），本轮又给它补了 evenPage/oddPage 两个映射值，所以四种都能落。
-      // 原来那句 "// NOTE: 仅Windows支持" 是假的：Windows 上也不支持，压根没这个 case。
-      'insertPageBreak',
-      { type: psType },
-      WpsAppType.WRITER
-    );
-
-    if (response.success) {
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [
-          {
-            type: 'text',
-            text: `分节符已插入（类型: ${breakType}，WPS 断点码: ${response.data?.code ?? psType}）`,
-          },
-        ],
-      };
-    } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `插入分节符失败: ${response.error}` }],
-        error: response.error,
-      };
-    }
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `插入分节符出错: ${errMsg}` }],
-      error: errMsg,
-    };
-  }
+  // 第 1 期第 2 章第 2 轮修：原先调 'insertSectionBreak'，ps1 里【没有这个动作】（零命中）
+  // → 每次 Unknown action，工具从未生效。insertPageBreak 本来就支持分节（type=section/
+  // sectionContinuous），本轮又给它补了 evenPage/oddPage 两个映射值，所以四种都能落。
+  // 原来那句 "// NOTE: 仅Windows支持" 是假的：Windows 上也不支持，压根没这个 case。
+  const r = await call<{ type?: string; code?: number }>('insertPageBreak', { type: psType });
+  if (!r.ok) return fail(`插入分节符失败: ${r.error}`, r.error);
+  return ok(`分节符已插入（类型: ${breakType}，WPS 断点码: ${r.data?.code ?? psType}）`, r.warnings);
 };
 
 /**
@@ -668,52 +392,17 @@ export const setLineSpacingHandler: ToolHandler = async (
   const { lineSpacing, range } = args as { lineSpacing: number; range?: string };
 
   if (lineSpacing === undefined || lineSpacing <= 0) {
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: '行距值必须为正数！' }],
-      error: '行距值无效',
-    };
+    return fail('行距值必须为正数！', '行距值无效');
   }
 
-  try {
-    const response = await wpsClient.executeMethod<{
-      success: boolean;
-      message: string;
-    }>(
-      // 第 1 期第 2 章第 1 轮修：原先调 'setLineSpacing'，而 wps-com.ps1 里【没有这个动作】
-      // （零命中）→ 每次调用都落到分发器的 default 分支报 Unknown action，工具等于从未生效。
-      // 能力本来就在 setParagraph 上（wps-com.ps1:3907），且参数名 lineSpacing 两边一致，
-      // 所以只改动作名，PS 侧一行都不动。
-      'setParagraph',
-      { lineSpacing, range: range || 'selection' },
-      WpsAppType.WRITER
-    );
-
-    if (response.success) {
-      const target = range === 'all' ? '全文' : '当前选中的段落';
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [{ type: 'text', text: `行距已设置为 ${lineSpacing} 倍（${target}）` }],
-      };
-    } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `设置行距失败: ${response.error}` }],
-        error: response.error,
-      };
-    }
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `设置行距出错: ${errMsg}` }],
-      error: errMsg,
-    };
-  }
+  // 第 1 期第 2 章第 1 轮修：原先调 'setLineSpacing'，而 wps-com.ps1 里【没有这个动作】
+  // （零命中）→ 每次调用都落到分发器的 default 分支报 Unknown action，工具等于从未生效。
+  // 能力本来就在 setParagraph 上（wps-com.ps1:3907），且参数名 lineSpacing 两边一致，
+  // 所以只改动作名，PS 侧一行都不动。
+  const r = await call('setParagraph', { lineSpacing, range: range || 'selection' });
+  if (!r.ok) return fail(`设置行距失败: ${r.error}`, r.error);
+  const target = range === 'all' ? '全文' : '当前选中的段落';
+  return ok(`行距已设置为 ${lineSpacing} 倍（${target}）`, r.warnings);
 };
 
 /**

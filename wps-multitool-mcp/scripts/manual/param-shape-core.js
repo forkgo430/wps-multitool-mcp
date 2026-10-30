@@ -13,6 +13,11 @@
  *      等把整个 $p 传进去的助手时，该助手内部读的键算这个 case 也读。
  *      不认这条，光 Excel 侧就会因为 sheet 误报 30 多处 —— 而 sheet 恰恰是已修的那一类。
  *   2) 同一动作多个 case 体（同名 case 后者是死代码）只算第一个，与 PowerShell 实际行为一致。
+ *
+ * 2026-10-30 加的规则（word 组收尾风格统一引出）：
+ *   3) TS 侧发送点识别扩展——word 组的收尾统一到 word/helpers.ts 的 call() 后，
+ *      编译产物里的发送点从 executeMethod('x', {...}) 变成 helpers_1.call('x', {...})。
+ *      正则两种都认；不认的话 word 组 30 多个工具会从扫描里消失，门禁等于对它们失明。
  */
 
 'use strict';
@@ -87,7 +92,7 @@ function effectiveKeys(caseBody, helpers) {
   return keys;
 }
 
-/** TS 侧每个 executeMethod('<action>', {字面量}) 传了哪些键 */
+/** TS 侧每个发送点传了哪些键：executeMethod('x', {...}) 直发，或 word/helpers 的 call('x', {...}) 间接发 */
 function tsCallSites() {
   const files = [];
   const walk = (d) => {
@@ -103,7 +108,7 @@ function tsCallSites() {
   const sites = [];
   for (const f of files) {
     const src = fs.readFileSync(f, 'utf8');
-    const er = /executeMethod\(\s*'([A-Za-z0-9_]+)'\s*,\s*\{([^{}]*)\}/g;
+    const er = /(?:executeMethod\(|helpers_1\.call\)\()\s*'([A-Za-z0-9_]+)'\s*,\s*\{([^{}]*)\}/g;
     let x;
     while ((x = er.exec(src))) {
       const act = x[1];

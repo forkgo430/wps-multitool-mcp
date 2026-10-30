@@ -2,8 +2,7 @@
  * Input: Word 内容操作参数
  * Output: 文档内容变更结果
  * Pos: Word 内容工具实现。一旦我被修改，请更新我的头部注释，以及所属文件夹的md。
- * Word内容操作Tools - 文档内容编辑模块
- * 处理文档内容的插入、查找替换、表格、段落格式、页眉页脚等操作
+ * Word内容操作Tools - 文档内容编辑模块（2026-10-30 收尾风格统一到 helpers，warnings 一路透传）
  *
  * 包含：
  * - wps_word_insert_text: 插入文本到文档
@@ -12,14 +11,16 @@
  * - wps_word_set_paragraph: 设置段落格式
  * - wps_word_insert_header: 插入页眉
  * - wps_word_insert_footer: 插入页脚
- * - wps_word_get_active_document: 获取当前文档信息
  * - wps_word_insert_page_break: 插入分页符
  * - wps_word_insert_comment: 插入批注
- * - wps_word_set_font_style: 设置选中文字的字体样式属性
+ * - wps_word_set_font_style: （已下线，降为别名指向 wps_word_set_font）
  * - wps_word_set_text_color: 设置文字颜色
+ * - wps_word_get_paragraphs: 获取段落结构
+ * - wps_word_find_in_document: 查找文本返回位置
+ * - wps_word_smart_fill_field: 智能填写模板字段
+ * - wps_word_replace_bookmark_content: 替换书签内容
  */
 
-import { v4 as uuidv4 } from 'uuid';
 import {
   ToolDefinition,
   ToolHandler,
@@ -27,9 +28,8 @@ import {
   ToolCategory,
   RegisteredTool,
 } from '../../types/tools';
-import { wpsClient } from '../../client/wps-client';
-import { WpsAppType } from '../../types/wps';
 import { WORD_TARGET_PROPERTY } from './target';
+import { call, ok, fail, errText } from './helpers';
 
 /**
  * 插入文本到文档
@@ -81,65 +81,28 @@ export const insertTextHandler: ToolHandler = async (
   };
 
   if (!text || text.trim() === '') {
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: '要插入的文本不能为空！' }],
-      error: '文本内容为空',
-    };
+    return fail('要插入的文本不能为空！', '文本内容为空');
   }
 
-  try {
-    // 处理换行符，如果需要新段落
-    const finalText = new_paragraph ? text + '\n' : text;
+  // 处理换行符，如果需要新段落
+  const finalText = new_paragraph ? text + '\n' : text;
 
-    const response = await wpsClient.executeMethod<{
-      success: boolean;
-      message: string;
-      position: string;
-      textLength: number;
-    }>(
-      'insertText',
-      {
-        text: finalText,
-        position: position || 'cursor',
-        style,
-      },
-      WpsAppType.WRITER
-    );
-
-    if (response.success && response.data) {
-      const positionText =
-        position === 'start' ? '文档开头' :
-        position === 'end' ? '文档结尾' : '光标位置';
-
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [
-          {
-            type: 'text',
-            text: `文本插入成功！\n位置: ${positionText}\n字符数: ${response.data.textLength}${style ? `\n应用样式: ${style}` : ''}`,
-          },
-        ],
-      };
-    } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `插入文本失败: ${response.error}` }],
-        error: response.error,
-      };
+  const r = await call<{ textLength: number }>(
+    'insertText',
+    {
+      text: finalText,
+      position: position || 'cursor',
+      style,
     }
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `插入文本出错: ${errMsg}` }],
-      error: errMsg,
-    };
-  }
+  );
+  if (!r.ok) return fail(`插入文本失败: ${r.error}`, r.error);
+  const positionText =
+    position === 'start' ? '文档开头' :
+    position === 'end' ? '文档结尾' : '光标位置';
+  return ok(
+    `文本插入成功！\n位置: ${positionText}\n字符数: ${r.data?.textLength}${style ? `\n应用样式: ${style}` : ''}`,
+    r.warnings
+  );
 };
 
 /**
@@ -201,98 +164,39 @@ export const findReplaceHandler: ToolHandler = async (
   };
 
   if (!find_text || find_text.trim() === '') {
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: '查找文本不能为空！' }],
-      error: '查找文本为空',
-    };
+    return fail('查找文本不能为空！', '查找文本为空');
   }
 
-  try {
-    // 如果没有替换文本，就只是查找
-    const isReplaceMode = replace_text !== undefined && replace_text !== null;
+  // 如果没有替换文本，就只是查找
+  const isReplaceMode = replace_text !== undefined && replace_text !== null;
 
-    const response = await wpsClient.executeMethod<{
-      success: boolean;
-      message: string;
-      findText: string;
-      replaceText: string;
-      // PS 的 Find.Execute 返回的是【布尔】（替换有没有发生），不是次数。
-      // 历史代码读 result.count，于是每次都打印"替换了 undefined 处"。
-      replaced?: boolean;
-      count?: number;
-    }>(
-      'findReplace',
-      {
-        findText: find_text,
-        replaceText: isReplaceMode ? replace_text : '',
-        replaceAll: replace_all !== false, // 默认true
-        matchCase: match_case || false,
-        matchWholeWord: match_whole_word || false,
-        replaceMode: isReplaceMode,
-      },
-      WpsAppType.WRITER
-    );
-
-    if (response.success && response.data) {
-      const result = response.data;
-      // PS 只回布尔（Find.Execute 的返回值），没有次数。
-      // 所以"替换了几处"改成如实说"是否替换成功"—— 宁可少说，不能编一个数字。
-      const didReplace = result.replaced === true;
-
-      if (isReplaceMode) {
-        if (!didReplace) {
-          return {
-            id: uuidv4(),
-            success: true,
-            content: [
-              {
-                type: 'text',
-                text: `未找到 "${find_text}"，没有进行替换`,
-              },
-            ],
-          };
-        }
-        return {
-          id: uuidv4(),
-          success: true,
-          content: [
-            {
-              type: 'text',
-              text: `替换完成！\n查找: "${find_text}"\n替换为: "${replace_text}"\n（COM 只返回"是否替换成功"，不返回次数）`,
-            },
-          ],
-        };
-      } else {
-        return {
-          id: uuidv4(),
-          success: true,
-          content: [
-            {
-              type: 'text',
-              text: `查找完成！\n"${find_text}" ${didReplace ? '存在并已执行替换' : '未找到可替换的内容'}`,
-            },
-          ],
-        };
-      }
-    } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `查找替换失败: ${response.error}` }],
-        error: response.error,
-      };
+  const r = await call<{ replaced?: boolean; count?: number }>(
+    'findReplace',
+    {
+      findText: find_text,
+      replaceText: isReplaceMode ? replace_text : '',
+      replaceAll: replace_all !== false, // 默认true
+      matchCase: match_case || false,
+      matchWholeWord: match_whole_word || false,
+      replaceMode: isReplaceMode,
     }
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `查找替换出错: ${errMsg}` }],
-      error: errMsg,
-    };
+  );
+  if (!r.ok) return fail(`查找替换失败: ${r.error}`, r.error);
+
+  // PS 只回布尔（Find.Execute 的返回值），没有次数。
+  // 所以"替换了几处"改成如实说"是否替换成功"—— 宁可少说，不能编一个数字。
+  const didReplace = r.data?.replaced === true;
+
+  if (isReplaceMode) {
+    if (!didReplace) {
+      return ok(`未找到 "${find_text}"，没有进行替换`, r.warnings);
+    }
+    return ok(
+      `替换完成！\n查找: "${find_text}"\n替换为: "${replace_text}"\n（COM 只返回"是否替换成功"，不返回次数）`,
+      r.warnings
+    );
   }
+  return ok(`查找完成！\n"${find_text}" ${didReplace ? '存在并已执行替换' : '未找到可替换的内容'}`, r.warnings);
 };
 
 /**
@@ -317,29 +221,9 @@ export const insertTableHandler: ToolHandler = async (
   args: Record<string, unknown>
 ): Promise<ToolCallResult> => {
   const { rows, cols } = args as { rows: number; cols: number };
-  try {
-    const response = await wpsClient.executeMethod<{ success: boolean; message: string }>(
-      'insertTable',
-      { rows, cols },
-      WpsAppType.WRITER
-    );
-    if (response.success) {
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [{ type: 'text', text: `已插入 ${rows}×${cols} 表格` }],
-      };
-    }
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `插入表格失败: ${response.error}` }],
-      error: response.error,
-    };
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return { id: uuidv4(), success: false, content: [{ type: 'text', text: `插入表格出错: ${errMsg}` }], error: errMsg };
-  }
+  const r = await call('insertTable', { rows, cols });
+  if (!r.ok) return fail(`插入表格失败: ${r.error}`, r.error);
+  return ok(`已插入 ${rows}×${cols} 表格`, r.warnings);
 };
 
 /**
@@ -363,29 +247,9 @@ export const setParagraphHandler: ToolHandler = async (
   args: Record<string, unknown>
 ): Promise<ToolCallResult> => {
   const params = args as { alignment?: string; lineSpacing?: number };
-  try {
-    const response = await wpsClient.executeMethod<{ success: boolean; message: string }>(
-      'setParagraph',
-      params,
-      WpsAppType.WRITER
-    );
-    if (response.success) {
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [{ type: 'text', text: '段落格式已设置' }],
-      };
-    }
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `设置段落失败: ${response.error}` }],
-      error: response.error,
-    };
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return { id: uuidv4(), success: false, content: [{ type: 'text', text: `设置段落出错: ${errMsg}` }], error: errMsg };
-  }
+  const r = await call('setParagraph', params);
+  if (!r.ok) return fail(`设置段落失败: ${r.error}`, r.error);
+  return ok('段落格式已设置', r.warnings);
 };
 
 /**
@@ -431,56 +295,23 @@ export const insertImageHandler: ToolHandler = async (
   };
 
   if (!imagePath || imagePath.trim() === '') {
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: '图片路径不能为空！' }],
-      error: '图片路径为空',
-    };
+    return fail('图片路径不能为空！', '图片路径为空');
   }
 
-  try {
-    // 参数对齐：底层优先读取 params.path，同时保留 imagePath/filePath
-    const response = await wpsClient.executeMethod<{
-      success: boolean;
-      message: string;
-    }>(
-      'insertImage',
-      { imagePath, path: imagePath, filePath: imagePath, width, height },
-      WpsAppType.WRITER
-    );
-
-    if (response.success) {
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [
-          {
-            type: 'text',
-            text: `图片插入成功！\n路径: ${imagePath}${width ? `\n宽度: ${width}磅` : ''}${height ? `\n高度: ${height}磅` : ''}`,
-          },
-        ],
-      };
-    }
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `插入图片失败: ${response.error}` }],
-      error: response.error,
-    };
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `插入图片出错: ${errMsg}` }],
-      error: errMsg,
-    };
-  }
+  // 参数对齐：底层优先读取 params.path，同时保留 imagePath/filePath
+  const r = await call(
+    'insertImage',
+    { imagePath, path: imagePath, filePath: imagePath, width, height }
+  );
+  if (!r.ok) return fail(`插入图片失败: ${r.error}`, r.error);
+  return ok(
+    `图片插入成功！\n路径: ${imagePath}${width ? `\n宽度: ${width}磅` : ''}${height ? `\n高度: ${height}磅` : ''}`,
+    r.warnings
+  );
 };
 
 /**
- * 导出所有内容操作相关的Tools
+ * 在文档光标位置插入分页符
  */
 export const insertPageBreakDefinition: ToolDefinition = {
   name: 'wps_word_insert_page_break',
@@ -496,20 +327,9 @@ export const insertPageBreakDefinition: ToolDefinition = {
 export const insertPageBreakHandler: ToolHandler = async (
   _args: Record<string, unknown>
 ): Promise<ToolCallResult> => {
-  try {
-    const response = await wpsClient.executeMethod<{ success: boolean; message: string }>(
-      'insertPageBreak',
-      {},
-      WpsAppType.WRITER
-    );
-    return {
-      id: uuidv4(),
-      success: response.success,
-      content: [{ type: 'text', text: response.success ? '分页符已插入' : (response.data as any)?.message || '插入失败' }],
-    };
-  } catch (e: any) {
-    return { id: uuidv4(), success: false, content: [{ type: 'text', text: `插入分页符出错: ${e.message}` }], error: e.message };
-  }
+  const r = await call('insertPageBreak', {});
+  if (!r.ok) return fail('插入分页符失败', r.error);
+  return ok('分页符已插入', r.warnings);
 };
 
 /**
@@ -534,22 +354,11 @@ export const insertCommentHandler: ToolHandler = async (
 ): Promise<ToolCallResult> => {
   const { text } = args as { text: string };
   if (!text || text.trim() === '') {
-    return { id: uuidv4(), success: false, content: [{ type: 'text', text: '批注内容不能为空！' }], error: '批注内容为空' };
+    return fail('批注内容不能为空！', '批注内容为空');
   }
-  try {
-    const response = await wpsClient.executeMethod<{ success: boolean; message: string }>(
-      'addComment',
-      { text },
-      WpsAppType.WRITER
-    );
-    return {
-      id: uuidv4(),
-      success: response.success,
-      content: [{ type: 'text', text: response.success ? '批注已插入' : (response.data as any)?.message || '插入失败' }],
-    };
-  } catch (e: any) {
-    return { id: uuidv4(), success: false, content: [{ type: 'text', text: `插入批注出错: ${e.message}` }], error: e.message };
-  }
+  const r = await call('addComment', { text });
+  if (!r.ok) return fail(errText('插入批注失败', r), r.error);
+  return ok('批注已插入', r.warnings);
 };
 
 /**
@@ -584,32 +393,19 @@ export const setTextColorHandler: ToolHandler = async (
 ): Promise<ToolCallResult> => {
   const { color, range } = args as { color: string; range?: string };
   if (!color || color.trim() === '') {
-    return { id: uuidv4(), success: false, content: [{ type: 'text', text: '颜色值不能为空！' }], error: '颜色值为空' };
+    return fail('颜色值不能为空！', '颜色值为空');
   }
-  try {
-    const response = await wpsClient.executeMethod<{ success: boolean; message: string }>(
-      // 第 1 期第 2 章第 1 轮修：原先调 'setTextColor'，而 wps-com.ps1 里【没有这个动作】
-      // （零命中）→ 每次调用都落到分发器的 default 分支报 Unknown action，工具等于从未生效。
-      // 能力本来就在 setFont 上（wps-com.ps1:3839），且参数名 color 两边一致，
-      // 所以只改动作名，PS 侧一行都不动。
-      'setFont',
-      { color, range: range || 'selection' },
-      WpsAppType.WRITER
-    );
-    if (!response.success) {
-      // PS 的失败信息在顶层 error 上，不在 data.message 里 —— 原来读错字段，
-      // 失败时只显示"设置失败"，把真正的原因（Unknown action 之类）吞掉。
-      const msg = (response as any)?.error || (response.data as any)?.message || '设置失败';
-      return { id: uuidv4(), success: false, content: [{ type: 'text', text: `设置文字颜色失败: ${msg}` }], error: msg };
-    }
-    return {
-      id: uuidv4(),
-      success: true,
-      content: [{ type: 'text', text: `文字颜色已设置为 ${color}` }],
-    };
-  } catch (e: any) {
-    return { id: uuidv4(), success: false, content: [{ type: 'text', text: `设置文字颜色出错: ${e.message}` }], error: e.message };
+  // 第 1 期第 2 章第 1 轮修：原先调 'setTextColor'，而 wps-com.ps1 里【没有这个动作】
+  // （零命中）→ 每次调用都落到分发器的 default 分支报 Unknown action，工具等于从未生效。
+  // 能力本来就在 setFont 上（wps-com.ps1:3839），且参数名 color 两边一致，
+  // 所以只改动作名，PS 侧一行都不动。
+  const r = await call('setFont', { color, range: range || 'selection' });
+  if (!r.ok) {
+    // PS 的失败信息在顶层 error 上，不在 data.message 里 —— 原来读错字段，
+    // 失败时只显示"设置失败"，把真正的原因（Unknown action 之类）吞掉。
+    return fail(`设置文字颜色失败: ${r.error ?? '设置失败'}`, r.error);
   }
+  return ok(`文字颜色已设置为 ${color}`, r.warnings);
 };
 
 /**
@@ -647,42 +443,22 @@ export const getParagraphsHandler: ToolHandler = async (
     start_paragraph?: number;
     end_paragraph?: number;
   };
-  try {
-    const execParams: Record<string, unknown> = {};
-    if (start_paragraph != null) execParams.startParagraph = start_paragraph;
-    if (end_paragraph != null) execParams.endParagraph = end_paragraph;
-    const response = await wpsClient.executeMethod<{
-      paragraphs: Array<{ index: number; text: string; style: string; start: number; end: number }>;
-      totalCount: number;
-      returnedCount: number;
-    }>('getDocumentParagraphs', execParams, WpsAppType.WRITER);
+  const execParams: Record<string, unknown> = {};
+  if (start_paragraph != null) execParams.startParagraph = start_paragraph;
+  if (end_paragraph != null) execParams.endParagraph = end_paragraph;
 
-    if (response.success && response.data) {
-      const { paragraphs, totalCount, returnedCount } = response.data;
-      const lines = paragraphs.map(
-        (p) => `[${p.index}] (${p.style}) ${p.text}`
-      );
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [{ type: 'text', text: `文档段落结构（共${totalCount}段，返回${returnedCount}段）：\n${lines.join('\n')}` }],
-      };
-    }
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `获取段落结构失败: ${response.error}` }],
-      error: response.error,
-    };
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `获取段落结构出错: ${errMsg}` }],
-      error: errMsg,
-    };
-  }
+  const r = await call<{
+    paragraphs: Array<{ index: number; text: string; style: string; start: number; end: number }>;
+    totalCount: number;
+    returnedCount: number;
+  }>('getDocumentParagraphs', execParams);
+  if (!r.ok) return fail(`获取段落结构失败: ${r.error}`, r.error);
+  const { paragraphs, totalCount, returnedCount } = r.data!;
+  const lines = paragraphs.map((p) => `[${p.index}] (${p.style}) ${p.text}`);
+  return ok(
+    `文档段落结构（共${totalCount}段，返回${returnedCount}段）：\n${lines.join('\n')}`,
+    r.warnings
+  );
 };
 
 /**
@@ -724,56 +500,28 @@ export const findInDocumentHandler: ToolHandler = async (
     max_results?: number;
   };
   if (!find_text || find_text.trim() === '') {
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: '查找文本不能为空！' }],
-      error: '查找文本为空',
-    };
+    return fail('查找文本不能为空！', '查找文本为空');
   }
-  try {
-    const response = await wpsClient.executeMethod<{
-      results: Array<{ text: string; start: number; end: number; paragraphIndex: number; context: string }>;
-      count: number;
-      findText: string;
-    }>(
-      'findInDocument',
-      {
-        findText: find_text,
-        matchCase: match_case || false,
-        matchWholeWord: match_whole_word || false,
-        maxResults: max_results || 20,
-      },
-      WpsAppType.WRITER
-    );
-
-    if (response.success && response.data) {
-      const { results, count, findText } = response.data;
-      if (count === 0) {
-        return { id: uuidv4(), success: true, content: [{ type: 'text', text: `未找到 "${findText}"` }] };
-      }
-      const lines = results.map((r) => `  段落${r.paragraphIndex} [${r.start}-${r.end}]: ...${r.context}...`);
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [{ type: 'text', text: `找到 "${findText}" 共${count}处：\n${lines.join('\n')}` }],
-      };
+  const r = await call<{
+    results: Array<{ text: string; start: number; end: number; paragraphIndex: number; context: string }>;
+    count: number;
+    findText: string;
+  }>(
+    'findInDocument',
+    {
+      findText: find_text,
+      matchCase: match_case || false,
+      matchWholeWord: match_whole_word || false,
+      maxResults: max_results || 20,
     }
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `查找失败: ${response.error}` }],
-      error: response.error,
-    };
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `查找出错: ${errMsg}` }],
-      error: errMsg,
-    };
+  );
+  if (!r.ok) return fail(`查找失败: ${r.error}`, r.error);
+  const { results, count, findText: ft } = r.data!;
+  if (count === 0) {
+    return ok(`未找到 "${ft}"`, r.warnings);
   }
+  const lines = results.map((x) => `  段落${x.paragraphIndex} [${x.start}-${x.end}]: ...${x.context}...`);
+  return ok(`找到 "${ft}" 共${count}处：\n${lines.join('\n')}`, r.warnings);
 };
 
 /**
@@ -820,42 +568,18 @@ export const smartFillFieldHandler: ToolHandler = async (
 ): Promise<ToolCallResult> => {
   const { keyword, value, fill_mode } = args as { keyword: string; value: string; fill_mode?: string };
   if (!keyword || keyword.trim() === '') {
-    return { id: uuidv4(), success: false, content: [{ type: 'text', text: '关键字不能为空！' }], error: '关键字为空' };
+    return fail('关键字不能为空！', '关键字为空');
   }
   if (value == null) {
-    return { id: uuidv4(), success: false, content: [{ type: 'text', text: '填写值不能为空（空字符串将清除该字段内容）' }], error: '填写值为空' };
+    return fail('填写值不能为空（空字符串将清除该字段内容）', '填写值为空');
   }
-  try {
-    const response = await wpsClient.executeMethod<{
-      keyword: string; value: string; fillMode: string; result: string;
-    }>(
-      'smartFillField',
-      { keyword, value, fillMode: fill_mode || 'auto' },
-      WpsAppType.WRITER
-    );
-    if (response.success && response.data) {
-      const { fillMode, result } = response.data;
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [{ type: 'text', text: `填写完成！\n关键字: "${keyword}"\n填写值: "${value}"\n填写模式: ${fillMode}\n结果: ${result}` }],
-      };
-    }
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `填写失败: ${response.error}` }],
-      error: response.error,
-    };
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `填写出错: ${errMsg}` }],
-      error: errMsg,
-    };
-  }
+  const r = await call<{ keyword: string; value: string; fillMode: string; result: string }>(
+    'smartFillField',
+    { keyword, value, fillMode: fill_mode || 'auto' }
+  );
+  if (!r.ok) return fail(`填写失败: ${r.error}`, r.error);
+  const { fillMode, result } = r.data!;
+  return ok(`填写完成！\n关键字: "${keyword}"\n填写值: "${value}"\n填写模式: ${fillMode}\n结果: ${result}`, r.warnings);
 };
 
 /**
@@ -888,37 +612,17 @@ export const replaceBookmarkContentHandler: ToolHandler = async (
 ): Promise<ToolCallResult> => {
   const { name, text } = args as { name: string; text: string };
   if (!name || name.trim() === '') {
-    return { id: uuidv4(), success: false, content: [{ type: 'text', text: '书签名称不能为空！' }], error: '书签名称为空' };
+    return fail('书签名称不能为空！', '书签名称为空');
   }
   if (text == null) {
-    return { id: uuidv4(), success: false, content: [{ type: 'text', text: '替换文本不能为空（空字符串将清空书签）' }], error: '替换文本为空' };
+    return fail('替换文本不能为空（空字符串将清空书签）', '替换文本为空');
   }
-  try {
-    const response = await wpsClient.executeMethod<{
-      name: string; text: string; start: number; end: number;
-    }>('replaceBookmarkContent', { name, text }, WpsAppType.WRITER);
-    if (response.success && response.data) {
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [{ type: 'text', text: `书签内容替换完成！\n书签: "${name}"\n新内容: "${text}"` }],
-      };
-    }
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `替换书签内容失败: ${response.error}` }],
-      error: response.error,
-    };
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `替换书签内容出错: ${errMsg}` }],
-      error: errMsg,
-    };
-  }
+  const r = await call<{ name: string; text: string; start: number; end: number }>(
+    'replaceBookmarkContent',
+    { name, text }
+  );
+  if (!r.ok) return fail(`替换书签内容失败: ${r.error}`, r.error);
+  return ok(`书签内容替换完成！\n书签: "${name}"\n新内容: "${text}"`, r.warnings);
 };
 
 export const contentTools: RegisteredTool[] = [
