@@ -170,6 +170,19 @@ export const findReplaceHandler: ToolHandler = async (
   // 如果没有替换文本，就只是查找
   const isReplaceMode = replace_text !== undefined && replace_text !== null;
 
+  // 全量替换前先计数（2026-10-30 word-audit §三.2）：COM 的 Find.Execute 只回布尔，
+  // 次数靠替换前的 find_in_document 计数补上——两步换一个"替换了 N 处"。
+  let totalCount = 0;
+  if (isReplaceMode) {
+    const found = await call<{ count: number }>('findInDocument', {
+      findText: find_text,
+      matchCase: match_case || false,
+      matchWholeWord: match_whole_word || false,
+      maxResults: 1,
+    });
+    if (found.ok) totalCount = found.data?.count ?? 0;
+  }
+
   const r = await call<{ replaced?: boolean; count?: number }>(
     'findReplace',
     {
@@ -183,16 +196,19 @@ export const findReplaceHandler: ToolHandler = async (
   );
   if (!r.ok) return fail(`查找替换失败: ${r.error}`, r.error);
 
-  // PS 只回布尔（Find.Execute 的返回值），没有次数。
-  // 所以"替换了几处"改成如实说"是否替换成功"—— 宁可少说，不能编一个数字。
+  // PS 只回布尔（Find.Execute 的返回值），有没有替换成以它为准；
+  // 次数来自替换前的计数（全量替换时两者一致）。
   const didReplace = r.data?.replaced === true;
 
   if (isReplaceMode) {
     if (!didReplace) {
       return ok(`未找到 "${find_text}"，没有进行替换`, r.warnings);
     }
+    const countNote = replace_all !== false && totalCount > 0
+      ? `共替换 ${totalCount} 处`
+      : '已替换（COM 不回逐处计数）';
     return ok(
-      `替换完成！\n查找: "${find_text}"\n替换为: "${replace_text}"\n（COM 只返回"是否替换成功"，不返回次数）`,
+      `替换完成！\n查找: "${find_text}"\n替换为: "${replace_text}"\n${countNote}`,
       r.warnings
     );
   }
@@ -298,11 +314,8 @@ export const insertImageHandler: ToolHandler = async (
     return fail('图片路径不能为空！', '图片路径为空');
   }
 
-  // 参数对齐：底层优先读取 params.path，同时保留 imagePath/filePath
-  const r = await call(
-    'insertImage',
-    { imagePath, path: imagePath, filePath: imagePath, width, height }
-  );
+  // 只发 path：PS 侧读这个键（imagePath/filePath 双键是历史垫片，param-shape 清理）
+  const r = await call('insertImage', { path: imagePath, width, height });
   if (!r.ok) return fail(`插入图片失败: ${r.error}`, r.error);
   return ok(
     `图片插入成功！\n路径: ${imagePath}${width ? `\n宽度: ${width}磅` : ''}${height ? `\n高度: ${height}磅` : ''}`,

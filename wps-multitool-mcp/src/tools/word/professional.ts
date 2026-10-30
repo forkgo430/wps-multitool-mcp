@@ -580,9 +580,10 @@ export const indexHandler: ToolHandler = async (args: Args): Promise<ToolCallRes
   const op = String(args.op);
   try {
     if (op === 'count') {
-      const r = await call<{ markedEntries: number }>('insertIndex', {});
-      // insertIndex 会真的插一个索引，这里只用它的计数做参考；改用 markEntry 的探测更干净
-      return ok(`当前索引项数量：${r.ok ? (r.data?.markedEntries ?? 0) : '读取失败'}`);
+      // countOnly：ps1 侧只读计数不插入——旧实现"查个数"会真的在光标处插一个空索引（副作用 bug）
+      const r = await call<{ markedEntries: number }>('insertIndex', { countOnly: true });
+      if (!r.ok) return fail(errText('读取索引项失败', r), r.error);
+      return ok(`当前索引项数量：${r.data?.markedEntries ?? 0}`, r.warnings);
     }
     if (op === 'insert') {
       const r = await call<{ markedEntries: number; columns: number }>('insertIndex', { columns: args.columns });

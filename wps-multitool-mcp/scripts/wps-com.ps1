@@ -9112,6 +9112,12 @@ switch ($Action) {
         try {
             $marked = 0
             try { $marked = [int]$doc.Indexes.MarkEntries.Count } catch {}
+            # countOnly：只读计数，不插入（2026-10-30 word-audit：TS 的 op=count 查个数
+            # 此前会真的在光标处插一个空索引——查询带副作用的副作用 bug）
+            if ($p.countOnly) {
+                Output-Json @{ success = $true; data = @{ markedEntries = $marked } }
+                return
+            }
             $rng = $word.Selection.Range
             $rng.Collapse(0)
             $ix = $doc.Indexes.Add($rng)
