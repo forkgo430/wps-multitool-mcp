@@ -6163,10 +6163,11 @@ switch ($Action) {
         $pres = Get-TargetPres $ppt $p
         $slideIndex = if ($p.slideIndex) { $p.slideIndex } else { 1 }
         $slide = $pres.Slides.Item($slideIndex)
-        $left = if ($p.left) { $p.left } else { 100 }
-        $top = if ($p.top) { $p.top } else { 100 }
-        $width = if ($p.width) { $p.width } else { 400 }
-        $height = if ($p.height) { $p.height } else { 300 }
+        # 坐标/尺寸用 $null -ne 判断，不用真值判断：0 是合法坐标（与 TS 侧 add_shape 的 ?? 修复同批，审计三.1）
+        $left = if ($null -ne $p.left) { $p.left } else { 100 }
+        $top = if ($null -ne $p.top) { $p.top } else { 100 }
+        $width = if ($null -ne $p.width) { $p.width } else { 400 }
+        $height = if ($null -ne $p.height) { $p.height } else { 300 }
         # AddChart 的第一个参数是 xlChartType 枚举（数字），不是类型名字符串。
         # 之前这里直接把 $p.type 丢进去：TS 传 chartType 时它是 $null（靠 COM 兜默认值蒙混过去），
         # 入口归一化把 chartType 映射成 type 之后，"bar" 这个字符串就撞上来了 ——

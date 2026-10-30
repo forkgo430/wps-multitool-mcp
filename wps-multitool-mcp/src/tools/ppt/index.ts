@@ -4,33 +4,34 @@
  * Pos: PPT Tools 汇总入口。一旦我被修改，请更新我的头部注释，以及所属文件夹的md。
  * PPT Tools入口 - PPT工具汇总模块
  *
- * 整合所有PPT相关的Tools
- * 包含：
- * - 幻灯片Tools: add_slide, beautify, unify_font
- * - 幻灯片操作Tools: delete_slide, duplicate_slide, move_slide, get_slide_count,
- *   get_slide_info, switch_slide, set_slide_layout, get_slide_notes, set_slide_notes,
- *   add_shape, set_shape_style, add_textbox, set_slide_title, insert_image, set_shape_text,
- *   set_animation, set_background, set_slide_size
- * - 演示文稿管理Tools: create_presentation, open_presentation, close_presentation, get_open_presentations, switch_presentation, set_slide_theme, copy_slide, insert_slide_image
- * - 背景与页面信息Tools: set_slide_background, set_background_color, set_background_image,
- *   set_slide_number, set_ppt_footer, set_ppt_date_time, duplicate_shape, set_shape_z_order
+ * 整合所有PPT相关的Tools（102 个；另有一个内置 get_active_presentation 按 category 计入 ppt 组）
+ * 包含（2026-10-30 审计轮对齐，历史清单里第 5/8 轮合并掉的 14 个旧名已清）：
+ * - 幻灯片Tools: add_slide, beautify, unify_font, set_font_color, align_objects
+ * - 幻灯片操作Tools: delete_slide, move_slide, get_slide_count, get_slide_info, switch_slide,
+ *   set_slide_layout, get_slide_notes, add_shape, set_shape_style, add_textbox, set_slide_title,
+ *   insert_image, set_shape_text, set_animation, set_background, set_slide_size, set_transition,
+ *   set_shape_fill, add_speaker_notes
+ * - 演示文稿管理Tools: create_presentation, open_presentation, close_presentation, get_open_presentations,
+ *   switch_presentation, set_slide_theme, copy_slide, insert_slide_image, insert_slides_from_file, set_active_target
+ * - 文本框Tools: delete_textbox, get_textboxes, set_textbox_text, set_textbox_style,
+ *   get_slide_title, set_slide_subtitle, set_slide_content
+ * - 页面信息Tools: set_slide_number, set_ppt_footer, set_ppt_date_time, duplicate_shape, set_shape_z_order
  * - 形状基础Tools: delete_shape, get_shapes, set_shape_position, set_shape_shadow,
  *   set_shape_gradient, set_shape_border, set_shape_transparency, align_shapes,
  *   distribute_shapes, group_shapes
- * - 图片Tools: insert_ppt_image, delete_ppt_image, set_image_style, export_slide_as_image
- * - 动画与切换Tools: add_animation, remove_animation, get_animations, set_animation_order,
- *   add_animation_preset, add_emphasis_animation, set_slide_transition, remove_slide_transition, apply_transition_to_all
+ * - 图片Tools: insert_ppt_image, delete_ppt_image, set_image_style, export_slide_as_image, replace_ppt_image
+ * - 动画Tools: remove_animation, get_animations（设置/顺序已并入 set_animation，第 8 轮）
  * - 图表与流程图Tools: insert_ppt_chart, set_ppt_chart_data, set_ppt_chart_style,
  *   create_flow_chart, create_org_chart, create_timeline
- * - 杂项Tools: get_slide_master, set_master_background, add_master_element,
- *   set_3d_rotation, set_3d_depth, set_3d_material, create_3d_text,
- *   add_ppt_hyperlink, remove_ppt_hyperlink, find_ppt_text, replace_ppt_text, start_slide_show
+ * - 杂项Tools: get_slide_master, add_master_element, set_3d_rotation, set_3d_depth, set_3d_material,
+ *   create_3d_text, add_ppt_hyperlink, remove_ppt_hyperlink, find_ppt_text, replace_ppt_text, start_slide_show
  * - 数据可视化Tools: create_progress_bar, create_gauge, create_mini_charts, create_donut_chart,
  *   auto_layout, smart_distribute, create_grid
  * - 表格Tools: insert_table, set_table_cell, get_table_cell, set_table_style, set_table_cell_style, set_table_row_style
  * - deckkit 引擎Tools: build_ppt_deck（JSON 页面描述 → 整套演示文稿；E2 骨架 + E3 主题三套/生成后溢出检查）、
  *   get_textbox_metrics（文本框排版度量，溢出检查读回通道，只读）
- * - 高级美化Tools: apply_color_scheme, auto_beautify_slide, beautify_all_slides, create_kpi_cards, create_styled_table, add_title_decoration, add_page_indicator, set_background_gradient
+ * - 高级美化Tools: apply_color_scheme, auto_beautify_slide, beautify_all_slides, create_kpi_cards,
+ *   create_styled_table, add_title_decoration, add_page_indicator（背景渐变已并入 set_background，第 5 轮）
  */
 
 import { RegisteredTool } from '../../types/tools';
@@ -52,12 +53,19 @@ import { deckTools } from './deckkit';
 /**
  * 所有PPT相关的Tools
  * 包含：
- * - 幻灯片Tools: add_slide, beautify, unify_font
- * - 幻灯片操作Tools: delete_slide, duplicate_slide, move_slide, get_slide_count,
- *   get_slide_info, switch_slide, set_slide_layout, get_slide_notes, set_slide_notes
- * - 演示文稿管理Tools: create_presentation, open_presentation, close_presentation, get_open_presentations, switch_presentation
+ * - 幻灯片Tools: add_slide, beautify, unify_font, set_font_color, align_objects
+ * - 幻灯片操作Tools: delete_slide, move_slide, get_slide_count, get_slide_info, switch_slide,
+ *   set_slide_layout, get_slide_notes, add_shape, set_shape_style, add_textbox, set_slide_title,
+ *   insert_image, set_shape_text, set_animation, set_background, set_slide_size, set_transition,
+ *   set_shape_fill, add_speaker_notes
+ * - 演示文稿管理Tools: create_presentation, open_presentation, close_presentation, get_open_presentations,
+ *   switch_presentation, set_slide_theme, copy_slide, insert_slide_image, insert_slides_from_file, set_active_target
+ * - 文本框Tools: delete_textbox, get_textboxes, set_textbox_text, set_textbox_style,
+ *   get_slide_title, set_slide_subtitle, set_slide_content
+ * - 页面信息Tools: set_slide_number, set_ppt_footer, set_ppt_date_time, duplicate_shape, set_shape_z_order
  * - 表格Tools: insert_table, set_table_cell, get_table_cell, set_table_style, set_table_cell_style, set_table_row_style
- * - 高级美化Tools: apply_color_scheme, auto_beautify_slide, beautify_all_slides, create_kpi_cards, create_styled_table, add_title_decoration, add_page_indicator, set_background_gradient
+ * - 高级美化Tools: apply_color_scheme, auto_beautify_slide, beautify_all_slides, create_kpi_cards,
+ *   create_styled_table, add_title_decoration, add_page_indicator
  */
 export const pptTools: RegisteredTool[] = [
   ...slideTools,

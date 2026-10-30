@@ -3,18 +3,17 @@
  * Output: 幻灯片操作结果
  * Pos: PPT 幻灯片操作工具实现。一旦我被修改，请更新我的头部注释，以及所属文件夹的md。
  *
- * 幻灯片操作Tools - 删除/复制/移动/查询/切换/布局/备注
+ * 幻灯片操作Tools - 删除/移动/查询/切换/布局/备注/形状/动画/背景
  *
- * 包含：
+ * 包含（19 个；历史上列过的 duplicate_slide 在 presentation.ts 的 copy_slide、
+ * set_slide_notes 就是本文件的 add_speaker_notes、add_chart 在 chart-flow.ts）：
  * - wps_ppt_delete_slide: 删除指定幻灯片
- * - wps_ppt_duplicate_slide: 复制幻灯片
  * - wps_ppt_move_slide: 移动幻灯片到指定位置
  * - wps_ppt_get_slide_count: 获取幻灯片总数
  * - wps_ppt_get_slide_info: 获取指定幻灯片的详细信息
  * - wps_ppt_switch_slide: 切换到指定幻灯片
  * - wps_ppt_set_slide_layout: 设置幻灯片版式布局
  * - wps_ppt_get_slide_notes: 获取幻灯片备注内容
- * - wps_ppt_set_slide_notes: 设置幻灯片备注
  * - wps_ppt_add_shape: 添加形状
  * - wps_ppt_set_shape_style: 设置形状样式
  * - wps_ppt_add_textbox: 添加文本框
@@ -25,7 +24,6 @@
  * - wps_ppt_set_background: 设置幻灯片背景
  * - wps_ppt_set_slide_size: 设置幻灯片尺寸
  * - wps_ppt_set_transition: 设置幻灯片切换效果
- * - wps_ppt_add_chart: 在幻灯片中插入图表
  * - wps_ppt_set_shape_fill: 设置形状填充颜色
  * - wps_ppt_add_speaker_notes: 添加演讲者备注
  */
@@ -294,6 +292,11 @@ export const getSlideInfoHandler: ToolHandler = async (
         name: string;
         type: string;
         text?: string;
+        // ps1 特意回传的两个排障字段：placeholderType 区分占位符种类（setSlideSubtitle/
+        // setSlideContent 按 PlaceholderFormat.Type 找目标，报"placeholder not found"时靠它判断
+        // 该版式有没有这种占位符）；hasText 区分"有文本框没文字"。
+        placeholderType?: string;
+        hasText?: boolean;
       }>;
     }>(
       'getSlideInfo',
@@ -311,6 +314,12 @@ export const getSlideInfoHandler: ToolHandler = async (
         output += `\n元素列表：\n`;
         info.shapes.forEach((shape, i) => {
           output += `  ${i + 1}. [${shape.type}] ${shape.name}`;
+          if (shape.placeholderType) {
+            output += ` 占位符类型:${shape.placeholderType}`;
+          }
+          if (shape.hasText !== undefined) {
+            output += shape.hasText ? ' 有文本框' : ' 无文本框';
+          }
           if (shape.text) {
             output += ` - "${shape.text.substring(0, 50)}${shape.text.length > 50 ? '...' : ''}"`;
           }
@@ -673,10 +682,12 @@ export const addShapeHandler: ToolHandler = async (
       {
         slideIndex: slideIndex || 1,
         type: type || 'rectangle',
-        left: left || 100,
-        top: top || 100,
-        width: width || 100,
-        height: height || 100,
+        // 坐标用 ?? 不用 ||：0 是合法坐标（全页底/竖条都从 0 起），|| 会把它吞成 100
+        // （deckkit 引擎的全页渐变底/标题色带/章节引文竖条全踩——审计三.1）
+        left: left ?? 100,
+        top: top ?? 100,
+        width: width ?? 100,
+        height: height ?? 100,
         text,
         fillColor,
       },
@@ -776,6 +787,16 @@ export const setShapeStyleHandler: ToolHandler = async (
     lineColor?: string;
     lineWidth?: number;
   };
+
+  // 定位参数至少给一个：都缺时 ps1 会 Shapes.Item($null) 直接炸（审计三.6），前置拦
+  if (!name && !shapeIndex) {
+    return {
+      id: uuidv4(),
+      success: false,
+      content: [{ type: 'text', text: `要给 name（形状名，getSlideInfo 里看）或 shapeIndex（形状序号）至少一个，否则不知道改哪个形状` }],
+      error: 'Missing required parameter: name / shapeIndex（二选一）',
+    };
+  }
 
   try {
     const response = await wpsClient.executeMethod<{
@@ -902,10 +923,11 @@ export const addTextboxHandler: ToolHandler = async (
       'addTextBox',
       {
         slideIndex: slideIndex || 1,
-        left: left || 100,
-        top: top || 100,
-        width: width || 200,
-        height: height || 50,
+        // 坐标用 ?? 不用 ||：0 是合法坐标（同 add_shape，审计三.1）
+        left: left ?? 100,
+        top: top ?? 100,
+        width: width ?? 200,
+        height: height ?? 50,
         text,
         fontSize,
         fontName,
@@ -1093,10 +1115,11 @@ export const insertImageHandler: ToolHandler = async (
       {
         slideIndex: slideIndex || 1,
         path,
-        left: left || 100,
-        top: top || 100,
-        width: width || -1,
-        height: height || -1,
+        // 同 add_shape：0 是合法坐标；width/height 的 -1 是"保持原始尺寸"哨兵，0 也不能吞（审计三.1）
+        left: left ?? 100,
+        top: top ?? 100,
+        width: width ?? -1,
+        height: height ?? -1,
       },
       WpsAppType.PRESENTATION
     );
@@ -1967,12 +1990,15 @@ export const setShapeFillHandler: ToolHandler = async (
 
 export const addSpeakerNotesDefinition: ToolDefinition = {
   name: 'wps_ppt_add_speaker_notes',
-  description: `添加或追加演讲者备注到指定幻灯片。
+  description: `设置（覆盖）指定幻灯片的演讲者备注。
+
+注意：是**整段替换**，不是追加——ps1 侧直接把备注页文本整体赋值（审计三.4 与行为对齐）。
+要在原备注后补内容，先 wps_ppt_get_slide_notes 读回来拼接再写。
 
 使用场景：
 - "给第1页添加演讲者备注"
 - "在备注中写上提示词"
-- "追加演讲提示到第3页"`,
+- "把第3页的备注换成新稿"`,
   category: ToolCategory.PRESENTATION,
   inputSchema: {
     type: 'object',

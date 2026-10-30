@@ -4,9 +4,8 @@
  * Pos: PPT 杂项工具实现。一旦我被修改，请更新我的头部注释，以及所属文件夹的md。
  * PPT杂项Tools - 母版/3D/超链接/搜索/放映模块
  *
- * 包含：
+ * 包含（11 个；set_master_background 已并入 set_background 的 target:'master'，第 5 轮）：
  * - wps_ppt_get_slide_master: 获取母版信息
- * - wps_ppt_set_master_background: 设置母版背景
  * - wps_ppt_add_master_element: 添加母版元素
  * - wps_ppt_set_3d_rotation: 设置3D旋转
  * - wps_ppt_set_3d_depth: 设置3D深度

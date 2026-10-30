@@ -58,7 +58,7 @@ const FAST = [
   ['backend-selector-test.js', '平台识别决策链（Linux B0）'],
   ['addon-channel-test.js', '加载项通道骨架（Linux B2：握手三态/端口绑定/路由/失败语义/轮询闭环）'],
   ['actions-dispatcher-test.js', '加载项动作分发器 20 动作 mock 单测（Linux B2.5）'],
-  ['deckkit-test.js', 'deckkit 引擎（E2 骨架 + E3：三主题/生成后溢出检查/度量读回，10 页型展开 + 排版纪律 + mock 冒烟）'],
+  ['deckkit-test.js', 'deckkit 引擎（E2 骨架 + E3 主题/溢出检查 + 质量修复轮：0 坐标/参数名对齐，10 页型展开 + 排版纪律 + mock 冒烟）'],
 ];
 
 /** 要起子进程 / 真跑 PowerShell 的重测。第三列 = 仅 Windows 能跑（Linux 上跳过不判失败，B8） */

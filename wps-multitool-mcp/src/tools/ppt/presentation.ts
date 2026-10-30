@@ -795,7 +795,10 @@ export const setActiveTargetHandler: ToolHandler = async (
   try {
     const resp = await wpsClient.executeMethod<{ presentations: Array<{ name: string }> }>(
       'getOpenPresentations',
-      {}
+      {},
+      // 显式声明 app：全组其余调用点都传 WpsAppType，这里历史上靠生成路由表兜到 ppt
+      // （审计三.7）——补齐，防路由表将来漂移时这里悄悄读到别的应用
+      WpsAppType.PRESENTATION
     );
     const names = resp.success && resp.data ? resp.data.presentations.map((x) => x.name) : [];
     const matched = names.includes(name);

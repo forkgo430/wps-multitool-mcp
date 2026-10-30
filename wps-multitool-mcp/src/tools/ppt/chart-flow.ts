@@ -78,7 +78,9 @@ export const insertPptChartDefinition: ToolDefinition = {
         description: '图表上边距（磅），默认自动居中',
       },
     },
-    required: ['slideIndex', 'chartType', 'data'],
+    // data 可选：它【不生效】（描述里写明了），强制必传是自相矛盾（审计三.5）——
+    // 真数据必须走 set_ppt_chart_data 二段式
+    required: ['slideIndex', 'chartType'],
   },
 };
 

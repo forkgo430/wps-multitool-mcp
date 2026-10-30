@@ -1,14 +1,12 @@
 /**
- * Input: PPT 背景、页脚、形状操作参数
- * Output: 背景/页脚/形状操作结果
- * Pos: PPT 背景与页面信息工具实现。一旦我被修改，请更新我的头部注释，以及所属文件夹的md。
- * PPT背景Tools - 背景、页面信息、高级形状模块
- * 处理幻灯片背景设置、页码/页脚/日期时间、形状复制与层级调整
+ * Input: 页码/页脚/日期时间、形状复制与层级操作参数
+ * Output: 页面信息与形状操作结果
+ * Pos: PPT 页面信息工具实现。一旦我被修改，请更新我的头部注释，以及所属文件夹的md。
+ * PPT页面信息Tools - 页码/页脚/日期时间、形状复制与层级模块
+ * 【文件名叫 background 是历史遗留】——背景族 6→1 已并入 slide-ops 的 set_background（第 5 轮），
+ * 本文件里已无任何背景工具；改名 page-effects 留给拆分轮（审计一）。
  *
- * 包含：
- * - wps_ppt_set_slide_background: 设置幻灯片背景（通用）
- * - wps_ppt_set_background_color: 设置幻灯片背景颜色
- * - wps_ppt_set_background_image: 设置幻灯片背景图片
+ * 包含（5 个）：
  * - wps_ppt_set_slide_number: 设置幻灯片页码显示
  * - wps_ppt_set_ppt_footer: 设置PPT页脚
  * - wps_ppt_set_ppt_date_time: 设置PPT日期时间
@@ -457,7 +455,7 @@ export const setShapeZOrderHandler: ToolHandler = async (
 /**
  * 导出所有背景、页面信息、高级形状相关的Tools
  */
-export const backgroundTools: RegisteredTool[] = [
+export const backgroundTools: RegisteredTool[] = [
   { definition: setSlideNumberDefinition, handler: setSlideNumberHandler },
   { definition: setPptFooterDefinition, handler: setPptFooterHandler },
   { definition: setPptDateTimeDefinition, handler: setPptDateTimeHandler },

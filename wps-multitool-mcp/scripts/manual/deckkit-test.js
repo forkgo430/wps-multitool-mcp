@@ -1,10 +1,11 @@
 /**
- * deckkit 引擎的 mock 单测（第 3 期 E2 骨架 + E3 主题/生成后溢出检查验收项）
+ * deckkit 引擎的 mock 单测（第 3 期 E2 骨架 + E3 主题/生成后溢出检查 + 质量修复轮断言）
  * 原则：不起真 WPS —— ① expandDeck 纯函数断言"坐标/字号/调用序列/主题"（10 页型 × ≥3 + 三主题）；
  * ② mock COM 冒烟：mock wpsClient.executeMethod 后走 build_ppt_deck 真入口跑完整调用序列
  *    （不建快照垃圾——handler 逐动作直调 handler，不经 callTool 的快照层）；
  * ③ 溢出检查三路（缩字修复 / 缩字仍超 / 已达下限不强改）+ 降级两路（bound 字段缺失 / 读回失败）：
- *    mock COM 按"行高 = 字号 × 1.2"模型回 BoundHeight（与引擎探针 seg3 同一标定数值）。
+ *    mock COM 按"行高 = 字号 × 1.2"模型回 BoundHeight（与引擎探针 seg3 同一标定数值）；
+ * ④ 质量修复轮（审计三.1/三.2）：0 坐标原样到 COM + add_shape 发 type 键。
  * 语义依据：docs/agents/BORROW-PLAN.md §2.3（10 页型）+ 引擎探针（行高 1.2/渐变可用/BoundHeight 判溢出）。
  * 跑法：node scripts/manual/deckkit-test.js（verify-all FAST 档包含它）。
  */
@@ -266,6 +267,16 @@ console.log('\n=== 排版纪律（未知 kind / 页数上限）===');
     const adds = m.comLog.filter((x) => x.action === 'addSlide');
     ok('add_slide 两次且 layout=blank（干净页，形状计数前提）', adds.length === 2 && adds.every((x) => x.params.layout === 'blank'), JSON.stringify(adds.map((x) => x.params.layout)));
     ok('溢出读回每页恰好一次（getTextBoxes ×2）', m.comLog.filter((x) => x.action === 'getTextBoxes').length === 2);
+    // 0 坐标修复断言（审计三.1）：deckkit 的全页底/标题色带发 left:0，COM 收到的必须还是 0
+    const fullBleed = m.comLog.find((x) => x.action === 'addShape' && x.params.width === DECK_TYPO.slideWidth && x.params.height === DECK_TYPO.slideHeight);
+    ok('0 坐标原样到 COM（全页底 left=0/top=0，不被 || 默认值吞）',
+      !!fullBleed && fullBleed.params.left === 0 && fullBleed.params.top === 0,
+      fullBleed ? `left=${fullBleed.params.left} top=${fullBleed.params.top}` : '未找到全页底形状');
+    // shapeType→type 参数名错位修复断言（审计三.2）：deckkit 发 type 键，COM 不再收 undefined
+    const shapes = m.comLog.filter((x) => x.action === 'addShape');
+    ok('add_shape 步骤发 type 键且无 shapeType 残留（参数名错位已修）',
+      shapes.length > 0 && shapes.every((x) => x.params.type === 'rectangle' && x.params.shapeType === undefined),
+      `shapes=${shapes.length}`);
     ok('冒烟无溢出（遗留 0 处）', /遗留 0 处溢出/.test(text), (text.match(/溢出检查：[^\n]*/) || [''])[0]);
     ok('冒烟无 set_transition/set_background（标题+要点页不含）', !m.comLog.some((x) => x.action === 'setTransition' || x.action === 'setBackground'));
     ok('COM 调用里字号全部 ≥ bodyFontMin', m.comLog.filter((x) => x.params.fontSize !== undefined).every((x) => x.params.fontSize >= DECK_TYPO.bodyFontMin));
@@ -287,6 +298,29 @@ console.log('\n=== 排版纪律（未知 kind / 页数上限）===');
     ok('fail-fast：第一页炸了就停（第二页未开始）', (r2.error || '').includes('完成到第 1 页'));
     ok('页没铺完不跑溢出检查（无 getTextBoxes）', mFail.comLog.every((x) => x.action !== 'getTextBoxes'));
   }
+
+  // 0 坐标修复直调断言（审计三.1）：不经 deckkit，直接打 add_shape handler——
+  // left:0/top:0 必须原样落 COM（修复前 || 会吞成 100）。
+  // mock 用无状态版：makeDeckMock 的形状表按"先 addSlide 再加形状"建模，直调没有前情会踩它自己的空引用
+  {
+    const m0com = [];
+    wpsClientMod.wpsClient.executeMethod = async (action, params) => {
+      m0com.push({ action, params });
+      if (action === 'getActiveDocumentState') return { success: true, data: { hasDocument: false } };
+      return { success: true, data: { name: 'X', slideIndex: params.slideIndex || 1 } };
+    };
+    const r0 = await toolRegistry.callTool({
+      id: 'audit-zero-coord',
+      name: 'wps_ppt_add_shape',
+      arguments: { slideIndex: 1, left: 0, top: 0, width: 100, height: 50 },
+    });
+    const a0 = m0com.find((x) => x.action === 'addShape');
+    ok('0 坐标修复（add_shape 直调）：left:0/top:0 原样到 COM',
+      r0.success === true && !!a0 && a0.params.left === 0 && a0.params.top === 0,
+      a0 ? `left=${a0.params.left} top=${a0.params.top} err=${r0.error || '-'}` : '未捕获');
+  }
+
+
 
   /* ---- 6. E3 溢出检查：三路 + 降级两路 ---- */
   console.log('\n=== E3 溢出检查（超框→警告→缩字一档复测一次）===');

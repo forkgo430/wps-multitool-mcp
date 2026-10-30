@@ -193,7 +193,7 @@ function color(slide: number, shapeIndex: number, hex: string): DeckStep {
 /** 标题色带（形状#1）+ 标题文本框（形状#2，白字） */
 function headingBand(slide: number, heading: string, T: DeckTypoCtx): DeckStep[] {
   return [
-    { tool: 'wps_ppt_add_shape', args: { slideIndex: slide, shapeType: 'rectangle', left: 0, top: T.titleBandTop, width: T.slideWidth, height: T.titleBandHeight, fillColor: T.theme.deep }, note: '标题色带' },
+    { tool: 'wps_ppt_add_shape', args: { slideIndex: slide, type: 'rectangle', left: 0, top: T.titleBandTop, width: T.slideWidth, height: T.titleBandHeight, fillColor: T.theme.deep }, note: '标题色带' },
     { tool: 'wps_ppt_add_textbox', args: { slideIndex: slide, left: T.margin, top: T.titleBandTop + 8, width: T.slideWidth - T.margin * 2, height: T.titleBandHeight - 16, text: heading, fontSize: T.titleFont, fontName: T.theme.fontPair.heading } },
     color(slide, 2, '#FFFFFF'),
   ];
@@ -202,7 +202,7 @@ function headingBand(slide: number, heading: string, T: DeckTypoCtx): DeckStep[]
 /** 全页渐变底（形状#1） */
 function fullBleedGradient(slide: number, from: string, to: string, T: DeckTypoCtx): DeckStep[] {
   return [
-    { tool: 'wps_ppt_add_shape', args: { slideIndex: slide, shapeType: 'rectangle', left: 0, top: 0, width: T.slideWidth, height: T.slideHeight, fillColor: from }, note: '全页底' },
+    { tool: 'wps_ppt_add_shape', args: { slideIndex: slide, type: 'rectangle', left: 0, top: 0, width: T.slideWidth, height: T.slideHeight, fillColor: from }, note: '全页底' },
     { tool: 'wps_ppt_set_shape_gradient', args: { slideIndex: slide, shapeIndex: 1, gradient: { type: 'linear', angle: 90, stops: [{ color: from, position: 0 }, { color: to, position: 1 }] } } },
   ];
 }
@@ -229,7 +229,7 @@ const pageSteps: Record<string, (slide: number, s: any, T: DeckTypoCtx) => DeckS
   // #1 竖条，#2 序号，#3 标题，#4 标语
   section: (slide, s, T) => {
     const steps: DeckStep[] = [
-      { tool: 'wps_ppt_add_shape', args: { slideIndex: slide, shapeType: 'rectangle', left: 0, top: 0, width: 24, height: T.slideHeight, fillColor: T.theme.accent }, note: '章节竖条' },
+      { tool: 'wps_ppt_add_shape', args: { slideIndex: slide, type: 'rectangle', left: 0, top: 0, width: 24, height: T.slideHeight, fillColor: T.theme.accent }, note: '章节竖条' },
       textbox(slide, { left: 70, top: 200, width: 160, height: 90, text: s.ordinal, fontSize: T.sectionFont, fontName: T.theme.fontPair.heading }),
       color(slide, 2, T.theme.accent),
       textbox(slide, { left: 240, top: 210, width: 640, height: 80, text: s.heading, fontSize: T.titleFont, fontName: T.theme.fontPair.heading }),
@@ -249,7 +249,7 @@ const pageSteps: Record<string, (slide: number, s: any, T: DeckTypoCtx) => DeckS
     const cards = s.points.map((pt: string, i: number) => {
       const top = T.bodyTop + i * gap;
       return [
-        { tool: 'wps_ppt_add_shape', args: { slideIndex: slide, shapeType: 'rectangle', left: T.margin, top, width: T.slideWidth - T.margin * 2, height: gap - T.cardGap, fillColor: T.theme.paper } },
+        { tool: 'wps_ppt_add_shape', args: { slideIndex: slide, type: 'rectangle', left: T.margin, top, width: T.slideWidth - T.margin * 2, height: gap - T.cardGap, fillColor: T.theme.paper } },
         textbox(slide, { left: T.margin + 16, top: top + (gap - T.cardGap - T.bodyFont * T.lineFactor) / 2, width: T.slideWidth - T.margin * 2 - 32, height: T.bodyFont * T.lineFactor, text: pt, fontSize: Math.max(T.bodyFont, T.bodyFontMin), fontName: T.theme.fontPair.body }),
       ];
     }).flat();
@@ -266,7 +266,7 @@ const pageSteps: Record<string, (slide: number, s: any, T: DeckTypoCtx) => DeckS
     const L = check(s.left); const R = check(s.right);
     const w = (T.slideWidth - T.margin * 2 - T.cardGap) / 2;
     const col = (x: number, col_: { label: string; points: string[] }, color0: string, base: number): DeckStep[] => [
-      { tool: 'wps_ppt_add_shape', args: { slideIndex: slide, shapeType: 'rectangle', left: x, top: T.bodyTop, width: w, height: 60, fillColor: color0 } },
+      { tool: 'wps_ppt_add_shape', args: { slideIndex: slide, type: 'rectangle', left: x, top: T.bodyTop, width: w, height: 60, fillColor: color0 } },
       textbox(slide, { left: x + 12, top: T.bodyTop + 10, width: w - 24, height: 40, text: col_.label, fontSize: 18, fontName: T.theme.fontPair.heading }),
       textbox(slide, { left: x + 12, top: T.bodyTop + 70, width: w - 24, height: 280, text: col_.points.map((p, i) => `${i + 1}. ${p}`).join('\n'), fontSize: T.bodyFontMin, fontName: T.theme.fontPair.body }),
       color(slide, base, T.theme.ink),
@@ -298,14 +298,14 @@ const pageSteps: Record<string, (slide: number, s: any, T: DeckTypoCtx) => DeckS
     const headH = 40; const rowH = 40;
     const steps: DeckStep[] = [...headingBand(slide, s.heading, T)];
     s.head.forEach((h: string, j: number) => {
-      steps.push({ tool: 'wps_ppt_add_shape', args: { slideIndex: slide, shapeType: 'rectangle', left: T.margin + j * w, top: T.bodyTop, width: w, height: headH, fillColor: T.theme.deep } });
+      steps.push({ tool: 'wps_ppt_add_shape', args: { slideIndex: slide, type: 'rectangle', left: T.margin + j * w, top: T.bodyTop, width: w, height: headH, fillColor: T.theme.deep } });
       steps.push(textbox(slide, { left: T.margin + j * w + 6, top: T.bodyTop + 6, width: w - 12, height: headH - 12, text: h, fontSize: T.bodyFont, fontName: T.theme.fontPair.heading }));
       steps.push(color(slide, 3 + 2 * j, '#FFFFFF'));
     });
     s.rows.forEach((row: string[], i: number) => {
       const top = T.bodyTop + headH + i * rowH;
       row.forEach((cell: string, j: number) => {
-        steps.push({ tool: 'wps_ppt_add_shape', args: { slideIndex: slide, shapeType: 'rectangle', left: T.margin + j * w, top, width: w, height: rowH, fillColor: i % 2 === 0 ? T.theme.paper : '#FFFFFF' } });
+        steps.push({ tool: 'wps_ppt_add_shape', args: { slideIndex: slide, type: 'rectangle', left: T.margin + j * w, top, width: w, height: rowH, fillColor: i % 2 === 0 ? T.theme.paper : '#FFFFFF' } });
         steps.push(textbox(slide, { left: T.margin + j * w + 6, top: top + 6, width: w - 12, height: rowH - 12, text: String(cell), fontSize: T.bodyFontMin, fontName: T.theme.fontPair.body }));
       });
     });
@@ -331,11 +331,11 @@ const pageSteps: Record<string, (slide: number, s: any, T: DeckTypoCtx) => DeckS
     const step = span / Math.max(s.milestones.length - 1, 1);
     const steps: DeckStep[] = [
       ...headingBand(slide, s.heading, T),
-      { tool: 'wps_ppt_add_shape', args: { slideIndex: slide, shapeType: 'rectangle', left: T.margin + 30, top: axisY, width: span, height: 4, fillColor: T.theme.mid }, note: '时间轴主线' },
+      { tool: 'wps_ppt_add_shape', args: { slideIndex: slide, type: 'rectangle', left: T.margin + 30, top: axisY, width: span, height: 4, fillColor: T.theme.mid }, note: '时间轴主线' },
     ];
     s.milestones.forEach((m: { label: string; note?: string }, i: number) => {
       const x = T.margin + 30 + i * step;
-      steps.push({ tool: 'wps_ppt_add_shape', args: { slideIndex: slide, shapeType: 'rectangle', left: x - 8, top: axisY - 10, width: 16, height: 24, fillColor: T.theme.accent }, note: `节点${i + 1}` });
+      steps.push({ tool: 'wps_ppt_add_shape', args: { slideIndex: slide, type: 'rectangle', left: x - 8, top: axisY - 10, width: 16, height: 24, fillColor: T.theme.accent }, note: `节点${i + 1}` });
       const above = i % 2 === 0;
       steps.push(textbox(slide, { left: x - 55, top: above ? axisY - 60 : axisY + 30, width: 130, height: 40, text: m.label, fontSize: T.bodyFont, fontName: T.theme.fontPair.heading }));
       if (m.note) steps.push(textbox(slide, { left: x - 55, top: above ? axisY + 30 : axisY - 60, width: 130, height: 40, text: m.note, fontSize: T.bodyFontMin, fontName: T.theme.fontPair.body }));
@@ -361,7 +361,7 @@ const pageSteps: Record<string, (slide: number, s: any, T: DeckTypoCtx) => DeckS
   quote: (slide, s, T) => {
     if (!s.quote) throw new Error('quote 页需要 quote（引文内容）');
     const steps: DeckStep[] = [
-      { tool: 'wps_ppt_add_shape', args: { slideIndex: slide, shapeType: 'rectangle', left: 0, top: 0, width: 14, height: T.slideHeight, fillColor: T.theme.accent }, note: '引文竖条' },
+      { tool: 'wps_ppt_add_shape', args: { slideIndex: slide, type: 'rectangle', left: 0, top: 0, width: 14, height: T.slideHeight, fillColor: T.theme.accent }, note: '引文竖条' },
       textbox(slide, { left: 90, top: 180, width: 780, height: 160, text: '「' + s.quote + '」', fontSize: 28, fontName: T.theme.fontPair.heading }),
       color(slide, 2, T.theme.ink),
     ];

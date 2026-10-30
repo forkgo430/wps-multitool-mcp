@@ -489,6 +489,16 @@ export const replacePptImageHandler: ToolHandler = async (
     filePath: string;
   };
 
+  // 定位参数至少给一个：都缺时 ps1 会 Shapes.Item($null) 直接炸（审计三.6），前置拦
+  if (!shapeIndex && !name) {
+    return {
+      id: uuidv4(),
+      success: false,
+      content: [{ type: 'text', text: `要给 shapeIndex（图片形状序号，get_shapes 里看）或 name（形状名）至少一个，否则不知道替换哪张图` }],
+      error: 'Missing required parameter: shapeIndex / name（二选一）',
+    };
+  }
+
   try {
     const response = await wpsClient.executeMethod<{
       success: boolean;

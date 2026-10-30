@@ -220,7 +220,7 @@
 | 工具 | 默认档 | 注解 | 验证 | 说明 |
 |---|---|---|---|---|
 | `wps_ppt_add_slide` | 是 | N | live | 添加新幻灯片到演示文稿。<br><sub>别名：添加幻灯片 / 新增幻灯片 / 加幻灯片</sub> |
-| `wps_ppt_add_speaker_notes` | 是 | — | live | 添加或追加演讲者备注到指定幻灯片。<br><sub>别名：添加演讲者备注 / 新增演讲者备注 / 加演讲者备注</sub> |
+| `wps_ppt_add_speaker_notes` | 是 | — | live | 设置（覆盖）指定幻灯片的演讲者备注。<br><sub>别名：添加演讲者备注 / 新增演讲者备注 / 加演讲者备注</sub> |
 | `wps_ppt_create_presentation` | 是 | N | live | 新建空白演示文稿。<br><sub>别名：创建演示文稿 / 新建演示文稿 / 生成演示文稿</sub> |
 | `wps_ppt_export_slide_as_image` | 是 | — | live | 将指定幻灯片导出为位图图片（PNG/JPG/JPEG/GIF/BMP）。<br><sub>别名：导出幻灯片as图片 / 输出幻灯片as图片 / 幻灯片</sub> |
 | `wps_ppt_get_open_presentations` | 是 | R | live | 获取当前所有已打开的演示文稿列表。<br><sub>别名：获取打开演示文稿 / 读取打开演示文稿 / 查看打开演示文稿</sub> |

@@ -5,7 +5,7 @@
  * PPT高级美化Tools - 高级美化模块
  * 处理配色方案、自动美化、KPI卡片、装饰元素等高级美化操作
  *
- * 包含：
+ * 包含（7 个；set_background_gradient 已并入 set_background 的渐变分支并转别名，第 5 轮）：
  * - wps_ppt_apply_color_scheme: 应用配色方案
  * - wps_ppt_auto_beautify_slide: 自动美化单页幻灯片
  * - wps_ppt_beautify_all_slides: 批量美化所有幻灯片
@@ -13,7 +13,6 @@
  * - wps_ppt_create_styled_table: 创建带样式的表格
  * - wps_ppt_add_title_decoration: 添加标题装饰元素
  * - wps_ppt_add_page_indicator: 添加页码指示器
- * - wps_ppt_set_background_gradient: 设置渐变背景
  */
 
 import { v4 as uuidv4 } from 'uuid';
