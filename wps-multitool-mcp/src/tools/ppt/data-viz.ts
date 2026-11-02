@@ -14,7 +14,6 @@
  * - wps_ppt_create_grid: 创建网格布局
  */
 
-import { v4 as uuidv4 } from 'uuid';
 import {
   ToolDefinition,
   ToolHandler,
@@ -22,8 +21,7 @@ import {
   ToolCategory,
   RegisteredTool,
 } from '../../types/tools';
-import { wpsClient } from '../../client/wps-client';
-import { WpsAppType } from '../../types/wps';
+import { call, ok, fail, errText } from './helpers';
 
 // ==================== 数据可视化 ====================
 
@@ -71,45 +69,12 @@ export const createProgressBarHandler: ToolHandler = async (
     label?: string;
   };
 
-  try {
-    const response = await wpsClient.executeMethod<{
-      success: boolean;
-      message: string;
-      shapeId?: number;
-    }>(
-      'createProgressBar',
-      { slideIndex, value, label: label || '' },
-      WpsAppType.PRESENTATION
-    );
-
-    if (response.success && response.data) {
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [
-          {
-            type: 'text',
-            text: `进度条创建成功！\n幻灯片: 第 ${slideIndex} 页\n进度: ${value}%${label ? `\n标签: ${label}` : ''}`,
-          },
-        ],
-      };
-    } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `创建进度条失败: ${response.error}` }],
-        error: response.error,
-      };
-    }
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `创建进度条出错: ${errMsg}` }],
-      error: errMsg,
-    };
-  }
+  const r = await call<{ shapeId?: number }>('createProgressBar', { slideIndex, value, label: label || '' });
+  if (!r.ok || !r.data) return fail(errText('创建进度条失败', r), r.error);
+  return ok(
+    `进度条创建成功！\n幻灯片: 第 ${slideIndex} 页\n进度: ${value}%${label ? `\n标签: ${label}` : ''}`,
+    r.warnings
+  );
 };
 
 /**
@@ -158,45 +123,12 @@ export const createGaugeHandler: ToolHandler = async (
 
   const maxValue = max || 100;
 
-  try {
-    const response = await wpsClient.executeMethod<{
-      success: boolean;
-      message: string;
-      shapeId?: number;
-    }>(
-      'createGauge',
-      { slideIndex, value, max: maxValue },
-      WpsAppType.PRESENTATION
-    );
-
-    if (response.success && response.data) {
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [
-          {
-            type: 'text',
-            text: `仪表盘创建成功！\n幻灯片: 第 ${slideIndex} 页\n当前值: ${value}\n最大值: ${maxValue}\n百分比: ${Math.round((value / maxValue) * 100)}%`,
-          },
-        ],
-      };
-    } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `创建仪表盘失败: ${response.error}` }],
-        error: response.error,
-      };
-    }
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `创建仪表盘出错: ${errMsg}` }],
-      error: errMsg,
-    };
-  }
+  const r = await call<{ shapeId?: number }>('createGauge', { slideIndex, value, max: maxValue });
+  if (!r.ok || !r.data) return fail(errText('创建仪表盘失败', r), r.error);
+  return ok(
+    `仪表盘创建成功！\n幻灯片: 第 ${slideIndex} 页\n当前值: ${value}\n最大值: ${maxValue}\n百分比: ${Math.round((value / maxValue) * 100)}%`,
+    r.warnings
+  );
 };
 
 /**
@@ -239,47 +171,16 @@ export const createMiniChartsHandler: ToolHandler = async (
     data: Array<Record<string, unknown>>;
   };
 
-  try {
-    const response = await wpsClient.executeMethod<{
-      success: boolean;
-      message: string;
-      // PS createMiniCharts 回的是 count；chartCount 是历史键，两个都接（chartCount 优先）。
-      count?: number;
-      chartCount?: number;
-    }>(
-      'createMiniCharts',
-      { slideIndex, data },
-      WpsAppType.PRESENTATION
-    );
-
-    if (response.success && response.data) {
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [
-          {
-            type: 'text',
-            text: `迷你图表创建成功！\n幻灯片: 第 ${slideIndex} 页\n图表数量: ${response.data.chartCount ?? response.data.count ?? 0} 个\n数据组数: ${data.length}`,
-          },
-        ],
-      };
-    } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `创建迷你图表失败: ${response.error}` }],
-        error: response.error,
-      };
-    }
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `创建迷你图表出错: ${errMsg}` }],
-      error: errMsg,
-    };
-  }
+  const r = await call<{
+    // PS createMiniCharts 回的是 count；chartCount 是历史键，两个都接（chartCount 优先）。
+    count?: number;
+    chartCount?: number;
+  }>('createMiniCharts', { slideIndex, data });
+  if (!r.ok || !r.data) return fail(errText('创建迷你图表失败', r), r.error);
+  return ok(
+    `迷你图表创建成功！\n幻灯片: 第 ${slideIndex} 页\n图表数量: ${r.data.chartCount ?? r.data.count ?? 0} 个\n数据组数: ${data.length}`,
+    r.warnings
+  );
 };
 
 /**
@@ -322,45 +223,12 @@ export const createDonutChartHandler: ToolHandler = async (
     data: Array<Record<string, unknown>>;
   };
 
-  try {
-    const response = await wpsClient.executeMethod<{
-      success: boolean;
-      message: string;
-      shapeId?: number;
-    }>(
-      'createDonutChart',
-      { slideIndex, data },
-      WpsAppType.PRESENTATION
-    );
-
-    if (response.success && response.data) {
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [
-          {
-            type: 'text',
-            text: `环形图创建成功！\n幻灯片: 第 ${slideIndex} 页\n数据项: ${data.length} 个`,
-          },
-        ],
-      };
-    } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `创建环形图失败: ${response.error}` }],
-        error: response.error,
-      };
-    }
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `创建环形图出错: ${errMsg}` }],
-      error: errMsg,
-    };
-  }
+  const r = await call<{ shapeId?: number }>('createDonutChart', { slideIndex, data });
+  if (!r.ok || !r.data) return fail(errText('创建环形图失败', r), r.error);
+  return ok(
+    `环形图创建成功！\n幻灯片: 第 ${slideIndex} 页\n数据项: ${data.length} 个`,
+    r.warnings
+  );
 };
 
 // ==================== 布局操作 ====================
@@ -399,45 +267,12 @@ export const autoLayoutHandler: ToolHandler = async (
     slideIndex: number;
   };
 
-  try {
-    const response = await wpsClient.executeMethod<{
-      success: boolean;
-      message: string;
-      adjustedCount?: number;
-    }>(
-      'autoLayout',
-      { slideIndex },
-      WpsAppType.PRESENTATION
-    );
-
-    if (response.success) {
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [
-          {
-            type: 'text',
-            text: `自动排版完成！\n幻灯片: 第 ${slideIndex} 页${response.data?.adjustedCount ? `\n调整元素: ${response.data.adjustedCount} 个` : ''}`,
-          },
-        ],
-      };
-    } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `自动排版失败: ${response.error}` }],
-        error: response.error,
-      };
-    }
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `自动排版出错: ${errMsg}` }],
-      error: errMsg,
-    };
-  }
+  const r = await call<{ adjustedCount?: number }>('autoLayout', { slideIndex });
+  if (!r.ok) return fail(errText('自动排版失败', r), r.error);
+  return ok(
+    `自动排版完成！\n幻灯片: 第 ${slideIndex} 页${r.data?.adjustedCount ? `\n调整元素: ${r.data.adjustedCount} 个` : ''}`,
+    r.warnings
+  );
 };
 
 /**
@@ -480,44 +315,12 @@ export const smartDistributeHandler: ToolHandler = async (
     shapeIndices: number[];
   };
 
-  try {
-    const response = await wpsClient.executeMethod<{
-      success: boolean;
-      message: string;
-    }>(
-      'smartDistribute',
-      { slideIndex, shapeIndices },
-      WpsAppType.PRESENTATION
-    );
-
-    if (response.success) {
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [
-          {
-            type: 'text',
-            text: `智能分布完成！\n幻灯片: 第 ${slideIndex} 页\n处理形状: ${shapeIndices.length} 个 (索引: ${shapeIndices.join(', ')})`,
-          },
-        ],
-      };
-    } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `智能分布失败: ${response.error}` }],
-        error: response.error,
-      };
-    }
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `智能分布出错: ${errMsg}` }],
-      error: errMsg,
-    };
-  }
+  const r = await call('smartDistribute', { slideIndex, shapeIndices });
+  if (!r.ok) return fail(errText('智能分布失败', r), r.error);
+  return ok(
+    `智能分布完成！\n幻灯片: 第 ${slideIndex} 页\n处理形状: ${shapeIndices.length} 个 (索引: ${shapeIndices.join(', ')})`,
+    r.warnings
+  );
 };
 
 /**
@@ -564,45 +367,12 @@ export const createGridHandler: ToolHandler = async (
     cols: number;
   };
 
-  try {
-    const response = await wpsClient.executeMethod<{
-      success: boolean;
-      message: string;
-      cellCount?: number;
-    }>(
-      'createGrid',
-      { slideIndex, rows, cols },
-      WpsAppType.PRESENTATION
-    );
-
-    if (response.success) {
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [
-          {
-            type: 'text',
-            text: `网格布局创建成功！\n幻灯片: 第 ${slideIndex} 页\n布局: ${rows} 行 x ${cols} 列\n单元格: ${rows * cols} 个`,
-          },
-        ],
-      };
-    } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `创建网格布局失败: ${response.error}` }],
-        error: response.error,
-      };
-    }
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `创建网格布局出错: ${errMsg}` }],
-      error: errMsg,
-    };
-  }
+  const r = await call<{ cellCount?: number }>('createGrid', { slideIndex, rows, cols });
+  if (!r.ok) return fail(errText('创建网格布局失败', r), r.error);
+  return ok(
+    `网格布局创建成功！\n幻灯片: 第 ${slideIndex} 页\n布局: ${rows} 行 x ${cols} 列\n单元格: ${rows * cols} 个`,
+    r.warnings
+  );
 };
 
 /**

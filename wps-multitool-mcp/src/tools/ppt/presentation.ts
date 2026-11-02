@@ -12,9 +12,10 @@
  * - wps_ppt_set_slide_theme: 设置演示文稿主题
  * - wps_ppt_copy_slide: 复制幻灯片
  * - wps_ppt_insert_slide_image: 在幻灯片中插入图片
+ * - wps_ppt_insert_slides_from_file: 从其它演示文稿导入整页幻灯片
+ * - wps_ppt_set_active_target: 锁定后续 PPT 操作的目标演示文稿
  */
 
-import { v4 as uuidv4 } from 'uuid';
 import {
   ToolDefinition,
   ToolHandler,
@@ -24,6 +25,7 @@ import {
 } from '../../types/tools';
 import { wpsClient, setPptTarget } from '../../client/wps-client';
 import { WpsAppType } from '../../types/wps';
+import { call, ok, fail, errText } from './helpers';
 
 /**
  * 新建空白演示文稿
@@ -47,48 +49,12 @@ export const createPresentationDefinition: ToolDefinition = {
 export const createPresentationHandler: ToolHandler = async (
   _args: Record<string, unknown>
 ): Promise<ToolCallResult> => {
-  try {
-    const response = await wpsClient.executeMethod<{
-      success: boolean;
-      message: string;
-      name: string;
-    }>(
-      'createPresentation',
-      {},
-      WpsAppType.PRESENTATION
-    );
-
-    // 只要有 success 就算成功：data 是可选的（老版本 PS 只回 success，
-    // 曾因此把"建好了"报成"失败: undefined"）
-    if (response.success) {
-      const name = response.data?.name;
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [
-          {
-            type: 'text',
-            text: `新建演示文稿成功！${name ? `\n名称: ${name}` : ''}`,
-          },
-        ],
-      };
-    } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `新建演示文稿失败: ${response.error}` }],
-        error: response.error,
-      };
-    }
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `新建演示文稿出错: ${errMsg}` }],
-      error: errMsg,
-    };
-  }
+  const r = await call<{ name?: string }>('createPresentation', {});
+  // 只要有 success 就算成功：data 是可选的（老版本 PS 只回 success，
+  // 曾因此把"建好了"报成"失败: undefined"）
+  if (!r.ok) return fail(errText('新建演示文稿失败', r), r.error);
+  const name = r.data?.name;
+  return ok(`新建演示文稿成功！${name ? `\n名称: ${name}` : ''}`, r.warnings);
 };
 
 /**
@@ -126,55 +92,23 @@ export const openPresentationHandler: ToolHandler = async (
     filePath: string;
   };
 
-  try {
-    // 参数对齐：底层读取 params.path，需同时发送 path
-    const response = await wpsClient.executeMethod<{
-      success: boolean;
-      message: string;
-      name: string;
-      // PS openPresentation 回的是 path（和 slideCount）；这里历史上读 filePath → 永远
-      // 打印"路径: undefined"。两个键都接，path 优先。slideCount 也没人读，顺手打出来 ——
-      // "打开了但里面几页"是调用方唯一想知道的下一件事。
-      path?: string;
-      filePath?: string;
-      slideCount?: number;
-    }>(
-      'openPresentation',
-      { filePath, path: filePath },
-      WpsAppType.PRESENTATION
-    );
-
-    if (response.success && response.data) {
-      const realPath = response.data.path ?? response.data.filePath ?? '';
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [
-          {
-            type: 'text',
-            text:
-              `演示文稿打开成功！\n名称: ${response.data.name}\n路径: ${realPath}` +
-              (response.data.slideCount === undefined ? '' : `\n页数: ${response.data.slideCount}`),
-          },
-        ],
-      };
-    } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `打开演示文稿失败: ${response.error}` }],
-        error: response.error,
-      };
-    }
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `打开演示文稿出错: ${errMsg}` }],
-      error: errMsg,
-    };
-  }
+  // 参数对齐：底层读取 params.path，需同时发送 path
+  const r = await call<{
+    name: string;
+    // PS openPresentation 回的是 path（和 slideCount）；这里历史上读 filePath → 永远
+    // 打印"路径: undefined"。两个键都接，path 优先。slideCount 也没人读，顺手打出来 ——
+    // "打开了但里面几页"是调用方唯一想知道的下一件事。
+    path?: string;
+    filePath?: string;
+    slideCount?: number;
+  }>('openPresentation', { filePath, path: filePath });
+  if (!r.ok || !r.data) return fail(errText('打开演示文稿失败', r), r.error);
+  const realPath = r.data.path ?? r.data.filePath ?? '';
+  return ok(
+    `演示文稿打开成功！\n名称: ${r.data.name}\n路径: ${realPath}` +
+      (r.data.slideCount === undefined ? '' : `\n页数: ${r.data.slideCount}`),
+    r.warnings
+  );
 };
 
 /**
@@ -213,51 +147,18 @@ export const closePresentationHandler: ToolHandler = async (
     save?: boolean;
   };
 
-  try {
-    const response = await wpsClient.executeMethod<{
-      success: boolean;
-      message: string;
-      name: string;
-    }>(
-      'closePresentation',
-      {
-        name,
-        // 线上参数名是 saveChanges（PS 侧 closePresentation case 的读法）。曾在这里发 save，
-        // 而 PS 的 Close() 压根不接参数 → save 被整个丢掉，未保存文稿直接关还会弹框卡死通道。
-        saveChanges: save !== false,
-      },
-      WpsAppType.PRESENTATION
-    );
-
-    if (response.success && response.data) {
-      const saveStatus = save !== false ? '已保存' : '未保存';
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [
-          {
-            type: 'text',
-            text: `演示文稿已关闭！\n名称: ${response.data.name}\n保存状态: ${saveStatus}`,
-          },
-        ],
-      };
-    } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `关闭演示文稿失败: ${response.error}` }],
-        error: response.error,
-      };
+  const r = await call<{ name: string }>(
+    'closePresentation',
+    {
+      name,
+      // 线上参数名是 saveChanges（PS 侧 closePresentation case 的读法）。曾在这里发 save，
+      // 而 PS 的 Close() 压根不接参数 → save 被整个丢掉，未保存文稿直接关还会弹框卡死通道。
+      saveChanges: save !== false,
     }
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `关闭演示文稿出错: ${errMsg}` }],
-      error: errMsg,
-    };
-  }
+  );
+  if (!r.ok || !r.data) return fail(errText('关闭演示文稿失败', r), r.error);
+  const saveStatus = save !== false ? '已保存' : '未保存';
+  return ok(`演示文稿已关闭！\n名称: ${r.data.name}\n保存状态: ${saveStatus}`, r.warnings);
 };
 
 /**
@@ -282,63 +183,30 @@ export const getOpenPresentationsDefinition: ToolDefinition = {
 export const getOpenPresentationsHandler: ToolHandler = async (
   _args: Record<string, unknown>
 ): Promise<ToolCallResult> => {
-  try {
-    const response = await wpsClient.executeMethod<{
-      success: boolean;
-      message: string;
-      presentations: Array<{
-        name: string;
-        path: string;
-        slideCount: number;
-        isActive: boolean;
-      }>;
-      count: number;
-    }>(
-      'getOpenPresentations',
-      {},
-      WpsAppType.PRESENTATION
-    );
-
-    if (response.success && response.data) {
-      const { presentations, count } = response.data;
-      if (count === 0) {
-        return {
-          id: uuidv4(),
-          success: true,
-          content: [{ type: 'text', text: '当前没有打开的演示文稿。' }],
-        };
-      }
-
-      let output = `当前打开 ${count} 个演示文稿：\n\n`;
-      presentations.forEach((p, i) => {
-        const activeTag = p.isActive ? ' [当前活动]' : '';
-        output += `${i + 1}. ${p.name}${activeTag}\n`;
-        output += `   路径: ${p.path}\n`;
-        output += `   页数: ${p.slideCount}\n`;
-      });
-
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [{ type: 'text', text: output }],
-      };
-    } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `获取演示文稿列表失败: ${response.error}` }],
-        error: response.error,
-      };
-    }
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `获取演示文稿列表出错: ${errMsg}` }],
-      error: errMsg,
-    };
+  const r = await call<{
+    presentations: Array<{
+      name: string;
+      path: string;
+      slideCount: number;
+      isActive: boolean;
+    }>;
+    count: number;
+  }>('getOpenPresentations', {});
+  if (!r.ok || !r.data) return fail(errText('获取演示文稿列表失败', r), r.error);
+  const { presentations, count } = r.data;
+  if (count === 0) {
+    return ok('当前没有打开的演示文稿。', r.warnings);
   }
+
+  let output = `当前打开 ${count} 个演示文稿：\n\n`;
+  presentations.forEach((p, i) => {
+    const activeTag = p.isActive ? ' [当前活动]' : '';
+    output += `${i + 1}. ${p.name}${activeTag}\n`;
+    output += `   路径: ${p.path}\n`;
+    output += `   页数: ${p.slideCount}\n`;
+  });
+
+  return ok(output, r.warnings);
 };
 
 /**
@@ -372,45 +240,9 @@ export const switchPresentationHandler: ToolHandler = async (
     name: string;
   };
 
-  try {
-    const response = await wpsClient.executeMethod<{
-      success: boolean;
-      message: string;
-      name: string;
-    }>(
-      'switchPresentation',
-      { name },
-      WpsAppType.PRESENTATION
-    );
-
-    if (response.success && response.data) {
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [
-          {
-            type: 'text',
-            text: `已切换到演示文稿: ${response.data.name}`,
-          },
-        ],
-      };
-    } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `切换演示文稿失败: ${response.error}` }],
-        error: response.error,
-      };
-    }
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `切换演示文稿出错: ${errMsg}` }],
-      error: errMsg,
-    };
-  }
+  const r = await call<{ name: string }>('switchPresentation', { name });
+  if (!r.ok || !r.data) return fail(errText('切换演示文稿失败', r), r.error);
+  return ok(`已切换到演示文稿: ${r.data.name}`, r.warnings);
 };
 
 /**
@@ -450,39 +282,13 @@ export const setSlideThemeHandler: ToolHandler = async (
 ): Promise<ToolCallResult> => {
   const { theme } = args as { theme: string };
 
-  try {
-    const response = await wpsClient.executeMethod<{
-      success: boolean;
-      message: string;
-    }>(
-      'setSlideTheme', // 第 1 期第 2 章第 2 轮：这句原为「仅Windows支持」，是假注释 —— 该动作曾长期不存在于 ps1。第 6 轮已补 case，现在 Windows 上真能用。
-      { theme },
-      WpsAppType.PRESENTATION
-    );
-
-    if (response.success && response.data) {
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [{ type: 'text', text: `主题已设置为: ${theme}` }],
-      };
-    } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `设置主题失败: ${response.error}` }],
-        error: response.error,
-      };
-    }
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `设置主题出错: ${errMsg}` }],
-      error: errMsg,
-    };
-  }
+  const r = await call(
+    // 第 1 期第 2 章第 2 轮：这句原为「仅Windows支持」，是假注释 —— 该动作曾长期不存在于 ps1。第 6 轮已补 case，现在 Windows 上真能用。
+    'setSlideTheme',
+    { theme }
+  );
+  if (!r.ok || !r.data) return fail(errText('设置主题失败', r), r.error);
+  return ok(`主题已设置为: ${theme}`, r.warnings);
 };
 
 /**
@@ -521,45 +327,9 @@ export const copySlideHandler: ToolHandler = async (
     targetIndex?: number;
   };
 
-  try {
-    const response = await wpsClient.executeMethod<{
-      success: boolean;
-      message: string;
-      newIndex: number;
-    }>(
-      'duplicateSlide',
-      { slideIndex, targetIndex },
-      WpsAppType.PRESENTATION
-    );
-
-    if (response.success && response.data) {
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [
-          {
-            type: 'text',
-            text: `幻灯片已复制！\n源页: 第${slideIndex}页\n新页位置: 第${response.data.newIndex}页`,
-          },
-        ],
-      };
-    } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `复制幻灯片失败: ${response.error}` }],
-        error: response.error,
-      };
-    }
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `复制幻灯片出错: ${errMsg}` }],
-      error: errMsg,
-    };
-  }
+  const r = await call<{ newIndex: number }>('duplicateSlide', { slideIndex, targetIndex });
+  if (!r.ok || !r.data) return fail(errText('复制幻灯片失败', r), r.error);
+  return ok(`幻灯片已复制！\n源页: 第${slideIndex}页\n新页位置: 第${r.data.newIndex}页`, r.warnings);
 };
 
 /**
@@ -608,49 +378,16 @@ export const insertSlideImageHandler: ToolHandler = async (
     top?: number;
   };
 
-  try {
-    // 动作必须是 insertPptImage（PPT 段的），不能是 insertImage ——
-    // wps-com.ps1 里的 insertImage 是【Word】动作（Get-WpsWord + InlineShapes.AddPicture），
-    // PPT 工具调它必然拿不到 $doc，于是每调用一次就报一次"不能对 Null 值表达式调用方法"。
-    // 这个工具从上线起就没成功过一次。
-    const response = await wpsClient.executeMethod<{
-      success: boolean;
-      message: string;
-      name?: string;
-    }>(
-      'insertPptImage',
-      { slideIndex, path: imagePath, filePath: imagePath, left, top },
-      WpsAppType.PRESENTATION
-    );
-
-    if (response.success && response.data) {
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [
-          {
-            type: 'text',
-            text: `图片已插入到第${slideIndex}页幻灯片！\n图片路径: ${imagePath}`,
-          },
-        ],
-      };
-    } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `插入图片失败: ${response.error}` }],
-        error: response.error,
-      };
-    }
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `插入图片出错: ${errMsg}` }],
-      error: errMsg,
-    };
-  }
+  // 动作必须是 insertPptImage（PPT 段的），不能是 insertImage ——
+  // wps-com.ps1 里的 insertImage 是【Word】动作（Get-WpsWord + InlineShapes.AddPicture），
+  // PPT 工具调它必然拿不到 $doc，于是每调用一次就报一次"不能对 Null 值表达式调用方法"。
+  // 这个工具从上线起就没成功过一次。
+  const r = await call<{ name?: string }>(
+    'insertPptImage',
+    { slideIndex, path: imagePath, filePath: imagePath, left, top }
+  );
+  if (!r.ok || !r.data) return fail(errText('插入图片失败', r), r.error);
+  return ok(`图片已插入到第${slideIndex}页幻灯片！\n图片路径: ${imagePath}`, r.warnings);
 };
 
 /**
@@ -705,48 +442,17 @@ export const insertSlidesFromFileHandler: ToolHandler = async (
     slideEnd?: number;
   };
 
-  try {
-    const response = await wpsClient.executeMethod<{
-      success: boolean;
-      message: string;
-      inserted: number;
-      afterIndex: number;
-      totalSlides: number;
-      source: string;
-    }>(
-      'insertSlidesFromFile',
-      { filePath, path: filePath, afterIndex, slideStart, slideEnd },
-      WpsAppType.PRESENTATION
-    );
-
-    if (response.success && response.data) {
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [
-          {
-            type: 'text',
-            text: `已从来源文件导入 ${response.data.inserted} 页幻灯片（保留来源格式）！\n来源: ${filePath}\n插入位置: 第 ${response.data.afterIndex} 页之后\n当前演示文稿总页数: ${response.data.totalSlides}`,
-          },
-        ],
-      };
-    } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `导入幻灯片失败: ${response.error}` }],
-        error: response.error,
-      };
-    }
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `导入幻灯片出错: ${errMsg}` }],
-      error: errMsg,
-    };
-  }
+  const r = await call<{
+    inserted: number;
+    afterIndex: number;
+    totalSlides: number;
+    source: string;
+  }>('insertSlidesFromFile', { filePath, path: filePath, afterIndex, slideStart, slideEnd });
+  if (!r.ok || !r.data) return fail(errText('导入幻灯片失败', r), r.error);
+  return ok(
+    `已从来源文件导入 ${r.data.inserted} 页幻灯片（保留来源格式）！\n来源: ${filePath}\n插入位置: 第 ${r.data.afterIndex} 页之后\n当前演示文稿总页数: ${r.data.totalSlides}`,
+    r.warnings
+  );
 };
 
 /**
@@ -785,11 +491,7 @@ export const setActiveTargetHandler: ToolHandler = async (
 
   if (clear || !name) {
     setPptTarget(undefined);
-    return {
-      id: uuidv4(),
-      success: true,
-      content: [{ type: 'text', text: '已取消目标文稿锁定，后续 PPT 操作使用当前活动文稿。' }],
-    };
+    return ok('已取消目标文稿锁定，后续 PPT 操作使用当前活动文稿。');
   }
 
   try {
@@ -806,24 +508,14 @@ export const setActiveTargetHandler: ToolHandler = async (
     const warn = matched
       ? ''
       : `\n⚠️ 当前打开的文稿中没有完全同名的「${name}」。已打开：${names.join(' / ') || '(无)'}。若名称不符，后续操作会报"未找到目标文稿"。`;
-    return {
-      id: uuidv4(),
-      success: true,
-      content: [
-        {
-          type: 'text',
-          text: `已锁定目标演示文稿：${name}\n后续所有 PPT 操作都会定位到该文稿（不受活动窗口切换影响）。${warn}`,
-        },
-      ],
-    };
+    return ok(
+      `已锁定目标演示文稿：${name}\n后续所有 PPT 操作都会定位到该文稿（不受活动窗口切换影响）。${warn}`
+    );
   } catch (error) {
+    // 校验失败不阻断锁定：锁定本身是本地状态，读到读不到名单都要把锁落下去
     const errMsg = error instanceof Error ? error.message : String(error);
     setPptTarget(name);
-    return {
-      id: uuidv4(),
-      success: true,
-      content: [{ type: 'text', text: `已锁定目标演示文稿：${name}（打开列表校验失败：${errMsg}）` }],
-    };
+    return ok(`已锁定目标演示文稿：${name}（打开列表校验失败：${errMsg}）`);
   }
 };
 

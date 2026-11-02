@@ -39,7 +39,8 @@ import { slideTools } from './slide';
 import { slideOpsTools } from './slide-ops';
 import { presentationTools } from './presentation';
 import { textboxTools } from './textbox';
-import { backgroundTools } from './background';
+import { pageInfoTools } from './page-info';
+import { pageEffectsTools } from './page-effects';
 import { shapeBasicTools } from './shape-basic';
 import { imageTools } from './image';
 import { animationTools } from './animation';
@@ -72,7 +73,8 @@ export const pptTools: RegisteredTool[] = [
   ...slideOpsTools,
   ...presentationTools,
   ...textboxTools,
-  ...backgroundTools,
+  ...pageInfoTools,
+  ...pageEffectsTools,
   ...shapeBasicTools,
   ...imageTools,
   ...animationTools,
@@ -89,7 +91,8 @@ export { slideTools } from './slide';
 export { slideOpsTools } from './slide-ops';
 export { presentationTools } from './presentation';
 export { textboxTools } from './textbox';
-export { backgroundTools } from './background';
+export { pageInfoTools } from './page-info';
+export { pageEffectsTools } from './page-effects';
 export { shapeBasicTools } from './shape-basic';
 export { imageTools } from './image';
 export { animationTools } from './animation';
@@ -129,6 +132,12 @@ export {
   setSlideLayoutHandler,
   getSlideNotesDefinition,
   getSlideNotesHandler,
+  setSlideSizeDefinition,
+  setSlideSizeHandler,
+} from './slide-ops';
+
+// 形状与文本 6 个自 slide-ops 迁入（拆分轮）；insert_image 自 slide-ops 迁入 image.ts
+export {
   addShapeDefinition,
   addShapeHandler,
   setShapeStyleDefinition,
@@ -137,23 +146,22 @@ export {
   addTextboxHandler,
   setSlideTitleDefinition,
   setSlideTitleHandler,
-  insertImageDefinition,
-  insertImageHandler,
   setShapeTextDefinition,
   setShapeTextHandler,
+  setShapeFillDefinition,
+  setShapeFillHandler,
+} from './shape-basic';
+
+export {
   setAnimationDefinition,
   setAnimationHandler,
   setBackgroundDefinition,
   setBackgroundHandler,
-  setSlideSizeDefinition,
-  setSlideSizeHandler,
-  addSpeakerNotesDefinition,
-  addSpeakerNotesHandler,
-  setShapeFillDefinition,
-  setShapeFillHandler,
   setTransitionDefinition,
   setTransitionHandler,
-} from './slide-ops';
+  addSpeakerNotesDefinition,
+  addSpeakerNotesHandler,
+} from './page-effects';
 
 export {
   createPresentationDefinition,
@@ -206,7 +214,7 @@ export {
   duplicateShapeHandler,
   setShapeZOrderDefinition,
   setShapeZOrderHandler,
-} from './background';
+} from './page-info';
 
 export {
   deleteShapeDefinition,
@@ -232,6 +240,8 @@ export {
 } from './shape-basic';
 
 export {
+  insertImageDefinition,
+  insertImageHandler,
   insertPptImageDefinition,
   insertPptImageHandler,
   deletePptImageDefinition,

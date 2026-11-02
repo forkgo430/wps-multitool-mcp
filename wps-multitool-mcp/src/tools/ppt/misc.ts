@@ -18,7 +18,6 @@
  * - wps_ppt_start_slide_show: 开始放映
  */
 
-import { v4 as uuidv4 } from 'uuid';
 import {
   ToolDefinition,
   ToolHandler,
@@ -26,8 +25,7 @@ import {
   ToolCategory,
   RegisteredTool,
 } from '../../types/tools';
-import { wpsClient } from '../../client/wps-client';
-import { WpsAppType } from '../../types/wps';
+import { call, ok, fail, errText } from './helpers';
 
 // ==================== 母版操作 ====================
 
@@ -56,54 +54,20 @@ export const getSlideMasterDefinition: ToolDefinition = {
 export const getSlideMasterHandler: ToolHandler = async (
   _args: Record<string, unknown>
 ): Promise<ToolCallResult> => {
-  try {
-    const response = await wpsClient.executeMethod<{
-      success: boolean;
-      message: string;
-      master: Record<string, unknown>;
-    }>(
-      'getSlideMaster',
-      {},
-      WpsAppType.PRESENTATION
-    );
-
-    if (response.success && response.data) {
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [
-          {
-            type: 'text',
-            // PS 回的是 {shapeCount, shapes}，handler 以前读 data.master（不存在）→ 只打印一句"成功"，
-            // 一个字的信息都没有，看着像空壳。两个形状都认。
-            text:
-              `母版信息获取成功！\n` +
-              (() => {
-                const d = response.data as unknown as Record<string, unknown>;
-                const master = (d.master ?? d) as Record<string, unknown>;
-                const n = Number(master.shapeCount ?? 0);
-                return `母版元素: ${n} 个\n${JSON.stringify(master.shapes ?? master, null, 2)}`;
-              })(),
-          },
-        ],
-      };
-    } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `获取母版信息失败: ${response.error}` }],
-        error: response.error,
-      };
-    }
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `获取母版信息出错: ${errMsg}` }],
-      error: errMsg,
-    };
-  }
+  const r = await call<Record<string, unknown>>('getSlideMaster', {});
+  if (!r.ok || !r.data) return fail(errText('获取母版信息失败', r), r.error);
+  return ok(
+    `母版信息获取成功！\n` +
+      (() => {
+        // PS 回的是 {shapeCount, shapes}，handler 以前读 data.master（不存在）→ 只打印一句"成功"，
+        // 一个字的信息都没有，看着像空壳。两个形状都认。
+        const d = r.data as unknown as Record<string, unknown>;
+        const master = (d.master ?? d) as Record<string, unknown>;
+        const n = Number(master.shapeCount ?? 0);
+        return `母版元素: ${n} 个\n${JSON.stringify(master.shapes ?? master, null, 2)}`;
+      })(),
+    r.warnings
+  );
 };
 
 // 第 5 轮：wps_ppt_set_master_background 并入 wps_ppt_set_background（target:'master'）。
@@ -145,45 +109,12 @@ export const addMasterElementHandler: ToolHandler = async (
     element: Record<string, unknown>;
   };
 
-  try {
-    const response = await wpsClient.executeMethod<{
-      success: boolean;
-      message: string;
-      elementId?: number;
-    }>(
-      'addMasterElement',
-      { element },
-      WpsAppType.PRESENTATION
-    );
-
-    if (response.success && response.data) {
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [
-          {
-            type: 'text',
-            text: `母版元素添加成功！\n元素类型: ${(element as Record<string, unknown>).type || '未知'}${response.data.elementId ? `\n元素ID: ${response.data.elementId}` : ''}`,
-          },
-        ],
-      };
-    } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `添加母版元素失败: ${response.error}` }],
-        error: response.error,
-      };
-    }
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `添加母版元素出错: ${errMsg}` }],
-      error: errMsg,
-    };
-  }
+  const r = await call<{ elementId?: number }>('addMasterElement', { element });
+  if (!r.ok || !r.data) return fail(errText('添加母版元素失败', r), r.error);
+  return ok(
+    `母版元素添加成功！\n元素类型: ${(element as Record<string, unknown>).type || '未知'}${r.data.elementId ? `\n元素ID: ${r.data.elementId}` : ''}`,
+    r.warnings
+  );
 };
 
 // ==================== 3D 操作 ====================
@@ -232,44 +163,12 @@ export const set3DRotationHandler: ToolHandler = async (
     rotation: Record<string, unknown>;
   };
 
-  try {
-    const response = await wpsClient.executeMethod<{
-      success: boolean;
-      message: string;
-    }>(
-      'set3DRotation',
-      { slideIndex, shapeIndex, rotation },
-      WpsAppType.PRESENTATION
-    );
-
-    if (response.success) {
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [
-          {
-            type: 'text',
-            text: `3D旋转设置成功！\n幻灯片: 第 ${slideIndex} 页\n形状: 第 ${shapeIndex} 个\n旋转参数: ${JSON.stringify(rotation)}`,
-          },
-        ],
-      };
-    } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `设置3D旋转失败: ${response.error}` }],
-        error: response.error,
-      };
-    }
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `设置3D旋转出错: ${errMsg}` }],
-      error: errMsg,
-    };
-  }
+  const r = await call('set3DRotation', { slideIndex, shapeIndex, rotation });
+  if (!r.ok) return fail(errText('设置3D旋转失败', r), r.error);
+  return ok(
+    `3D旋转设置成功！\n幻灯片: 第 ${slideIndex} 页\n形状: 第 ${shapeIndex} 个\n旋转参数: ${JSON.stringify(rotation)}`,
+    r.warnings
+  );
 };
 
 /**
@@ -316,44 +215,12 @@ export const set3DDepthHandler: ToolHandler = async (
     depth: number;
   };
 
-  try {
-    const response = await wpsClient.executeMethod<{
-      success: boolean;
-      message: string;
-    }>(
-      'set3DDepth',
-      { slideIndex, shapeIndex, depth },
-      WpsAppType.PRESENTATION
-    );
-
-    if (response.success) {
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [
-          {
-            type: 'text',
-            text: `3D深度设置成功！\n幻灯片: 第 ${slideIndex} 页\n形状: 第 ${shapeIndex} 个\n深度: ${depth} 磅`,
-          },
-        ],
-      };
-    } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `设置3D深度失败: ${response.error}` }],
-        error: response.error,
-      };
-    }
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `设置3D深度出错: ${errMsg}` }],
-      error: errMsg,
-    };
-  }
+  const r = await call('set3DDepth', { slideIndex, shapeIndex, depth });
+  if (!r.ok) return fail(errText('设置3D深度失败', r), r.error);
+  return ok(
+    `3D深度设置成功！\n幻灯片: 第 ${slideIndex} 页\n形状: 第 ${shapeIndex} 个\n深度: ${depth} 磅`,
+    r.warnings
+  );
 };
 
 /**
@@ -407,54 +274,22 @@ export const set3DMaterialHandler: ToolHandler = async (
     material: string;
   };
 
-  try {
-    const response = await wpsClient.executeMethod<{
-      success: boolean;
-      message: string;
-    }>(
-      'set3DMaterial',
-      { slideIndex, shapeIndex, material },
-      WpsAppType.PRESENTATION
-    );
+  const r = await call('set3DMaterial', { slideIndex, shapeIndex, material });
+  if (!r.ok) return fail(errText('设置3D材质失败', r), r.error);
+  const materialName: Record<string, string> = {
+    matte: '哑光',
+    plastic: '塑料',
+    metal: '金属',
+    wireframe: '线框',
+    soft_edge: '柔化边缘',
+    flat: '平面',
+    dark_edge: '暗边',
+  };
 
-    if (response.success) {
-      const materialName: Record<string, string> = {
-        matte: '哑光',
-        plastic: '塑料',
-        metal: '金属',
-        wireframe: '线框',
-        soft_edge: '柔化边缘',
-        flat: '平面',
-        dark_edge: '暗边',
-      };
-
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [
-          {
-            type: 'text',
-            text: `3D材质设置成功！\n幻灯片: 第 ${slideIndex} 页\n形状: 第 ${shapeIndex} 个\n材质: ${materialName[material] || material}`,
-          },
-        ],
-      };
-    } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `设置3D材质失败: ${response.error}` }],
-        error: response.error,
-      };
-    }
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `设置3D材质出错: ${errMsg}` }],
-      error: errMsg,
-    };
-  }
+  return ok(
+    `3D材质设置成功！\n幻灯片: 第 ${slideIndex} 页\n形状: 第 ${shapeIndex} 个\n材质: ${materialName[material] || material}`,
+    r.warnings
+  );
 };
 
 /**
@@ -501,45 +336,12 @@ export const create3DTextHandler: ToolHandler = async (
     style?: Record<string, unknown>;
   };
 
-  try {
-    const response = await wpsClient.executeMethod<{
-      success: boolean;
-      message: string;
-      shapeId?: number;
-    }>(
-      'create3DText',
-      { slideIndex, text, style: style || {} },
-      WpsAppType.PRESENTATION
-    );
-
-    if (response.success && response.data) {
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [
-          {
-            type: 'text',
-            text: `3D文字创建成功！\n幻灯片: 第 ${slideIndex} 页\n文字: "${text}"${response.data.shapeId ? `\n形状ID: ${response.data.shapeId}` : ''}`,
-          },
-        ],
-      };
-    } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `创建3D文字失败: ${response.error}` }],
-        error: response.error,
-      };
-    }
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `创建3D文字出错: ${errMsg}` }],
-      error: errMsg,
-    };
-  }
+  const r = await call<{ shapeId?: number }>('create3DText', { slideIndex, text, style: style || {} });
+  if (!r.ok || !r.data) return fail(errText('创建3D文字失败', r), r.error);
+  return ok(
+    `3D文字创建成功！\n幻灯片: 第 ${slideIndex} 页\n文字: "${text}"${r.data.shapeId ? `\n形状ID: ${r.data.shapeId}` : ''}`,
+    r.warnings
+  );
 };
 
 // ==================== 超链接操作 ====================
@@ -593,44 +395,12 @@ export const addPptHyperlinkHandler: ToolHandler = async (
     url: string;
   };
 
-  try {
-    const response = await wpsClient.executeMethod<{
-      success: boolean;
-      message: string;
-    }>(
-      'addPptHyperlink',
-      { slideIndex, shapeIndex, url },
-      WpsAppType.PRESENTATION
-    );
-
-    if (response.success) {
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [
-          {
-            type: 'text',
-            text: `超链接添加成功！\n幻灯片: 第 ${slideIndex} 页\n形状: 第 ${shapeIndex} 个\n链接: ${url}`,
-          },
-        ],
-      };
-    } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `添加超链接失败: ${response.error}` }],
-        error: response.error,
-      };
-    }
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `添加超链接出错: ${errMsg}` }],
-      error: errMsg,
-    };
-  }
+  const r = await call('addPptHyperlink', { slideIndex, shapeIndex, url });
+  if (!r.ok) return fail(errText('添加超链接失败', r), r.error);
+  return ok(
+    `超链接添加成功！\n幻灯片: 第 ${slideIndex} 页\n形状: 第 ${shapeIndex} 个\n链接: ${url}`,
+    r.warnings
+  );
 };
 
 /**
@@ -674,44 +444,12 @@ export const removePptHyperlinkHandler: ToolHandler = async (
     shapeIndex: number;
   };
 
-  try {
-    const response = await wpsClient.executeMethod<{
-      success: boolean;
-      message: string;
-    }>(
-      'removePptHyperlink',
-      { slideIndex, shapeIndex },
-      WpsAppType.PRESENTATION
-    );
-
-    if (response.success) {
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [
-          {
-            type: 'text',
-            text: `超链接移除成功！\n幻灯片: 第 ${slideIndex} 页\n形状: 第 ${shapeIndex} 个`,
-          },
-        ],
-      };
-    } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `移除超链接失败: ${response.error}` }],
-        error: response.error,
-      };
-    }
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `移除超链接出错: ${errMsg}` }],
-      error: errMsg,
-    };
-  }
+  const r = await call('removePptHyperlink', { slideIndex, shapeIndex });
+  if (!r.ok) return fail(errText('移除超链接失败', r), r.error);
+  return ok(
+    `超链接移除成功！\n幻灯片: 第 ${slideIndex} 页\n形状: 第 ${shapeIndex} 个`,
+    r.warnings
+  );
 };
 
 // ==================== 搜索操作 ====================
@@ -750,64 +488,26 @@ export const findPptTextHandler: ToolHandler = async (
     text: string;
   };
 
-  try {
-    const response = await wpsClient.executeMethod<{
-      success: boolean;
-      message: string;
-      results: Array<{
-        slideIndex: number;
-        shapeIndex: number;
-        text: string;
-      }>;
-      count: number;
-    }>(
-      'findPptText',
-      { text },
-      WpsAppType.PRESENTATION
-    );
-
-    if (response.success && response.data) {
-      const result = response.data;
-      if (result.count === 0) {
-        return {
-          id: uuidv4(),
-          success: true,
-          content: [
-            {
-              type: 'text',
-              text: `未找到包含 "${text}" 的内容。`,
-            },
-          ],
-        };
-      }
-
-      let output = `搜索完成！找到 ${result.count} 处匹配：\n`;
-      result.results.forEach((r, i) => {
-        output += `${i + 1}. 第 ${r.slideIndex} 页, 形状 ${r.shapeIndex}: "${r.text}"\n`;
-      });
-
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [{ type: 'text', text: output }],
-      };
-    } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `搜索文本失败: ${response.error}` }],
-        error: response.error,
-      };
-    }
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `搜索文本出错: ${errMsg}` }],
-      error: errMsg,
-    };
+  const r = await call<{
+    results: Array<{
+      slideIndex: number;
+      shapeIndex: number;
+      text: string;
+    }>;
+    count: number;
+  }>('findPptText', { text });
+  if (!r.ok || !r.data) return fail(errText('搜索文本失败', r), r.error);
+  const result = r.data;
+  if (result.count === 0) {
+    return ok(`未找到包含 "${text}" 的内容。`, r.warnings);
   }
+
+  let output = `搜索完成！找到 ${result.count} 处匹配：\n`;
+  result.results.forEach((item, i) => {
+    output += `${i + 1}. 第 ${item.slideIndex} 页, 形状 ${item.shapeIndex}: "${item.text}"\n`;
+  });
+
+  return ok(output, r.warnings);
 };
 
 /**
@@ -849,45 +549,12 @@ export const replacePptTextHandler: ToolHandler = async (
     replace: string;
   };
 
-  try {
-    const response = await wpsClient.executeMethod<{
-      success: boolean;
-      message: string;
-      count: number;
-    }>(
-      'replacePptText',
-      { find, replace },
-      WpsAppType.PRESENTATION
-    );
-
-    if (response.success && response.data) {
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [
-          {
-            type: 'text',
-            text: `文本替换完成！\n查找: "${find}"\n替换为: "${replace}"\n替换数量: ${response.data.count} 处`,
-          },
-        ],
-      };
-    } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `替换文本失败: ${response.error}` }],
-        error: response.error,
-      };
-    }
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `替换文本出错: ${errMsg}` }],
-      error: errMsg,
-    };
-  }
+  const r = await call<{ count: number }>('replacePptText', { find, replace });
+  if (!r.ok || !r.data) return fail(errText('替换文本失败', r), r.error);
+  return ok(
+    `文本替换完成！\n查找: "${find}"\n替换为: "${replace}"\n替换数量: ${r.data.count} 处`,
+    r.warnings
+  );
 };
 
 // ==================== 放映操作 ====================
@@ -931,44 +598,9 @@ export const startSlideShowHandler: ToolHandler = async (
     fromSlide?: number;
   };
 
-  try {
-    const response = await wpsClient.executeMethod<{
-      success: boolean;
-      message: string;
-    }>(
-      'startSlideShow',
-      { fromSlide: fromSlide || 1 },
-      WpsAppType.PRESENTATION
-    );
-
-    if (response.success) {
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [
-          {
-            type: 'text',
-            text: `幻灯片放映已开始！\n起始页: 第 ${fromSlide || 1} 页`,
-          },
-        ],
-      };
-    } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `开始放映失败: ${response.error}` }],
-        error: response.error,
-      };
-    }
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `开始放映出错: ${errMsg}` }],
-      error: errMsg,
-    };
-  }
+  const r = await call('startSlideShow', { fromSlide: fromSlide || 1 });
+  if (!r.ok) return fail(errText('开始放映失败', r), r.error);
+  return ok(`幻灯片放映已开始！\n起始页: 第 ${fromSlide || 1} 页`, r.warnings);
 };
 
 /**

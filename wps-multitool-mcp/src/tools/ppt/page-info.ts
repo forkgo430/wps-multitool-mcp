@@ -3,8 +3,8 @@
  * Output: 页面信息与形状操作结果
  * Pos: PPT 页面信息工具实现。一旦我被修改，请更新我的头部注释，以及所属文件夹的md。
  * PPT页面信息Tools - 页码/页脚/日期时间、形状复制与层级模块
- * 【文件名叫 background 是历史遗留】——背景族 6→1 已并入 slide-ops 的 set_background（第 5 轮），
- * 本文件里已无任何背景工具；改名 page-effects 留给拆分轮（审计一）。
+ * 【原名 background.ts，风格统一+拆分轮改名 page-info.ts（决策者预批）】——
+ * 背景族 6→1 已并入 page-effects.ts 的 set_background（第 5 轮），本文件里没有任何背景工具。
  *
  * 包含（5 个）：
  * - wps_ppt_set_slide_number: 设置幻灯片页码显示
@@ -14,7 +14,6 @@
  * - wps_ppt_set_shape_z_order: 设置形状层级顺序
  */
 
-import { v4 as uuidv4 } from 'uuid';
 import {
   ToolDefinition,
   ToolHandler,
@@ -22,14 +21,11 @@ import {
   ToolCategory,
   RegisteredTool,
 } from '../../types/tools';
-import { wpsClient } from '../../client/wps-client';
-import { WpsAppType } from '../../types/wps';
+import { call, ok, fail, errText } from './helpers';
 
-// 第 5 轮：background 族 6→1 合并。
-// set_slide_background / set_background_color / set_background_image 三者的能力
-// 已并入 wps_ppt_set_background（见 slide-ops.ts 的 target/type 两个维度），
-// 旧名留在 tool-aliases.json 里做别名，这里不再各留一份实现。
-// 保留：页码、页脚、日期时间、形状复制、层级 —— 它们与背景无关。
+// 背景族去处的完整说明：set_slide_background / set_background_color / set_background_image /
+// set_background_gradient / set_master_background 的能力现在都在 page-effects.ts 的
+// wps_ppt_set_background（target + type 两个维度）；旧名走 tool-aliases.json 别名。
 
 /**
  * 设置幻灯片页码显示
@@ -68,44 +64,14 @@ export const setSlideNumberHandler: ToolHandler = async (
     startFrom?: number;
   };
 
-  try {
-    const response = await wpsClient.executeMethod<{
-      success: boolean;
-      message: string;
-    }>(
-      'setSlideNumber',
-      { show, startFrom },
-      WpsAppType.PRESENTATION
-    );
-
-    if (response.success) {
-      let text = `幻灯片页码设置成功！\n显示状态: ${show ? '显示' : '隐藏'}`;
-      if (startFrom !== undefined) {
-        text += `\n起始编号: ${startFrom}`;
-      }
-
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [{ type: 'text', text }],
-      };
-    } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `设置页码失败: ${response.error}` }],
-        error: response.error,
-      };
-    }
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `设置页码出错: ${errMsg}` }],
-      error: errMsg,
-    };
+  const r = await call('setSlideNumber', { show, startFrom });
+  if (!r.ok) return fail(errText('设置页码失败', r), r.error);
+  let text = `幻灯片页码设置成功！\n显示状态: ${show ? '显示' : '隐藏'}`;
+  if (startFrom !== undefined) {
+    text += `\n起始编号: ${startFrom}`;
   }
+
+  return ok(text, r.warnings);
 };
 
 /**
@@ -145,44 +111,9 @@ export const setPptFooterHandler: ToolHandler = async (
     show?: boolean;
   };
 
-  try {
-    const response = await wpsClient.executeMethod<{
-      success: boolean;
-      message: string;
-    }>(
-      'setPptFooter',
-      { text, show: show !== false },
-      WpsAppType.PRESENTATION
-    );
-
-    if (response.success) {
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [
-          {
-            type: 'text',
-            text: `页脚设置成功！\n页脚文本: ${text}\n显示状态: ${show !== false ? '显示' : '隐藏'}`,
-          },
-        ],
-      };
-    } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `设置页脚失败: ${response.error}` }],
-        error: response.error,
-      };
-    }
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `设置页脚出错: ${errMsg}` }],
-      error: errMsg,
-    };
-  }
+  const r = await call('setPptFooter', { text, show: show !== false });
+  if (!r.ok) return fail(errText('设置页脚失败', r), r.error);
+  return ok(`页脚设置成功！\n页脚文本: ${text}\n显示状态: ${show !== false ? '显示' : '隐藏'}`, r.warnings);
 };
 
 /**
@@ -233,47 +164,17 @@ export const setPptDateTimeHandler: ToolHandler = async (
     format?: string;
   };
 
-  try {
-    const response = await wpsClient.executeMethod<{
-      success: boolean;
-      message: string;
-    }>(
-      'setPptDateTime',
-      { show, autoUpdate, format },
-      WpsAppType.PRESENTATION
-    );
-
-    if (response.success) {
-      let text = `日期时间设置成功！\n显示状态: ${show ? '显示' : '隐藏'}`;
-      if (show) {
-        text += `\n自动更新: ${autoUpdate !== false ? '是' : '否'}`;
-        if (format) {
-          text += `\n格式: ${format}`;
-        }
-      }
-
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [{ type: 'text', text }],
-      };
-    } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `设置日期时间失败: ${response.error}` }],
-        error: response.error,
-      };
+  const r = await call('setPptDateTime', { show, autoUpdate, format });
+  if (!r.ok) return fail(errText('设置日期时间失败', r), r.error);
+  let text = `日期时间设置成功！\n显示状态: ${show ? '显示' : '隐藏'}`;
+  if (show) {
+    text += `\n自动更新: ${autoUpdate !== false ? '是' : '否'}`;
+    if (format) {
+      text += `\n格式: ${format}`;
     }
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `设置日期时间出错: ${errMsg}` }],
-      error: errMsg,
-    };
   }
+
+  return ok(text, r.warnings);
 };
 
 // ==================== 高级形状 (2) ====================
@@ -315,45 +216,14 @@ export const duplicateShapeHandler: ToolHandler = async (
     shapeIndex: number;
   };
 
-  try {
-    const response = await wpsClient.executeMethod<{
-      success: boolean;
-      message: string;
-      newShapeIndex?: number;
-    }>(
-      'duplicateShape',
-      { slideIndex, shapeIndex },
-      WpsAppType.PRESENTATION
-    );
-
-    if (response.success) {
-      let text = `形状复制成功！\n幻灯片: 第 ${slideIndex} 页\n源形状: 第 ${shapeIndex} 个`;
-      if (response.data?.newShapeIndex) {
-        text += `\n新形状索引: ${response.data.newShapeIndex}`;
-      }
-
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [{ type: 'text', text }],
-      };
-    } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `复制形状失败: ${response.error}` }],
-        error: response.error,
-      };
-    }
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `复制形状出错: ${errMsg}` }],
-      error: errMsg,
-    };
+  const r = await call<{ newShapeIndex?: number }>('duplicateShape', { slideIndex, shapeIndex });
+  if (!r.ok) return fail(errText('复制形状失败', r), r.error);
+  let text = `形状复制成功！\n幻灯片: 第 ${slideIndex} 页\n源形状: 第 ${shapeIndex} 个`;
+  if (r.data?.newShapeIndex) {
+    text += `\n新形状索引: ${r.data.newShapeIndex}`;
   }
+
+  return ok(text, r.warnings);
 };
 
 /**
@@ -405,57 +275,25 @@ export const setShapeZOrderHandler: ToolHandler = async (
     order: string;
   };
 
-  try {
-    const response = await wpsClient.executeMethod<{
-      success: boolean;
-      message: string;
-    }>(
-      'setShapeZOrder',
-      { slideIndex, shapeIndex, order },
-      WpsAppType.PRESENTATION
-    );
+  const r = await call('setShapeZOrder', { slideIndex, shapeIndex, order });
+  if (!r.ok) return fail(errText('调整形状层级失败', r), r.error);
+  const orderName: Record<string, string> = {
+    front: '置于顶层',
+    back: '置于底层',
+    forward: '上移一层',
+    backward: '下移一层',
+  };
 
-    if (response.success) {
-      const orderName: Record<string, string> = {
-        front: '置于顶层',
-        back: '置于底层',
-        forward: '上移一层',
-        backward: '下移一层',
-      };
-
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [
-          {
-            type: 'text',
-            text: `形状层级调整成功！\n幻灯片: 第 ${slideIndex} 页\n形状: 第 ${shapeIndex} 个\n操作: ${orderName[order] || order}`,
-          },
-        ],
-      };
-    } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `调整形状层级失败: ${response.error}` }],
-        error: response.error,
-      };
-    }
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `调整形状层级出错: ${errMsg}` }],
-      error: errMsg,
-    };
-  }
+  return ok(
+    `形状层级调整成功！\n幻灯片: 第 ${slideIndex} 页\n形状: 第 ${shapeIndex} 个\n操作: ${orderName[order] || order}`,
+    r.warnings
+  );
 };
 
 /**
- * 导出所有背景、页面信息、高级形状相关的Tools
+ * 导出所有页面信息相关的Tools
  */
-export const backgroundTools: RegisteredTool[] = [
+export const pageInfoTools: RegisteredTool[] = [
   { definition: setSlideNumberDefinition, handler: setSlideNumberHandler },
   { definition: setPptFooterDefinition, handler: setPptFooterHandler },
   { definition: setPptDateTimeDefinition, handler: setPptDateTimeHandler },
@@ -463,4 +301,4 @@ export const backgroundTools: RegisteredTool[] = [
   { definition: setShapeZOrderDefinition, handler: setShapeZOrderHandler },
 ];
 
-export default backgroundTools;
+export default pageInfoTools;

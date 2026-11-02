@@ -1,24 +1,30 @@
 /**
- * Input: PPT 形状操作参数（删除、获取、位置、阴影、渐变、边框、透明度、对齐、分布、组合）
+ * Input: PPT 形状操作参数（删除、获取、位置、阴影、渐变、边框、透明度、对齐、分布、组合、添加、样式、文本框、标题、文字、填充）
  * Output: 形状操作结果
  * Pos: PPT 形状基础工具实现。一旦我被修改，请更新我的头部注释，以及所属文件夹的md。
  * PPT形状基础Tools - 形状管理模块
- * 处理形状的删除、获取、定位、样式设置、对齐分布和组合操作
+ * 处理形状的添加、删除、获取、定位、样式设置、对齐分布和组合操作
  *
- * 包含：
+ * 包含（16 个；add_shape/set_shape_style/add_textbox/set_slide_title/set_shape_text/set_shape_fill
+ * 自 slide-ops.ts 迁入——风格统一+拆分轮，见 ppt-audit §三之二）：
+ * - wps_ppt_add_shape: 添加形状
+ * - wps_ppt_add_textbox: 添加文本框
  * - wps_ppt_delete_shape: 删除形状
  * - wps_ppt_get_shapes: 获取幻灯片中的形状列表
  * - wps_ppt_set_shape_position: 设置形状位置和大小
+ * - wps_ppt_set_shape_style: 设置形状样式
  * - wps_ppt_set_shape_shadow: 设置形状阴影
  * - wps_ppt_set_shape_gradient: 设置形状渐变填充
  * - wps_ppt_set_shape_border: 设置形状边框
  * - wps_ppt_set_shape_transparency: 设置形状透明度
+ * - wps_ppt_set_shape_text: 设置形状文字
+ * - wps_ppt_set_shape_fill: 设置形状填充颜色
+ * - wps_ppt_set_slide_title: 设置幻灯片标题
  * - wps_ppt_align_shapes: 对齐多个形状
  * - wps_ppt_distribute_shapes: 等距分布多个形状
  * - wps_ppt_group_shapes: 组合多个形状
  */
 
-import { v4 as uuidv4 } from 'uuid';
 import {
   ToolDefinition,
   ToolHandler,
@@ -26,10 +32,208 @@ import {
   ToolCategory,
   RegisteredTool,
 } from '../../types/tools';
-import { wpsClient } from '../../client/wps-client';
-import { WpsAppType } from '../../types/wps';
+import { call, ok, fail, errText } from './helpers';
 
-// ==================== 1. 删除形状 ====================
+// ==================== 1. 添加形状 ====================
+
+export const addShapeDefinition: ToolDefinition = {
+  name: 'wps_ppt_add_shape',
+  description: `在幻灯片中添加形状。
+
+支持的形状类型：
+- rectangle: 矩形
+- oval: 椭圆
+- triangle: 三角形
+- diamond: 菱形
+- pentagon: 五边形
+- hexagon: 六边形
+- arrow: 箭头
+- star: 星形
+- heart: 心形
+- cloud: 云形
+
+使用场景：
+- "在第1页添加一个矩形"
+- "插入一个蓝色的圆形"
+- "添加一个带文字的箭头"`,
+  category: ToolCategory.PRESENTATION,
+  inputSchema: {
+    type: 'object',
+    properties: {
+      slideIndex: {
+        type: 'number',
+        description: '幻灯片索引（从1开始），默认1',
+      },
+      type: {
+        type: 'string',
+        description: '形状类型',
+        enum: ['rectangle', 'oval', 'triangle', 'diamond', 'pentagon', 'hexagon', 'arrow', 'star', 'heart', 'cloud'],
+      },
+      left: {
+        type: 'number',
+        description: '左边距（像素），默认100',
+      },
+      top: {
+        type: 'number',
+        description: '上边距（像素），默认100',
+      },
+      width: {
+        type: 'number',
+        description: '宽度（像素），默认100',
+      },
+      height: {
+        type: 'number',
+        description: '高度（像素），默认100',
+      },
+      text: {
+        type: 'string',
+        description: '形状内的文本',
+      },
+      fillColor: {
+        type: 'string',
+        description: '填充颜色，十六进制如 #FF0000',
+      },
+    },
+    required: [],
+  },
+};
+
+export const addShapeHandler: ToolHandler = async (
+  args: Record<string, unknown>
+): Promise<ToolCallResult> => {
+  const { slideIndex, type, left, top, width, height, text, fillColor } = args as {
+    slideIndex?: number;
+    type?: string;
+    left?: number;
+    top?: number;
+    width?: number;
+    height?: number;
+    text?: string;
+    fillColor?: string;
+  };
+
+  const r = await call<{
+    name: string;
+    slideIndex: number;
+  }>(
+    'addShape',
+    {
+      slideIndex: slideIndex || 1,
+      type: type || 'rectangle',
+      // 坐标用 ?? 不用 ||：0 是合法坐标（全页底/竖条都从 0 起），|| 会把它吞成 100
+      // （deckkit 引擎的全页渐变底/标题色带/章节引文竖条全踩——审计三.1）
+      left: left ?? 100,
+      top: top ?? 100,
+      width: width ?? 100,
+      height: height ?? 100,
+      text,
+      fillColor,
+    }
+  );
+  if (!r.ok || !r.data) return fail(errText('添加形状失败', r), r.error);
+  const shapeNameMap: Record<string, string> = {
+    rectangle: '矩形', oval: '椭圆', triangle: '三角形', diamond: '菱形',
+    pentagon: '五边形', hexagon: '六边形', arrow: '箭头', star: '星形',
+    heart: '心形', cloud: '云形',
+  };
+  const typeName = shapeNameMap[type || 'rectangle'] || type;
+
+  return ok(
+    `形状添加成功！\n幻灯片: 第 ${r.data.slideIndex} 页\n形状类型: ${typeName}\n形状名称: ${r.data.name}${text ? `\n文本: ${text}` : ''}${fillColor ? `\n填充色: ${fillColor}` : ''}`,
+    r.warnings
+  );
+};
+
+// ==================== 2. 添加文本框 ====================
+
+export const addTextboxDefinition: ToolDefinition = {
+  name: 'wps_ppt_add_textbox',
+  description: `在幻灯片中添加文本框。
+
+使用场景：
+- "在第1页添加一个文本框"
+- "插入一个写着标题的文本框"
+- "添加文本框并设置字号"`,
+  category: ToolCategory.PRESENTATION,
+  inputSchema: {
+    type: 'object',
+    properties: {
+      slideIndex: {
+        type: 'number',
+        description: '幻灯片索引（从1开始），默认1',
+      },
+      left: {
+        type: 'number',
+        description: '左边距（像素），默认100',
+      },
+      top: {
+        type: 'number',
+        description: '上边距（像素），默认100',
+      },
+      width: {
+        type: 'number',
+        description: '宽度（像素），默认200',
+      },
+      height: {
+        type: 'number',
+        description: '高度（像素），默认50',
+      },
+      text: {
+        type: 'string',
+        description: '文本框内容',
+      },
+      fontSize: {
+        type: 'number',
+        description: '字号大小',
+      },
+      fontName: {
+        type: 'string',
+        description: '字体名称，如 "微软雅黑"',
+      },
+    },
+    required: [],
+  },
+};
+
+export const addTextboxHandler: ToolHandler = async (
+  args: Record<string, unknown>
+): Promise<ToolCallResult> => {
+  const { slideIndex, left, top, width, height, text, fontSize, fontName } = args as {
+    slideIndex?: number;
+    left?: number;
+    top?: number;
+    width?: number;
+    height?: number;
+    text?: string;
+    fontSize?: number;
+    fontName?: string;
+  };
+
+  const r = await call<{
+    name: string;
+    slideIndex: number;
+  }>(
+    'addTextBox',
+    {
+      slideIndex: slideIndex || 1,
+      // 坐标用 ?? 不用 ||：0 是合法坐标（同 add_shape，审计三.1）
+      left: left ?? 100,
+      top: top ?? 100,
+      width: width ?? 200,
+      height: height ?? 50,
+      text,
+      fontSize,
+      fontName,
+    }
+  );
+  if (!r.ok || !r.data) return fail(errText('添加文本框失败', r), r.error);
+  return ok(
+    `文本框添加成功！\n幻灯片: 第 ${r.data.slideIndex} 页\n名称: ${r.data.name}${text ? `\n内容: "${text}"` : ''}${fontSize ? `\n字号: ${fontSize}` : ''}${fontName ? `\n字体: ${fontName}` : ''}`,
+    r.warnings
+  );
+};
+
+// ==================== 3. 删除形状 ====================
 
 export const deleteShapeDefinition: ToolDefinition = {
   name: 'wps_ppt_delete_shape',
@@ -63,47 +267,12 @@ export const deleteShapeHandler: ToolHandler = async (
     shapeIndex: number;
   };
 
-  try {
-    const response = await wpsClient.executeMethod<{
-      success: boolean;
-      message: string;
-    }>(
-      'deleteShape',
-      { slideIndex, shapeIndex },
-      WpsAppType.PRESENTATION
-    );
-
-    if (response.success) {
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [
-          {
-            type: 'text',
-            text: `形状删除成功！\n幻灯片: 第 ${slideIndex} 页\n形状: 第 ${shapeIndex} 个`,
-          },
-        ],
-      };
-    } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `删除形状失败: ${response.error}` }],
-        error: response.error,
-      };
-    }
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `删除形状出错: ${errMsg}` }],
-      error: errMsg,
-    };
-  }
+  const r = await call('deleteShape', { slideIndex, shapeIndex });
+  if (!r.ok) return fail(errText('删除形状失败', r), r.error);
+  return ok(`形状删除成功！\n幻灯片: 第 ${slideIndex} 页\n形状: 第 ${shapeIndex} 个`, r.warnings);
 };
 
-// ==================== 2. 获取形状列表 ====================
+// ==================== 4. 获取形状列表 ====================
 
 export const getShapesDefinition: ToolDefinition = {
   name: 'wps_ppt_get_shapes',
@@ -134,58 +303,29 @@ export const getShapesHandler: ToolHandler = async (
     slideIndex: number;
   };
 
-  try {
-    const response = await wpsClient.executeMethod<{
-      success: boolean;
-      message: string;
-      shapes: Array<{
-        index: number;
-        name: string;
-        type: string;
-        left: number;
-        top: number;
-        width: number;
-        height: number;
-      }>;
-    }>(
-      'getShapes',
-      { slideIndex },
-      WpsAppType.PRESENTATION
-    );
+  const r = await call<{
+    shapes: Array<{
+      index: number;
+      name: string;
+      type: string;
+      left: number;
+      top: number;
+      width: number;
+      height: number;
+    }>;
+  }>('getShapes', { slideIndex });
+  if (!r.ok || !r.data) return fail(errText('获取形状列表失败', r), r.error);
+  const shapes = r.data.shapes;
+  let output = `幻灯片第 ${slideIndex} 页的形状列表（共 ${shapes.length} 个）：\n\n`;
+  shapes.forEach((s) => {
+    output += `[${s.index}] ${s.name} (${s.type})\n`;
+    output += `    位置: (${s.left}, ${s.top}) 大小: ${s.width} x ${s.height}\n`;
+  });
 
-    if (response.success && response.data) {
-      const shapes = response.data.shapes;
-      let output = `幻灯片第 ${slideIndex} 页的形状列表（共 ${shapes.length} 个）：\n\n`;
-      shapes.forEach((s) => {
-        output += `[${s.index}] ${s.name} (${s.type})\n`;
-        output += `    位置: (${s.left}, ${s.top}) 大小: ${s.width} x ${s.height}\n`;
-      });
-
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [{ type: 'text', text: output }],
-      };
-    } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `获取形状列表失败: ${response.error}` }],
-        error: response.error,
-      };
-    }
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `获取形状列表出错: ${errMsg}` }],
-      error: errMsg,
-    };
-  }
+  return ok(output, r.warnings);
 };
 
-// ==================== 3. 设置形状位置 ====================
+// ==================== 5. 设置形状位置 ====================
 
 export const setShapePositionDefinition: ToolDefinition = {
   name: 'wps_ppt_set_shape_position',
@@ -240,46 +380,99 @@ export const setShapePositionHandler: ToolHandler = async (
     height?: number;
   };
 
-  try {
-    const response = await wpsClient.executeMethod<{
-      success: boolean;
-      message: string;
-    }>(
-      'setShapePosition',
-      { slideIndex, shapeIndex, left, top, width, height },
-      WpsAppType.PRESENTATION
-    );
+  const r = await call('setShapePosition', { slideIndex, shapeIndex, left, top, width, height });
+  if (!r.ok) return fail(errText('设置形状位置失败', r), r.error);
+  let text = `形状位置设置成功！\n幻灯片: 第 ${slideIndex} 页\n形状: 第 ${shapeIndex} 个\n位置: (${left}, ${top})`;
+  if (width !== undefined) text += `\n宽度: ${width}`;
+  if (height !== undefined) text += `\n高度: ${height}`;
 
-    if (response.success) {
-      let text = `形状位置设置成功！\n幻灯片: 第 ${slideIndex} 页\n形状: 第 ${shapeIndex} 个\n位置: (${left}, ${top})`;
-      if (width !== undefined) text += `\n宽度: ${width}`;
-      if (height !== undefined) text += `\n高度: ${height}`;
-
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [{ type: 'text', text }],
-      };
-    } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `设置形状位置失败: ${response.error}` }],
-        error: response.error,
-      };
-    }
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `设置形状位置出错: ${errMsg}` }],
-      error: errMsg,
-    };
-  }
+  return ok(text, r.warnings);
 };
 
-// ==================== 4. 设置形状阴影 ====================
+// ==================== 6. 设置形状样式 ====================
+
+export const setShapeStyleDefinition: ToolDefinition = {
+  name: 'wps_ppt_set_shape_style',
+  description: `设置幻灯片中形状的样式，包括填充颜色、边框颜色和边框粗细。
+
+使用场景：
+- "把矩形改成红色"
+- "设置形状的边框为蓝色"
+- "修改形状样式"`,
+  category: ToolCategory.PRESENTATION,
+  inputSchema: {
+    type: 'object',
+    properties: {
+      slideIndex: {
+        type: 'number',
+        description: '幻灯片索引（从1开始），默认1',
+      },
+      name: {
+        type: 'string',
+        description: '形状名称（通过getSlideInfo获取）',
+      },
+      shapeIndex: {
+        type: 'number',
+        description: '形状索引（与name二选一）',
+      },
+      fillColor: {
+        type: 'string',
+        description: '填充颜色，十六进制如 #FF0000',
+      },
+      lineColor: {
+        type: 'string',
+        description: '边框颜色，十六进制如 #000000',
+      },
+      lineWidth: {
+        type: 'number',
+        description: '边框粗细（磅）',
+      },
+    },
+    required: [],
+  },
+};
+
+export const setShapeStyleHandler: ToolHandler = async (
+  args: Record<string, unknown>
+): Promise<ToolCallResult> => {
+  const { slideIndex, name, shapeIndex, fillColor, lineColor, lineWidth } = args as {
+    slideIndex?: number;
+    name?: string;
+    shapeIndex?: number;
+    fillColor?: string;
+    lineColor?: string;
+    lineWidth?: number;
+  };
+
+  // 定位参数至少给一个：都缺时 ps1 会 Shapes.Item($null) 直接炸（审计三.6），前置拦
+  if (!name && !shapeIndex) {
+    return fail(
+      `要给 name（形状名，getSlideInfo 里看）或 shapeIndex（形状序号）至少一个，否则不知道改哪个形状`,
+      'Missing required parameter: name / shapeIndex（二选一）'
+    );
+  }
+
+  const r = await call<{ name: string }>(
+    'setShapeStyle',
+    {
+      slideIndex: slideIndex || 1,
+      name,
+      shapeIndex,
+      fillColor,
+      lineColor,
+      lineWidth,
+    }
+  );
+  if (!r.ok || !r.data) return fail(errText('设置形状样式失败', r), r.error);
+  let output = `形状样式设置成功！\n形状: ${r.data.name}`;
+  if (fillColor) output += `\n填充色: ${fillColor}`;
+  if (lineColor) output += `\n边框色: ${lineColor}`;
+  if (lineWidth) output += `\n边框粗细: ${lineWidth}pt`;
+
+  return ok(output, r.warnings);
+};
+
+// ==================== 7. 设置形状阴影 ====================
 
 export const setShapeShadowDefinition: ToolDefinition = {
   name: 'wps_ppt_set_shape_shadow',
@@ -338,47 +531,12 @@ export const setShapeShadowHandler: ToolHandler = async (
     shadow: Record<string, unknown>;
   };
 
-  try {
-    const response = await wpsClient.executeMethod<{
-      success: boolean;
-      message: string;
-    }>(
-      'setShapeShadow',
-      { slideIndex, shapeIndex, shadow },
-      WpsAppType.PRESENTATION
-    );
-
-    if (response.success) {
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [
-          {
-            type: 'text',
-            text: `形状阴影设置成功！\n幻灯片: 第 ${slideIndex} 页\n形状: 第 ${shapeIndex} 个`,
-          },
-        ],
-      };
-    } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `设置形状阴影失败: ${response.error}` }],
-        error: response.error,
-      };
-    }
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `设置形状阴影出错: ${errMsg}` }],
-      error: errMsg,
-    };
-  }
+  const r = await call('setShapeShadow', { slideIndex, shapeIndex, shadow });
+  if (!r.ok) return fail(errText('设置形状阴影失败', r), r.error);
+  return ok(`形状阴影设置成功！\n幻灯片: 第 ${slideIndex} 页\n形状: 第 ${shapeIndex} 个`, r.warnings);
 };
 
-// ==================== 5. 设置形状渐变填充 ====================
+// ==================== 8. 设置形状渐变填充 ====================
 
 export const setShapeGradientDefinition: ToolDefinition = {
   name: 'wps_ppt_set_shape_gradient',
@@ -437,47 +595,12 @@ export const setShapeGradientHandler: ToolHandler = async (
     gradient: Record<string, unknown>;
   };
 
-  try {
-    const response = await wpsClient.executeMethod<{
-      success: boolean;
-      message: string;
-    }>(
-      'setShapeGradient',
-      { slideIndex, shapeIndex, gradient },
-      WpsAppType.PRESENTATION
-    );
-
-    if (response.success) {
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [
-          {
-            type: 'text',
-            text: `形状渐变填充设置成功！\n幻灯片: 第 ${slideIndex} 页\n形状: 第 ${shapeIndex} 个`,
-          },
-        ],
-      };
-    } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `设置形状渐变失败: ${response.error}` }],
-        error: response.error,
-      };
-    }
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `设置形状渐变出错: ${errMsg}` }],
-      error: errMsg,
-    };
-  }
+  const r = await call('setShapeGradient', { slideIndex, shapeIndex, gradient });
+  if (!r.ok) return fail(errText('设置形状渐变失败', r), r.error);
+  return ok(`形状渐变填充设置成功！\n幻灯片: 第 ${slideIndex} 页\n形状: 第 ${shapeIndex} 个`, r.warnings);
 };
 
-// ==================== 6. 设置形状边框 ====================
+// ==================== 9. 设置形状边框 ====================
 
 export const setShapeBorderDefinition: ToolDefinition = {
   name: 'wps_ppt_set_shape_border',
@@ -528,47 +651,12 @@ export const setShapeBorderHandler: ToolHandler = async (
     border: Record<string, unknown>;
   };
 
-  try {
-    const response = await wpsClient.executeMethod<{
-      success: boolean;
-      message: string;
-    }>(
-      'setShapeBorder',
-      { slideIndex, shapeIndex, border },
-      WpsAppType.PRESENTATION
-    );
-
-    if (response.success) {
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [
-          {
-            type: 'text',
-            text: `形状边框设置成功！\n幻灯片: 第 ${slideIndex} 页\n形状: 第 ${shapeIndex} 个`,
-          },
-        ],
-      };
-    } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `设置形状边框失败: ${response.error}` }],
-        error: response.error,
-      };
-    }
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `设置形状边框出错: ${errMsg}` }],
-      error: errMsg,
-    };
-  }
+  const r = await call('setShapeBorder', { slideIndex, shapeIndex, border });
+  if (!r.ok) return fail(errText('设置形状边框失败', r), r.error);
+  return ok(`形状边框设置成功！\n幻灯片: 第 ${slideIndex} 页\n形状: 第 ${shapeIndex} 个`, r.warnings);
 };
 
-// ==================== 7. 设置形状透明度 ====================
+// ==================== 10. 设置形状透明度 ====================
 
 export const setShapeTransparencyDefinition: ToolDefinition = {
   name: 'wps_ppt_set_shape_transparency',
@@ -607,47 +695,139 @@ export const setShapeTransparencyHandler: ToolHandler = async (
     transparency: number;
   };
 
-  try {
-    const response = await wpsClient.executeMethod<{
-      success: boolean;
-      message: string;
-    }>(
-      'setShapeTransparency',
-      { slideIndex, shapeIndex, transparency },
-      WpsAppType.PRESENTATION
-    );
-
-    if (response.success) {
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [
-          {
-            type: 'text',
-            text: `形状透明度设置成功！\n幻灯片: 第 ${slideIndex} 页\n形状: 第 ${shapeIndex} 个\n透明度: ${transparency}%`,
-          },
-        ],
-      };
-    } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `设置形状透明度失败: ${response.error}` }],
-        error: response.error,
-      };
-    }
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `设置形状透明度出错: ${errMsg}` }],
-      error: errMsg,
-    };
-  }
+  const r = await call('setShapeTransparency', { slideIndex, shapeIndex, transparency });
+  if (!r.ok) return fail(errText('设置形状透明度失败', r), r.error);
+  return ok(
+    `形状透明度设置成功！\n幻灯片: 第 ${slideIndex} 页\n形状: 第 ${shapeIndex} 个\n透明度: ${transparency}%`,
+    r.warnings
+  );
 };
 
-// ==================== 8. 对齐多个形状 ====================
+// ==================== 11. 设置形状文字 ====================
+
+export const setShapeTextDefinition: ToolDefinition = {
+  name: 'wps_ppt_set_shape_text',
+  description: `设置幻灯片中指定形状的文字内容。
+
+使用场景：
+- "把第1页的第2个形状文字改成'销售额'"
+- "修改形状里的文字"`,
+  category: ToolCategory.PRESENTATION,
+  inputSchema: {
+    type: 'object',
+    properties: {
+      slideIndex: { type: 'number', description: '幻灯片索引（从1开始）' },
+      shapeIndex: { type: 'number', description: '形状索引（从1开始）' },
+      text: { type: 'string', description: '要设置的文字内容' },
+    },
+    required: ['slideIndex', 'shapeIndex', 'text'],
+  },
+};
+
+export const setShapeTextHandler: ToolHandler = async (
+  args: Record<string, unknown>
+): Promise<ToolCallResult> => {
+  const { slideIndex, shapeIndex, text } = args as {
+    slideIndex: number;
+    shapeIndex: number;
+    text: string;
+  };
+
+  const r = await call<{ name: string }>('setShapeText', { slideIndex, shapeIndex, text });
+  if (!r.ok || !r.data) return fail(errText('设置形状文字失败', r), r.error);
+  return ok(`形状文字设置成功！\n形状: ${r.data.name}\n文字: "${text}"`, r.warnings);
+};
+
+// ==================== 12. 设置形状填充颜色 ====================
+
+export const setShapeFillDefinition: ToolDefinition = {
+  name: 'wps_ppt_set_shape_fill',
+  description: `设置幻灯片中指定形状的填充颜色。
+
+使用场景：
+- "把第1页的第2个形状填充为红色"
+- "修改形状背景色为#00FF00"
+- "设置形状的填充颜色"`,
+  category: ToolCategory.PRESENTATION,
+  inputSchema: {
+    type: 'object',
+    properties: {
+      slideIndex: { type: 'number', description: '幻灯片索引（从1开始）' },
+      shapeIndex: { type: 'number', description: '形状索引（从1开始）' },
+      color: { type: 'string', description: '填充颜色，十六进制如 #FF0000' },
+    },
+    required: ['slideIndex', 'shapeIndex', 'color'],
+  },
+};
+
+export const setShapeFillHandler: ToolHandler = async (
+  args: Record<string, unknown>
+): Promise<ToolCallResult> => {
+  const { slideIndex, shapeIndex, color } = args as {
+    slideIndex: number;
+    shapeIndex: number;
+    color: string;
+  };
+
+  const r = await call(
+    // 第 1 期第 2 章第 2 轮：这句原为「仅Windows支持」，是假注释 —— 该动作曾长期不存在于 ps1。第 6 轮已补 case，现在 Windows 上真能用。
+    'setShapeFill',
+    { slideIndex, shapeIndex, color }
+  );
+  if (!r.ok) return fail(errText('设置形状填充失败', r), r.error);
+  return ok(
+    `形状填充颜色设置成功！\n幻灯片: 第 ${slideIndex} 页\n形状: 第 ${shapeIndex} 个\n填充颜色: ${color}`,
+    r.warnings
+  );
+};
+
+// ==================== 13. 设置幻灯片标题 ====================
+
+export const setSlideTitleDefinition: ToolDefinition = {
+  name: 'wps_ppt_set_slide_title',
+  description: `设置幻灯片的标题文本。
+
+使用场景：
+- "把第1页标题改成'年度总结'"
+- "设置标题为'项目进展'"
+- "修改幻灯片标题"`,
+  category: ToolCategory.PRESENTATION,
+  inputSchema: {
+    type: 'object',
+    properties: {
+      slideIndex: {
+        type: 'number',
+        description: '幻灯片索引（从1开始），默认1',
+      },
+      title: {
+        type: 'string',
+        description: '标题文本',
+      },
+    },
+    required: ['title'],
+  },
+};
+
+export const setSlideTitleHandler: ToolHandler = async (
+  args: Record<string, unknown>
+): Promise<ToolCallResult> => {
+  const { slideIndex, title } = args as {
+    slideIndex?: number;
+    title: string;
+  };
+
+  const r = await call<{
+    slideIndex: number;
+    title: string;
+  }>('setSlideTitle', { slideIndex: slideIndex || 1, title });
+  if (!r.ok || !r.data) return fail(errText('设置幻灯片标题失败', r), r.error);
+  return ok(
+    `幻灯片标题设置成功！\n幻灯片: 第 ${r.data.slideIndex} 页\n标题: "${r.data.title}"`,
+    r.warnings
+  );
+};
+
+// ==================== 14. 对齐多个形状 ====================
 
 export const alignShapesDefinition: ToolDefinition = {
   name: 'wps_ppt_align_shapes',
@@ -696,57 +876,24 @@ export const alignShapesHandler: ToolHandler = async (
     alignment: string;
   };
 
-  try {
-    const response = await wpsClient.executeMethod<{
-      success: boolean;
-      message: string;
-      count?: number;
-    }>(
-      'alignShapes',
-      { slideIndex, shapeIndices, alignment },
-      WpsAppType.PRESENTATION
-    );
+  const r = await call<{ count?: number }>('alignShapes', { slideIndex, shapeIndices, alignment });
+  if (!r.ok) return fail(errText('对齐形状失败', r), r.error);
+  const alignName: Record<string, string> = {
+    left: '左对齐',
+    center: '水平居中',
+    right: '右对齐',
+    top: '顶部对齐',
+    middle: '垂直居中',
+    bottom: '底部对齐',
+  };
 
-    if (response.success) {
-      const alignName: Record<string, string> = {
-        left: '左对齐',
-        center: '水平居中',
-        right: '右对齐',
-        top: '顶部对齐',
-        middle: '垂直居中',
-        bottom: '底部对齐',
-      };
-
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [
-          {
-            type: 'text',
-            text: `形状对齐完成！\n幻灯片: 第 ${slideIndex} 页\n对齐方式: ${alignName[alignment] || alignment}\n形状数量: ${shapeIndices.length} 个`,
-          },
-        ],
-      };
-    } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `对齐形状失败: ${response.error}` }],
-        error: response.error,
-      };
-    }
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `对齐形状出错: ${errMsg}` }],
-      error: errMsg,
-    };
-  }
+  return ok(
+    `形状对齐完成！\n幻灯片: 第 ${slideIndex} 页\n对齐方式: ${alignName[alignment] || alignment}\n形状数量: ${shapeIndices.length} 个`,
+    r.warnings
+  );
 };
 
-// ==================== 9. 等距分布多个形状 ====================
+// ==================== 15. 等距分布多个形状 ====================
 
 export const distributeShapesDefinition: ToolDefinition = {
   name: 'wps_ppt_distribute_shapes',
@@ -791,49 +938,17 @@ export const distributeShapesHandler: ToolHandler = async (
     direction: string;
   };
 
-  try {
-    const response = await wpsClient.executeMethod<{
-      success: boolean;
-      message: string;
-    }>(
-      'distributeShapes',
-      { slideIndex, shapeIndices, direction },
-      WpsAppType.PRESENTATION
-    );
+  const r = await call('distributeShapes', { slideIndex, shapeIndices, direction });
+  if (!r.ok) return fail(errText('分布形状失败', r), r.error);
+  const dirName = direction === 'horizontal' ? '水平等距' : '垂直等距';
 
-    if (response.success) {
-      const dirName = direction === 'horizontal' ? '水平等距' : '垂直等距';
-
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [
-          {
-            type: 'text',
-            text: `形状分布完成！\n幻灯片: 第 ${slideIndex} 页\n分布方向: ${dirName}\n形状数量: ${shapeIndices.length} 个`,
-          },
-        ],
-      };
-    } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `分布形状失败: ${response.error}` }],
-        error: response.error,
-      };
-    }
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `分布形状出错: ${errMsg}` }],
-      error: errMsg,
-    };
-  }
+  return ok(
+    `形状分布完成！\n幻灯片: 第 ${slideIndex} 页\n分布方向: ${dirName}\n形状数量: ${shapeIndices.length} 个`,
+    r.warnings
+  );
 };
 
-// ==================== 10. 组合多个形状 ====================
+// ==================== 16. 组合多个形状 ====================
 
 export const groupShapesDefinition: ToolDefinition = {
   name: 'wps_ppt_group_shapes',
@@ -868,58 +983,33 @@ export const groupShapesHandler: ToolHandler = async (
     shapeIndices: number[];
   };
 
-  try {
-    const response = await wpsClient.executeMethod<{
-      success: boolean;
-      message: string;
-      groupIndex?: number;
-    }>(
-      'groupShapes',
-      { slideIndex, shapeIndices },
-      WpsAppType.PRESENTATION
-    );
-
-    if (response.success) {
-      let text = `形状组合成功！\n幻灯片: 第 ${slideIndex} 页\n组合形状: ${shapeIndices.length} 个`;
-      if (response.data?.groupIndex) {
-        text += `\n组合索引: ${response.data.groupIndex}`;
-      }
-
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [{ type: 'text', text }],
-      };
-    } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `组合形状失败: ${response.error}` }],
-        error: response.error,
-      };
-    }
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `组合形状出错: ${errMsg}` }],
-      error: errMsg,
-    };
+  const r = await call<{ groupIndex?: number }>('groupShapes', { slideIndex, shapeIndices });
+  if (!r.ok) return fail(errText('组合形状失败', r), r.error);
+  let text = `形状组合成功！\n幻灯片: 第 ${slideIndex} 页\n组合形状: ${shapeIndices.length} 个`;
+  if (r.data?.groupIndex) {
+    text += `\n组合索引: ${r.data.groupIndex}`;
   }
+
+  return ok(text, r.warnings);
 };
 
 /**
  * 导出所有形状基础相关的Tools
  */
 export const shapeBasicTools: RegisteredTool[] = [
+  { definition: addShapeDefinition, handler: addShapeHandler },
+  { definition: addTextboxDefinition, handler: addTextboxHandler },
   { definition: deleteShapeDefinition, handler: deleteShapeHandler },
   { definition: getShapesDefinition, handler: getShapesHandler },
   { definition: setShapePositionDefinition, handler: setShapePositionHandler },
+  { definition: setShapeStyleDefinition, handler: setShapeStyleHandler },
   { definition: setShapeShadowDefinition, handler: setShapeShadowHandler },
   { definition: setShapeGradientDefinition, handler: setShapeGradientHandler },
   { definition: setShapeBorderDefinition, handler: setShapeBorderHandler },
   { definition: setShapeTransparencyDefinition, handler: setShapeTransparencyHandler },
+  { definition: setShapeTextDefinition, handler: setShapeTextHandler },
+  { definition: setShapeFillDefinition, handler: setShapeFillHandler },
+  { definition: setSlideTitleDefinition, handler: setSlideTitleHandler },
   { definition: alignShapesDefinition, handler: alignShapesHandler },
   { definition: distributeShapesDefinition, handler: distributeShapesHandler },
   { definition: groupShapesDefinition, handler: groupShapesHandler },

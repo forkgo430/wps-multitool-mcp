@@ -14,7 +14,6 @@
  * - wps_ppt_set_table_row_style: 设置表格行样式
  */
 
-import { v4 as uuidv4 } from 'uuid';
 import {
   ToolDefinition,
   ToolHandler,
@@ -22,8 +21,7 @@ import {
   ToolCategory,
   RegisteredTool,
 } from '../../types/tools';
-import { wpsClient } from '../../client/wps-client';
-import { WpsAppType } from '../../types/wps';
+import { call, ok, fail, errText } from './helpers';
 
 /**
  * 在幻灯片中插入表格
@@ -81,49 +79,18 @@ export const insertPptTableHandler: ToolHandler = async (
     top?: number;
   };
 
-  try {
-    const response = await wpsClient.executeMethod<{
-      success: boolean;
-      message: string;
-      // PS 侧回 name 与本页表格序号 tableIndex（第 3 轮补的 tableIndex）。
-      // 历史 TS 只读 tableIndex，而 PS 当时没回这个键 → 永远打印"表格索引: undefined"。
-      name?: string;
-      tableIndex?: number;
-    }>(
-      'insertPptTable',
-      { slideIndex, rows, cols, left, top },
-      WpsAppType.PRESENTATION
-    );
-
-    if (response.success && response.data) {
-      const idx = response.data.tableIndex ?? '?';
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [
-          {
-            type: 'text',
-            text: `表格插入成功！\n幻灯片: 第 ${slideIndex} 页\n规格: ${rows} 行 × ${cols} 列\n表格索引: ${idx}${response.data.name ? `\n对象名: ${response.data.name}` : ''}`,
-          },
-        ],
-      };
-    } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `插入表格失败: ${response.error}` }],
-        error: response.error,
-      };
-    }
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `插入表格出错: ${errMsg}` }],
-      error: errMsg,
-    };
-  }
+  const r = await call<{
+    // PS 侧回 name 与本页表格序号 tableIndex（第 3 轮补的 tableIndex）。
+    // 历史 TS 只读 tableIndex，而 PS 当时没回这个键 → 永远打印"表格索引: undefined"。
+    name?: string;
+    tableIndex?: number;
+  }>('insertPptTable', { slideIndex, rows, cols, left, top });
+  if (!r.ok) return fail(errText('插入表格失败', r), r.error);
+  const idx = r.data?.tableIndex ?? '?';
+  return ok(
+    `表格插入成功！\n幻灯片: 第 ${slideIndex} 页\n规格: ${rows} 行 × ${cols} 列\n表格索引: ${idx}${r.data?.name ? `\n对象名: ${r.data.name}` : ''}`,
+    r.warnings
+  );
 };
 
 /**
@@ -178,44 +145,12 @@ export const setPptTableCellHandler: ToolHandler = async (
     text: string;
   };
 
-  try {
-    const response = await wpsClient.executeMethod<{
-      success: boolean;
-      message: string;
-    }>(
-      'setPptTableCell',
-      { slideIndex, tableIndex, row, col, text },
-      WpsAppType.PRESENTATION
-    );
-
-    if (response.success) {
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [
-          {
-            type: 'text',
-            text: `单元格文本设置成功！\n幻灯片: 第 ${slideIndex} 页\n表格: 第 ${tableIndex} 个\n位置: 第 ${row} 行第 ${col} 列\n内容: ${text}`,
-          },
-        ],
-      };
-    } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `设置单元格文本失败: ${response.error}` }],
-        error: response.error,
-      };
-    }
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `设置单元格文本出错: ${errMsg}` }],
-      error: errMsg,
-    };
-  }
+  const r = await call('setPptTableCell', { slideIndex, tableIndex, row, col, text });
+  if (!r.ok) return fail(errText('设置单元格文本失败', r), r.error);
+  return ok(
+    `单元格文本设置成功！\n幻灯片: 第 ${slideIndex} 页\n表格: 第 ${tableIndex} 个\n位置: 第 ${row} 行第 ${col} 列\n内容: ${text}`,
+    r.warnings
+  );
 };
 
 /**
@@ -265,49 +200,18 @@ export const getPptTableCellHandler: ToolHandler = async (
     col: number;
   };
 
-  try {
-    const response = await wpsClient.executeMethod<{
-      success: boolean;
-      message: string;
-      // PS 侧 getPptTableCell 的 Output-Json 给的是 value（单元格的值），
-      // 历史 TS 读的是 text → 永远 undefined，读回形同虚设。两个键都接，value 优先。
-      value?: string;
-      text?: string;
-    }>(
-      'getPptTableCell',
-      { slideIndex, tableIndex, row, col },
-      WpsAppType.PRESENTATION
-    );
-
-    if (response.success && response.data) {
-      const cellText = response.data.value ?? response.data.text ?? '';
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [
-          {
-            type: 'text',
-            text: `单元格内容获取成功！\n幻灯片: 第 ${slideIndex} 页\n表格: 第 ${tableIndex} 个\n位置: 第 ${row} 行第 ${col} 列\n内容: ${cellText}`,
-          },
-        ],
-      };
-    } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `获取单元格内容失败: ${response.error}` }],
-        error: response.error,
-      };
-    }
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `获取单元格内容出错: ${errMsg}` }],
-      error: errMsg,
-    };
-  }
+  const r = await call<{
+    // PS 侧 getPptTableCell 的 Output-Json 给的是 value（单元格的值），
+    // 历史 TS 读的是 text → 永远 undefined，读回形同虚设。两个键都接，value 优先。
+    value?: string;
+    text?: string;
+  }>('getPptTableCell', { slideIndex, tableIndex, row, col });
+  if (!r.ok) return fail(errText('获取单元格内容失败', r), r.error);
+  const cellText = r.data?.value ?? r.data?.text ?? '';
+  return ok(
+    `单元格内容获取成功！\n幻灯片: 第 ${slideIndex} 页\n表格: 第 ${tableIndex} 个\n位置: 第 ${row} 行第 ${col} 列\n内容: ${cellText}`,
+    r.warnings
+  );
 };
 
 /**
@@ -362,45 +266,13 @@ export const setPptTableStyleHandler: ToolHandler = async (
     style: Record<string, unknown>;
   };
 
-  try {
-    const response = await wpsClient.executeMethod<{
-      success: boolean;
-      message: string;
-    }>(
-      'setPptTableStyle',
-      { slideIndex, tableIndex, style },
-      WpsAppType.PRESENTATION
-    );
-
-    if (response.success) {
-      const styleKeys = Object.keys(style).join('、');
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [
-          {
-            type: 'text',
-            text: `表格样式设置成功！\n幻灯片: 第 ${slideIndex} 页\n表格: 第 ${tableIndex} 个\n已设置属性: ${styleKeys}`,
-          },
-        ],
-      };
-    } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `设置表格样式失败: ${response.error}` }],
-        error: response.error,
-      };
-    }
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `设置表格样式出错: ${errMsg}` }],
-      error: errMsg,
-    };
-  }
+  const r = await call('setPptTableStyle', { slideIndex, tableIndex, style });
+  if (!r.ok) return fail(errText('设置表格样式失败', r), r.error);
+  const styleKeys = Object.keys(style).join('、');
+  return ok(
+    `表格样式设置成功！\n幻灯片: 第 ${slideIndex} 页\n表格: 第 ${tableIndex} 个\n已设置属性: ${styleKeys}`,
+    r.warnings
+  );
 };
 
 /**
@@ -465,45 +337,13 @@ export const setPptTableCellStyleHandler: ToolHandler = async (
     style: Record<string, unknown>;
   };
 
-  try {
-    const response = await wpsClient.executeMethod<{
-      success: boolean;
-      message: string;
-    }>(
-      'setPptTableCellStyle',
-      { slideIndex, tableIndex, row, col, style },
-      WpsAppType.PRESENTATION
-    );
-
-    if (response.success) {
-      const styleKeys = Object.keys(style).join('、');
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [
-          {
-            type: 'text',
-            text: `单元格样式设置成功！\n幻灯片: 第 ${slideIndex} 页\n表格: 第 ${tableIndex} 个\n位置: 第 ${row} 行第 ${col} 列\n已设置属性: ${styleKeys}`,
-          },
-        ],
-      };
-    } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `设置单元格样式失败: ${response.error}` }],
-        error: response.error,
-      };
-    }
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `设置单元格样式出错: ${errMsg}` }],
-      error: errMsg,
-    };
-  }
+  const r = await call('setPptTableCellStyle', { slideIndex, tableIndex, row, col, style });
+  if (!r.ok) return fail(errText('设置单元格样式失败', r), r.error);
+  const styleKeys = Object.keys(style).join('、');
+  return ok(
+    `单元格样式设置成功！\n幻灯片: 第 ${slideIndex} 页\n表格: 第 ${tableIndex} 个\n位置: 第 ${row} 行第 ${col} 列\n已设置属性: ${styleKeys}`,
+    r.warnings
+  );
 };
 
 /**
@@ -563,45 +403,13 @@ export const setPptTableRowStyleHandler: ToolHandler = async (
     style: Record<string, unknown>;
   };
 
-  try {
-    const response = await wpsClient.executeMethod<{
-      success: boolean;
-      message: string;
-    }>(
-      'setPptTableRowStyle',
-      { slideIndex, tableIndex, row, style },
-      WpsAppType.PRESENTATION
-    );
-
-    if (response.success) {
-      const styleKeys = Object.keys(style).join('、');
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [
-          {
-            type: 'text',
-            text: `表格行样式设置成功！\n幻灯片: 第 ${slideIndex} 页\n表格: 第 ${tableIndex} 个\n行: 第 ${row} 行\n已设置属性: ${styleKeys}`,
-          },
-        ],
-      };
-    } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `设置行样式失败: ${response.error}` }],
-        error: response.error,
-      };
-    }
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `设置行样式出错: ${errMsg}` }],
-      error: errMsg,
-    };
-  }
+  const r = await call('setPptTableRowStyle', { slideIndex, tableIndex, row, style });
+  if (!r.ok) return fail(errText('设置行样式失败', r), r.error);
+  const styleKeys = Object.keys(style).join('、');
+  return ok(
+    `表格行样式设置成功！\n幻灯片: 第 ${slideIndex} 页\n表格: 第 ${tableIndex} 个\n行: 第 ${row} 行\n已设置属性: ${styleKeys}`,
+    r.warnings
+  );
 };
 
 /**

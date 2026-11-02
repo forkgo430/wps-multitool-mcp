@@ -13,7 +13,6 @@
  * - wps_ppt_align_objects: 对齐幻灯片中的对象
  */
 
-import { v4 as uuidv4 } from 'uuid';
 import {
   ToolDefinition,
   ToolHandler,
@@ -21,8 +20,7 @@ import {
   ToolCategory,
   RegisteredTool,
 } from '../../types/tools';
-import { wpsClient } from '../../client/wps-client';
-import { WpsAppType } from '../../types/wps';
+import { call, ok, fail, errText } from './helpers';
 
 /**
  * 添加新幻灯片
@@ -79,59 +77,23 @@ export const addSlideHandler: ToolHandler = async (
     content?: string;
   };
 
-  try {
-    const response = await wpsClient.executeMethod<{
-      success: boolean;
-      message: string;
-      slideIndex: number;
-      layout: string;
-    }>(
-      'addSlide',
-      {
-        layout: layout || 'title_content',
-        position,
-        title,
-        content,
-      },
-      WpsAppType.PRESENTATION
-    );
+  const r = await call<{ slideIndex: number; layout: string }>(
+    'addSlide',
+    { layout: layout || 'title_content', position, title, content }
+  );
+  if (!r.ok || !r.data) return fail(errText('添加幻灯片失败', r), r.error);
+  const layoutName = {
+    title: '标题页',
+    title_content: '标题+内容',
+    blank: '空白页',
+    two_column: '两栏内容',
+    comparison: '对比布局',
+  }[r.data.layout] || r.data.layout;
 
-    if (response.success && response.data) {
-      const layoutName = {
-        title: '标题页',
-        title_content: '标题+内容',
-        blank: '空白页',
-        two_column: '两栏内容',
-        comparison: '对比布局',
-      }[response.data.layout] || response.data.layout;
-
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [
-          {
-            type: 'text',
-            text: `幻灯片添加成功！\n位置: 第 ${response.data.slideIndex} 页\n布局: ${layoutName}${title ? `\n标题: ${title}` : ''}`,
-          },
-        ],
-      };
-    } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `添加幻灯片失败: ${response.error}` }],
-        error: response.error,
-      };
-    }
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `添加幻灯片出错: ${errMsg}` }],
-      error: errMsg,
-    };
-  }
+  return ok(
+    `幻灯片添加成功！\n位置: 第 ${r.data.slideIndex} 页\n布局: ${layoutName}${title ? `\n标题: ${title}` : ''}`,
+    r.warnings
+  );
 };
 
 /**
@@ -195,87 +157,57 @@ export const beautifyHandler: ToolHandler = async (
     beautify_all?: boolean;
   };
 
-  try {
-    const response = await wpsClient.executeMethod<{
-      success: boolean;
-      message: string;
-      slideIndex: number | string;
-      operations: Array<{
-        operation: string;
-        count: number;
-        details?: string;
-      }>;
-    }>(
-      'beautifySlide',
-      {
-        slideIndex: beautify_all ? 'all' : slide_index,
-        style: {
-          colorScheme: color_scheme || 'business',
-          font: font || '微软雅黑',
-        },
+  const r = await call<{
+    slideIndex: number | string;
+    operations?: Array<{ operation: string; count: number; details?: string }>;
+  }>(
+    'beautifySlide',
+    {
+      slideIndex: beautify_all ? 'all' : slide_index,
+      style: {
+        colorScheme: color_scheme || 'business',
+        font: font || '微软雅黑',
       },
-      WpsAppType.PRESENTATION
-    );
-
-    if (response.success && response.data) {
-      const result = response.data;
-      const schemeName = {
-        business: '商务风',
-        tech: '科技风',
-        creative: '创意风',
-        minimal: '简约风',
-      }[color_scheme || 'business'] || color_scheme;
-
-      let output = `幻灯片美化完成！\n`;
-      output += `范围: ${beautify_all ? '所有幻灯片' : `第 ${result.slideIndex} 页`}\n`;
-      output += `配色方案: ${schemeName}\n`;
-      output += `字体: ${font || '微软雅黑'}\n\n`;
-
-      // operations 以前不存在（PS 只回 {style,count}），直接 .forEach 会把整个工具打崩
-      // ——冒烟第一条失败就是它。这里既兜空数组，也如实说"改了多少个文本"：
-      // 0 个不是"成功"，是"这一页没有可美化的文字"，必须让用户看出来。
-      const ops = Array.isArray(result.operations) ? result.operations : [];
-      const touched = ops.reduce((sum, op) => sum + (op.count || 0), 0);
-      if (touched === 0) {
-        output +=
-          '没有任何文本被改动 —— 这一页上没有带文字的形状/文本框。\n' +
-          '先写入文字再美化（wps_ppt_set_shape_text / wps_ppt_set_textbox_text），或换有文字的页。';
-      } else {
-        output += `优化详情：\n`;
-        for (const op of ops) {
-          const opName =
-            {
-              unify_font: '统一字体',
-              apply_color_scheme: '应用配色',
-              align: '对齐元素',
-              optimize_spacing: '优化间距',
-            }[op.operation] || op.operation;
-          output += `- ${opName}: 处理了 ${op.count} 个元素\n`;
-        }
-      }
-
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [{ type: 'text', text: output }],
-      };
-    } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `美化幻灯片失败: ${response.error}` }],
-        error: response.error,
-      };
     }
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `美化幻灯片出错: ${errMsg}` }],
-      error: errMsg,
-    };
+  );
+  if (!r.ok || !r.data) return fail(errText('美化幻灯片失败', r), r.error);
+  const result = r.data;
+  const schemeName = {
+    business: '商务风',
+    tech: '科技风',
+    creative: '创意风',
+    minimal: '简约风',
+  }[color_scheme || 'business'] || color_scheme;
+
+  let output = `幻灯片美化完成！\n`;
+  output += `范围: ${beautify_all ? '所有幻灯片' : `第 ${result.slideIndex} 页`}\n`;
+  output += `配色方案: ${schemeName}\n`;
+  output += `字体: ${font || '微软雅黑'}\n\n`;
+
+  // operations 以前不存在（PS 只回 {style,count}），直接 .forEach 会把整个工具打崩
+  // ——冒烟第一条失败就是它。这里既兜空数组，也如实说"改了多少个文本"：
+  // 0 个不是"成功"，是"这一页没有可美化的文字"，必须让用户看出来。
+  const ops = Array.isArray(result.operations) ? result.operations : [];
+  const touched = ops.reduce((sum, op) => sum + (op.count || 0), 0);
+  if (touched === 0) {
+    output +=
+      '没有任何文本被改动 —— 这一页上没有带文字的形状/文本框。\n' +
+      '先写入文字再美化（wps_ppt_set_shape_text / wps_ppt_set_textbox_text），或换有文字的页。';
+  } else {
+    output += `优化详情：\n`;
+    for (const op of ops) {
+      const opName =
+        {
+          unify_font: '统一字体',
+          apply_color_scheme: '应用配色',
+          align: '对齐元素',
+          optimize_spacing: '优化间距',
+        }[op.operation] || op.operation;
+      output += `- ${opName}: 处理了 ${op.count} 个元素\n`;
+    }
   }
+
+  return ok(output, r.warnings);
 };
 
 /**
@@ -331,58 +263,24 @@ export const unifyFontHandler: ToolHandler = async (
     include_body?: boolean;
   };
 
-  try {
-    const response = await wpsClient.executeMethod<{
-      success: boolean;
-      message: string;
-      font: string;
-      count: number;
-      slideCount: number;
-    }>(
-      // 调 slide.unifyFont 而不是 unifyFont（第 3 轮修）：
-      // PS 里 unifyFont 这个 case 会遍历【所有页、所有文本框】，压根不读
-      // slideIndex / includeTitle / includeBody —— 工具描述承诺的三个开关全是摆设。
-      // 认这三个参数的是另一个 case：slide.unifyFont。
-      'slide.unifyFont',
-      {
-        fontName: font_name,
-        slideIndex: slide_index,
-        includeTitle: include_title !== false,
-        includeBody: include_body !== false,
-      },
-      WpsAppType.PRESENTATION
-    );
-
-    if (response.success && response.data) {
-      const result = response.data;
-
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [
-          {
-            type: 'text',
-            text: `字体统一完成！\n字体: ${result.font}\n处理幻灯片: ${result.slideCount} 页\n修改文本框: ${result.count} 个`,
-          },
-        ],
-      };
-    } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `统一字体失败: ${response.error}` }],
-        error: response.error,
-      };
+  const r = await call<{ font: string; count: number; slideCount: number }>(
+    // 调 slide.unifyFont 而不是 unifyFont（第 3 轮修）：
+    // PS 里 unifyFont 这个 case 会遍历【所有页、所有文本框】，压根不读
+    // slideIndex / includeTitle / includeBody —— 工具描述承诺的三个开关全是摆设。
+    // 认这三个参数的是另一个 case：slide.unifyFont。
+    'slide.unifyFont',
+    {
+      fontName: font_name,
+      slideIndex: slide_index,
+      includeTitle: include_title !== false,
+      includeBody: include_body !== false,
     }
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `统一字体出错: ${errMsg}` }],
-      error: errMsg,
-    };
-  }
+  );
+  if (!r.ok || !r.data) return fail(errText('统一字体失败', r), r.error);
+  return ok(
+    `字体统一完成！\n字体: ${r.data.font}\n处理幻灯片: ${r.data.slideCount} 页\n修改文本框: ${r.data.count} 个`,
+    r.warnings
+  );
 };
 
 /**
@@ -427,44 +325,16 @@ export const setFontColorHandler: ToolHandler = async (
     color: string;
   };
 
-  try {
-    const response = await wpsClient.executeMethod<{
-      success: boolean;
-      message: string;
-    }>(
-      'setFontColor', // 第 1 期第 2 章第 2 轮：这句原为「仅Windows支持」，是假注释 —— 该动作曾长期不存在于 ps1。第 6 轮已补 case，现在 Windows 上真能用。
-      { slideIndex, shapeIndex, color },
-      WpsAppType.PRESENTATION
-    );
-
-    if (response.success) {
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [
-          {
-            type: 'text',
-            text: `文字颜色设置成功！\n幻灯片: 第 ${slideIndex} 页\n形状: 第 ${shapeIndex} 个\n颜色: ${color}`,
-          },
-        ],
-      };
-    } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `设置文字颜色失败: ${response.error}` }],
-        error: response.error,
-      };
-    }
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `设置文字颜色出错: ${errMsg}` }],
-      error: errMsg,
-    };
-  }
+  const r = await call(
+    // 第 1 期第 2 章第 2 轮：这句原为「仅Windows支持」，是假注释 —— 该动作曾长期不存在于 ps1。第 6 轮已补 case，现在 Windows 上真能用。
+    'setFontColor',
+    { slideIndex, shapeIndex, color }
+  );
+  if (!r.ok) return fail(errText('设置文字颜色失败', r), r.error);
+  return ok(
+    `文字颜色设置成功！\n幻灯片: 第 ${slideIndex} 页\n形状: 第 ${shapeIndex} 个\n颜色: ${color}`,
+    r.warnings
+  );
 };
 
 /**
@@ -514,56 +384,23 @@ export const alignObjectsHandler: ToolHandler = async (
     shapeIndices: number[];
   };
 
-  try {
-    const response = await wpsClient.executeMethod<{
-      success: boolean;
-      message: string;
-      count?: number;
-    }>(
-      'alignShapes',
-      { slideIndex, shapeIndices, alignment },
-      WpsAppType.PRESENTATION
-    );
+  const r = await call<{ count?: number }>('alignShapes', { slideIndex, shapeIndices, alignment });
+  if (!r.ok) return fail(errText('对齐对象失败', r), r.error);
+  const alignName: Record<string, string> = {
+    left: '左对齐',
+    center: '水平居中',
+    right: '右对齐',
+    top: '顶部对齐',
+    middle: '垂直居中',
+    bottom: '底部对齐',
+    distribute_h: '水平等距分布',
+    distribute_v: '垂直等距分布',
+  };
 
-    if (response.success) {
-      const alignName: Record<string, string> = {
-        left: '左对齐',
-        center: '水平居中',
-        right: '右对齐',
-        top: '顶部对齐',
-        middle: '垂直居中',
-        bottom: '底部对齐',
-        distribute_h: '水平等距分布',
-        distribute_v: '垂直等距分布',
-      };
-
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [
-          {
-            type: 'text',
-            text: `对象对齐完成！\n幻灯片: 第 ${slideIndex} 页\n对齐方式: ${alignName[alignment] || alignment}${response.data?.count ? `\n处理对象: ${response.data.count} 个` : ''}`,
-          },
-        ],
-      };
-    } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `对齐对象失败: ${response.error}` }],
-        error: response.error,
-      };
-    }
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `对齐对象出错: ${errMsg}` }],
-      error: errMsg,
-    };
-  }
+  return ok(
+    `对象对齐完成！\n幻灯片: 第 ${slideIndex} 页\n对齐方式: ${alignName[alignment] || alignment}${r.data?.count ? `\n处理对象: ${r.data.count} 个` : ''}`,
+    r.warnings
+  );
 };
 
 /**

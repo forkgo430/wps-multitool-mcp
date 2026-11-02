@@ -10,13 +10,12 @@
  *
  * 第 8 轮合并掉了本文件原先的 7 个工具，它们都是别名，能力没丢：
  * - wps_ppt_add_animation / add_animation_preset / add_emphasis_animation / set_animation_order
- *   → wps_ppt_set_animation（op: 'add' | 'reorder'）
+ *   → wps_ppt_set_animation（op: 'add' | 'reorder'，现居 page-effects.ts）
  * - wps_ppt_set_slide_transition / apply_transition_to_all / remove_slide_transition
- *   → wps_ppt_set_transition（target: 'slide' | 'all'，effect: 'none' 即取消切换）
+ *   → wps_ppt_set_transition（target: 'slide' | 'all'，effect: 'none' 即取消切换，现居 page-effects.ts）
  * 旧名走 scripts/manual/tool-aliases.json 的别名表调用，参数映射也在那张表里。
  */
 
-import { v4 as uuidv4 } from 'uuid';
 import {
   ToolDefinition,
   ToolHandler,
@@ -24,8 +23,7 @@ import {
   ToolCategory,
   RegisteredTool,
 } from '../../types/tools';
-import { wpsClient } from '../../client/wps-client';
-import { WpsAppType } from '../../types/wps';
+import { call, ok, fail, errText } from './helpers';
 
 /**
  * MsoAnimEffect 编号 → 中文名。表抄自 wps-com.ps1 里 addAnimation 的 $effectMap（同一份真相），
@@ -81,44 +79,9 @@ export const removeAnimationHandler: ToolHandler = async (
     animationIndex: number;
   };
 
-  try {
-    const response = await wpsClient.executeMethod<{
-      success: boolean;
-      message: string;
-    }>(
-      'removeAnimation',
-      { slideIndex, animationIndex },
-      WpsAppType.PRESENTATION
-    );
-
-    if (response.success) {
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [
-          {
-            type: 'text',
-            text: `动画移除成功！\n幻灯片: 第 ${slideIndex} 页\n已移除第 ${animationIndex} 个动画`,
-          },
-        ],
-      };
-    } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `移除动画失败: ${response.error}` }],
-        error: response.error,
-      };
-    }
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `移除动画出错: ${errMsg}` }],
-      error: errMsg,
-    };
-  }
+  const r = await call('removeAnimation', { slideIndex, animationIndex });
+  if (!r.ok) return fail(errText('移除动画失败', r), r.error);
+  return ok(`动画移除成功！\n幻灯片: 第 ${slideIndex} 页\n已移除第 ${animationIndex} 个动画`, r.warnings);
 };
 
 // ==================== 2. 获取动画列表 ====================
@@ -152,77 +115,36 @@ export const getAnimationsHandler: ToolHandler = async (
 ): Promise<ToolCallResult> => {
   const { slideIndex } = args as { slideIndex: number };
 
-  try {
-    const response = await wpsClient.executeMethod<{
-      success: boolean;
-      message: string;
-      // PS 回的是 effectType（MsoAnimEffect 枚举数字）与 duration，
-      // 历史这里按 effect / trigger（字符串）读 —— 两个都不存在，
-      // 列表打印成 "1. [矩形 1] undefined - undefined"，等于没有读回。
-      // 名字可选：认得出就给人看的名字，认不出就老实给数字。
-      animations: Array<{
-        index: number;
-        shapeName: string;
-        effectType?: number;
-        effect?: string | number;
-        duration?: number;
-        trigger?: string;
-      }>;
-    }>(
-      'getAnimations',
-      { slideIndex },
-      WpsAppType.PRESENTATION
-    );
+  const r = await call<{
+    animations?: Array<{
+      index: number;
+      shapeName: string;
+      effectType?: number;
+      effect?: string | number;
+      duration?: number;
+      trigger?: string;
+    }>;
+  }>('getAnimations', { slideIndex });
+  if (!r.ok) return fail(errText('获取动画列表失败', r), r.error);
+  const animations = r.data?.animations;
 
-    if (response.success && response.data) {
-      const animations = response.data.animations;
-      if (!animations || animations.length === 0) {
-        return {
-          id: uuidv4(),
-          success: true,
-          content: [
-            {
-              type: 'text',
-              text: `第 ${slideIndex} 页没有动画效果。`,
-            },
-          ],
-        };
-      }
-
-      let output = `第 ${slideIndex} 页的动画效果（共 ${animations.length} 个）：\n`;
-      animations.forEach((anim) => {
-        const rawEffect = anim.effectType ?? anim.effect;
-        const effectText =
-          typeof rawEffect === 'number'
-            ? `${EFFECT_ID_NAME_MAP[rawEffect] ?? '效果'} (#${rawEffect})`
-            : String(rawEffect ?? '未知效果');
-        const dur = anim.duration === undefined || anim.duration === null ? '' : `，时长 ${anim.duration}s`;
-        output += `  ${anim.index}. [${anim.shapeName}] ${effectText}${dur}\n`;
-      });
-      output += `要调顺序用 wps_ppt_set_animation(op='reorder')，要删某一条用 wps_ppt_remove_animation。`;
-
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [{ type: 'text', text: output }],
-      };
-    } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `获取动画列表失败: ${response.error}` }],
-        error: response.error,
-      };
-    }
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `获取动画列表出错: ${errMsg}` }],
-      error: errMsg,
-    };
+  if (!animations || animations.length === 0) {
+    return ok(`第 ${slideIndex} 页没有动画效果。`, r.warnings);
   }
+
+  let output = `第 ${slideIndex} 页的动画效果（共 ${animations.length} 个）：\n`;
+  animations.forEach((anim) => {
+    const rawEffect = anim.effectType ?? anim.effect;
+    const effectText =
+      typeof rawEffect === 'number'
+        ? `${EFFECT_ID_NAME_MAP[rawEffect] ?? '效果'} (#${rawEffect})`
+        : String(rawEffect ?? '未知效果');
+    const dur = anim.duration === undefined || anim.duration === null ? '' : `，时长 ${anim.duration}s`;
+    output += `  ${anim.index}. [${anim.shapeName}] ${effectText}${dur}\n`;
+  });
+  output += `要调顺序用 wps_ppt_set_animation(op='reorder')，要删某一条用 wps_ppt_remove_animation。`;
+
+  return ok(output, r.warnings);
 };
 
 /**

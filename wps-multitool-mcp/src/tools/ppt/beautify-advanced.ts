@@ -15,7 +15,6 @@
  * - wps_ppt_add_page_indicator: 添加页码指示器
  */
 
-import { v4 as uuidv4 } from 'uuid';
 import {
   ToolDefinition,
   ToolHandler,
@@ -23,8 +22,7 @@ import {
   ToolCategory,
   RegisteredTool,
 } from '../../types/tools';
-import { wpsClient } from '../../client/wps-client';
-import { WpsAppType } from '../../types/wps';
+import { call, ok, fail, errText } from './helpers';
 
 /**
  * 应用配色方案
@@ -73,56 +71,23 @@ export const applyColorSchemeHandler: ToolHandler = async (
     scheme: string;
   };
 
-  try {
-    const response = await wpsClient.executeMethod<{
-      success: boolean;
-      message: string;
-      appliedSlides: number;
-    }>(
-      'applyColorScheme',
-      { slideIndex, scheme },
-      WpsAppType.PRESENTATION
-    );
+  const r = await call<{ appliedSlides: number }>('applyColorScheme', { slideIndex, scheme });
+  if (!r.ok || !r.data) return fail(errText('应用配色方案失败', r), r.error);
+  const schemeNames: Record<string, string> = {
+    ocean: '海洋蓝',
+    forest: '森林绿',
+    sunset: '日落橙',
+    lavender: '薰衣草紫',
+    corporate: '企业蓝灰',
+    warm: '暖色调',
+    cool: '冷色调',
+    monochrome: '单色黑白灰',
+  };
 
-    if (response.success && response.data) {
-      const schemeNames: Record<string, string> = {
-        ocean: '海洋蓝',
-        forest: '森林绿',
-        sunset: '日落橙',
-        lavender: '薰衣草紫',
-        corporate: '企业蓝灰',
-        warm: '暖色调',
-        cool: '冷色调',
-        monochrome: '单色黑白灰',
-      };
-
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [
-          {
-            type: 'text',
-            text: `配色方案应用成功！\n方案: ${schemeNames[scheme] || scheme}\n范围: ${slideIndex ? `第 ${slideIndex} 页` : '所有幻灯片'}\n已应用页数: ${response.data.appliedSlides}`,
-          },
-        ],
-      };
-    } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `应用配色方案失败: ${response.error}` }],
-        error: response.error,
-      };
-    }
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `应用配色方案出错: ${errMsg}` }],
-      error: errMsg,
-    };
-  }
+  return ok(
+    `配色方案应用成功！\n方案: ${schemeNames[scheme] || scheme}\n范围: ${slideIndex ? `第 ${slideIndex} 页` : '所有幻灯片'}\n已应用页数: ${r.data.appliedSlides}`,
+    r.warnings
+  );
 };
 
 /**
@@ -164,65 +129,32 @@ export const autoBeautifySlideHandler: ToolHandler = async (
     slideIndex: number;
   };
 
-  try {
-    const response = await wpsClient.executeMethod<{
-      success: boolean;
-      message: string;
-      operations: Array<{
-        operation: string;
-        count: number;
-        details?: string;
-      }>;
-    }>(
-      'autoBeautifySlide',
-      { slideIndex },
-      WpsAppType.PRESENTATION
-    );
+  const r = await call<{
+    operations?: Array<{ operation: string; count: number; details?: string }>;
+  }>('autoBeautifySlide', { slideIndex });
+  if (!r.ok || !r.data) return fail(errText('自动美化失败', r), r.error);
+  let output = `幻灯片自动美化完成！\n幻灯片: 第 ${slideIndex} 页\n\n优化详情：\n`;
 
-    if (response.success && response.data) {
-      let output = `幻灯片自动美化完成！\n幻灯片: 第 ${slideIndex} 页\n\n优化详情：\n`;
+  const opNames: Record<string, string> = {
+    unify_font: '统一字体',
+    optimize_spacing: '优化间距',
+    align_elements: '对齐元素',
+    adjust_colors: '调整配色',
+    fix_layout: '修正布局',
+    adjust_text_size: '调整文字大小',
+  };
 
-      const opNames: Record<string, string> = {
-        unify_font: '统一字体',
-        optimize_spacing: '优化间距',
-        align_elements: '对齐元素',
-        adjust_colors: '调整配色',
-        fix_layout: '修正布局',
-        adjust_text_size: '调整文字大小',
-      };
-
-      // PS 侧只回 {style,count}（老版本）时 operations 不存在，直接 .forEach 会把整个工具打崩
-      // —— 与 wps_ppt_beautify 同一个坑，那边已经兜过，这里漏了。
-      const ops = Array.isArray(response.data.operations) ? response.data.operations : [];
-      if (ops.length === 0) {
-        output += '- 没有可优化的文本（本页可能是空占位符，或元素都没有文字）\n';
-      }
-      ops.forEach((op) => {
-        output += `- ${opNames[op.operation] || op.operation}: 处理了 ${op.count} 个元素${op.details ? ` (${op.details})` : ''}\n`;
-      });
-
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [{ type: 'text', text: output }],
-      };
-    } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `自动美化失败: ${response.error}` }],
-        error: response.error,
-      };
-    }
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `自动美化出错: ${errMsg}` }],
-      error: errMsg,
-    };
+  // PS 侧只回 {style,count}（老版本）时 operations 不存在，直接 .forEach 会把整个工具打崩
+  // —— 与 wps_ppt_beautify 同一个坑，那边已经兜过，这里漏了。
+  const ops = Array.isArray(r.data.operations) ? r.data.operations : [];
+  if (ops.length === 0) {
+    output += '- 没有可优化的文本（本页可能是空占位符，或元素都没有文字）\n';
   }
+  ops.forEach((op) => {
+    output += `- ${opNames[op.operation] || op.operation}: 处理了 ${op.count} 个元素${op.details ? ` (${op.details})` : ''}\n`;
+  });
+
+  return ok(output, r.warnings);
 };
 
 /**
@@ -264,54 +196,23 @@ export const beautifyAllSlidesHandler: ToolHandler = async (
     style?: string;
   };
 
-  try {
-    const response = await wpsClient.executeMethod<{
-      success: boolean;
-      message: string;
-      slideCount: number;
-      style: string;
-    }>(
-      'beautifyAllSlides',
-      { style: style || 'business' },
-      WpsAppType.PRESENTATION
-    );
+  const r = await call<{ slideCount: number; style: string }>(
+    'beautifyAllSlides',
+    { style: style || 'business' }
+  );
+  if (!r.ok || !r.data) return fail(errText('批量美化失败', r), r.error);
+  const styleNames: Record<string, string> = {
+    business: '商务风',
+    tech: '科技风',
+    creative: '创意风',
+    minimal: '极简风',
+    academic: '学术风',
+  };
 
-    if (response.success && response.data) {
-      const styleNames: Record<string, string> = {
-        business: '商务风',
-        tech: '科技风',
-        creative: '创意风',
-        minimal: '极简风',
-        academic: '学术风',
-      };
-
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [
-          {
-            type: 'text',
-            text: `全部幻灯片美化完成！\n风格: ${styleNames[response.data.style] || response.data.style}\n处理页数: ${response.data.slideCount} 页`,
-          },
-        ],
-      };
-    } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `批量美化失败: ${response.error}` }],
-        error: response.error,
-      };
-    }
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `批量美化出错: ${errMsg}` }],
-      error: errMsg,
-    };
-  }
+  return ok(
+    `全部幻灯片美化完成！\n风格: ${styleNames[r.data.style] || r.data.style}\n处理页数: ${r.data.slideCount} 页`,
+    r.warnings
+  );
 };
 
 /**
@@ -372,50 +273,21 @@ export const createKpiCardsHandler: ToolHandler = async (
     }>;
   };
 
-  try {
-    const response = await wpsClient.executeMethod<{
-      success: boolean;
-      message: string;
-      // PS createKpiCards 回的是 count；cardCount 是历史键，两个都接（cardCount 优先）。
-      count?: number;
-      cardCount?: number;
-      cards?: string[];
-    }>(
-      'createKpiCards',
-      { slideIndex, data },
-      WpsAppType.PRESENTATION
-    );
+  const r = await call<{
+    // PS createKpiCards 回的是 count；cardCount 是历史键，两个都接（cardCount 优先）。
+    count?: number;
+    cardCount?: number;
+    cards?: string[];
+  }>('createKpiCards', { slideIndex, data });
+  if (!r.ok || !r.data) return fail(errText('创建KPI卡片失败', r), r.error);
+  const n = r.data.cardCount ?? r.data.count ?? 0;
+  let output = `KPI卡片创建成功！\n幻灯片: 第 ${slideIndex} 页\n卡片数量: ${n} 个\n\n指标列表：\n`;
+  data.forEach((item) => {
+    const trendIcon = item.trend === 'up' ? '↑' : item.trend === 'down' ? '↓' : '→';
+    output += `- ${item.title}: ${item.value} ${item.trend ? trendIcon : ''}\n`;
+  });
 
-    if (response.success && response.data) {
-      const n = response.data.cardCount ?? response.data.count ?? 0;
-      let output = `KPI卡片创建成功！\n幻灯片: 第 ${slideIndex} 页\n卡片数量: ${n} 个\n\n指标列表：\n`;
-      data.forEach((item) => {
-        const trendIcon = item.trend === 'up' ? '↑' : item.trend === 'down' ? '↓' : '→';
-        output += `- ${item.title}: ${item.value} ${item.trend ? trendIcon : ''}\n`;
-      });
-
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [{ type: 'text', text: output }],
-      };
-    } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `创建KPI卡片失败: ${response.error}` }],
-        error: response.error,
-      };
-    }
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `创建KPI卡片出错: ${errMsg}` }],
-      error: errMsg,
-    };
-  }
+  return ok(output, r.warnings);
 };
 
 /**
@@ -475,55 +347,24 @@ export const createStyledTableHandler: ToolHandler = async (
     style?: string;
   };
 
-  try {
-    const response = await wpsClient.executeMethod<{
-      success: boolean;
-      message: string;
-      rows: number;
-      cols: number;
-    }>(
-      'createStyledTable',
-      { slideIndex, data, style: style || 'blue' },
-      WpsAppType.PRESENTATION
-    );
+  const r = await call<{ rows: number; cols: number }>(
+    'createStyledTable',
+    { slideIndex, data, style: style || 'blue' }
+  );
+  if (!r.ok || !r.data) return fail(errText('创建带样式表格失败', r), r.error);
+  const styleNames: Record<string, string> = {
+    blue: '蓝色主题',
+    green: '绿色主题',
+    orange: '橙色主题',
+    gray: '灰色主题',
+    dark: '深色主题',
+    striped: '斑马纹',
+  };
 
-    if (response.success && response.data) {
-      const styleNames: Record<string, string> = {
-        blue: '蓝色主题',
-        green: '绿色主题',
-        orange: '橙色主题',
-        gray: '灰色主题',
-        dark: '深色主题',
-        striped: '斑马纹',
-      };
-
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [
-          {
-            type: 'text',
-            text: `带样式表格创建成功！\n幻灯片: 第 ${slideIndex} 页\n规格: ${response.data.rows} 行 × ${response.data.cols} 列\n样式: ${styleNames[style || 'blue'] || style}`,
-          },
-        ],
-      };
-    } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `创建带样式表格失败: ${response.error}` }],
-        error: response.error,
-      };
-    }
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `创建带样式表格出错: ${errMsg}` }],
-      error: errMsg,
-    };
-  }
+  return ok(
+    `带样式表格创建成功！\n幻灯片: 第 ${slideIndex} 页\n规格: ${r.data.rows} 行 × ${r.data.cols} 列\n样式: ${styleNames[style || 'blue'] || style}`,
+    r.warnings
+  );
 };
 
 /**
@@ -570,52 +411,20 @@ export const addTitleDecorationHandler: ToolHandler = async (
     style?: string;
   };
 
-  try {
-    const response = await wpsClient.executeMethod<{
-      success: boolean;
-      message: string;
-    }>(
-      'addTitleDecoration',
-      { slideIndex, style: style || 'underline' },
-      WpsAppType.PRESENTATION
-    );
+  const r = await call('addTitleDecoration', { slideIndex, style: style || 'underline' });
+  if (!r.ok) return fail(errText('添加标题装饰失败', r), r.error);
+  const styleNames: Record<string, string> = {
+    underline: '下划线装饰',
+    block: '色块背景装饰',
+    sidebar: '侧边竖条装饰',
+    bracket: '括号框装饰',
+    gradient_bar: '渐变条装饰',
+  };
 
-    if (response.success) {
-      const styleNames: Record<string, string> = {
-        underline: '下划线装饰',
-        block: '色块背景装饰',
-        sidebar: '侧边竖条装饰',
-        bracket: '括号框装饰',
-        gradient_bar: '渐变条装饰',
-      };
-
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [
-          {
-            type: 'text',
-            text: `标题装饰添加成功！\n幻灯片: 第 ${slideIndex} 页\n装饰样式: ${styleNames[style || 'underline'] || style}`,
-          },
-        ],
-      };
-    } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `添加标题装饰失败: ${response.error}` }],
-        error: response.error,
-      };
-    }
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `添加标题装饰出错: ${errMsg}` }],
-      error: errMsg,
-    };
-  }
+  return ok(
+    `标题装饰添加成功！\n幻灯片: 第 ${slideIndex} 页\n装饰样式: ${styleNames[style || 'underline'] || style}`,
+    r.warnings
+  );
 };
 
 /**
@@ -656,51 +465,18 @@ export const addPageIndicatorHandler: ToolHandler = async (
     position?: string;
   };
 
-  try {
-    const response = await wpsClient.executeMethod<{
-      success: boolean;
-      message: string;
-      slideCount: number;
-    }>(
-      'addPageIndicator',
-      { position: position || 'bottom-right' },
-      WpsAppType.PRESENTATION
-    );
+  const r = await call<{ slideCount: number }>('addPageIndicator', { position: position || 'bottom-right' });
+  if (!r.ok || !r.data) return fail(errText('添加页码指示器失败', r), r.error);
+  const posNames: Record<string, string> = {
+    'bottom-right': '右下角',
+    'bottom-center': '底部居中',
+    'bottom-left': '左下角',
+  };
 
-    if (response.success && response.data) {
-      const posNames: Record<string, string> = {
-        'bottom-right': '右下角',
-        'bottom-center': '底部居中',
-        'bottom-left': '左下角',
-      };
-
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [
-          {
-            type: 'text',
-            text: `页码指示器添加成功！\n位置: ${posNames[position || 'bottom-right'] || position}\n已添加页数: ${response.data.slideCount} 页`,
-          },
-        ],
-      };
-    } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `添加页码指示器失败: ${response.error}` }],
-        error: response.error,
-      };
-    }
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `添加页码指示器出错: ${errMsg}` }],
-      error: errMsg,
-    };
-  }
+  return ok(
+    `页码指示器添加成功！\n位置: ${posNames[position || 'bottom-right'] || position}\n已添加页数: ${r.data.slideCount} 页`,
+    r.warnings
+  );
 };
 
 // 第 5 轮：wps_ppt_set_background_gradient 并入 wps_ppt_set_background

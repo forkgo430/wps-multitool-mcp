@@ -5,11 +5,13 @@
  * PPT图片Tools - 图片管理模块
  * 处理图片的插入、删除、样式设置以及幻灯片导出为位图操作
  *
- * 包含：
- * - wps_ppt_insert_ppt_image: 插入图片到幻灯片
+ * 包含（6 个；insert_image 自 slide-ops.ts 迁入——风格统一+拆分轮，见 ppt-audit §三之二）：
+ * - wps_ppt_insert_image: 在幻灯片中插入图片（canonical，参数最全：path + width/height）
+ * - wps_ppt_insert_ppt_image: 插入图片到幻灯片（DEPRECATED，待转别名）
  * - wps_ppt_delete_ppt_image: 删除幻灯片中的图片
  * - wps_ppt_set_image_style: 设置图片样式
  * - wps_ppt_export_slide_as_image: 将指定幻灯片导出为位图图片（PNG/JPG/GIF/BMP）
+ * - wps_ppt_replace_ppt_image: 原位替换图片
  */
 
 import { v4 as uuidv4 } from 'uuid';
@@ -22,10 +24,83 @@ import {
   ToolCategory,
   RegisteredTool,
 } from '../../types/tools';
-import { wpsClient } from '../../client/wps-client';
-import { WpsAppType } from '../../types/wps';
+import { call, ok, fail, errText } from './helpers';
 
-// ==================== 1. 插入图片 ====================
+// ==================== 1. 插入图片（canonical） ====================
+
+export const insertImageDefinition: ToolDefinition = {
+  name: 'wps_ppt_insert_image',
+  description: `在幻灯片中插入图片。
+
+使用场景：
+- "在第1页插入一张图片"
+- "添加图片到幻灯片"
+- "把这个图片放到PPT里"`,
+  category: ToolCategory.PRESENTATION,
+  inputSchema: {
+    type: 'object',
+    properties: {
+      slideIndex: {
+        type: 'number',
+        description: '幻灯片索引（从1开始），默认1',
+      },
+      path: {
+        type: 'string',
+        description: '图片文件的完整路径',
+      },
+      left: {
+        type: 'number',
+        description: '左边距（像素），默认100',
+      },
+      top: {
+        type: 'number',
+        description: '上边距（像素），默认100',
+      },
+      width: {
+        type: 'number',
+        description: '宽度（像素），不填则保持原始尺寸',
+      },
+      height: {
+        type: 'number',
+        description: '高度（像素），不填则保持原始尺寸',
+      },
+    },
+    required: ['path'],
+  },
+};
+
+export const insertImageHandler: ToolHandler = async (
+  args: Record<string, unknown>
+): Promise<ToolCallResult> => {
+  const { slideIndex, path, left, top, width, height } = args as {
+    slideIndex?: number;
+    path: string;
+    left?: number;
+    top?: number;
+    width?: number;
+    height?: number;
+  };
+
+  const r = await call<{ name: string; path: string }>(
+    'insertPptImage',
+    {
+      slideIndex: slideIndex || 1,
+      path,
+      // 同 add_shape：0 是合法坐标；width/height 的 -1 是"保持原始尺寸"哨兵，0 也不能吞（审计三.1）
+      left: left ?? 100,
+      top: top ?? 100,
+      width: width ?? -1,
+      height: height ?? -1,
+    }
+  );
+  if (!r.ok || !r.data) return fail(errText('插入图片失败', r), r.error);
+  return ok(
+    `图片插入成功！\n幻灯片: 第 ${slideIndex || 1} 页\n图片名称: ${r.data.name}\n图片路径: ${r.data.path}`,
+    r.warnings
+  );
+};
+
+// ==================== 2. 插入图片（DEPRECATED 旧名） ====================
 
 export const insertPptImageDefinition: ToolDefinition = {
   name: 'wps_ppt_insert_ppt_image',
@@ -79,50 +154,22 @@ export const insertPptImageHandler: ToolHandler = async (
     height?: number;
   };
 
-  try {
-    // 参数对齐：底层读取 params.path，需同时发送 path/imagePath
-    const response = await wpsClient.executeMethod<{
-      success: boolean;
-      message: string;
-      imageIndex?: number;
-    }>(
-      'insertPptImage',
-      { slideIndex, filePath, path: filePath, imagePath: filePath, left, top, width, height },
-      WpsAppType.PRESENTATION
-    );
+  // 参数对齐：底层读取 params.path，需同时发送 path/imagePath
+  const r = await call<{ imageIndex?: number }>(
+    'insertPptImage',
+    { slideIndex, filePath, path: filePath, imagePath: filePath, left, top, width, height }
+  );
+  if (!r.ok) return fail(errText('插入图片失败', r), r.error);
+  let text = `图片插入成功！\n幻灯片: 第 ${slideIndex} 页\n文件: ${filePath}`;
+  if (left !== undefined && top !== undefined) text += `\n位置: (${left}, ${top})`;
+  if (width !== undefined) text += `\n宽度: ${width}`;
+  if (height !== undefined) text += `\n高度: ${height}`;
+  if (r.data?.imageIndex) text += `\n图片索引: ${r.data.imageIndex}`;
 
-    if (response.success) {
-      let text = `图片插入成功！\n幻灯片: 第 ${slideIndex} 页\n文件: ${filePath}`;
-      if (left !== undefined && top !== undefined) text += `\n位置: (${left}, ${top})`;
-      if (width !== undefined) text += `\n宽度: ${width}`;
-      if (height !== undefined) text += `\n高度: ${height}`;
-      if (response.data?.imageIndex) text += `\n图片索引: ${response.data.imageIndex}`;
-
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [{ type: 'text', text }],
-      };
-    } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `插入图片失败: ${response.error}` }],
-        error: response.error,
-      };
-    }
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `插入图片出错: ${errMsg}` }],
-      error: errMsg,
-    };
-  }
+  return ok(text, r.warnings);
 };
 
-// ==================== 2. 删除图片 ====================
+// ==================== 3. 删除图片 ====================
 
 export const deletePptImageDefinition: ToolDefinition = {
   name: 'wps_ppt_delete_ppt_image',
@@ -156,47 +203,12 @@ export const deletePptImageHandler: ToolHandler = async (
     imageIndex: number;
   };
 
-  try {
-    const response = await wpsClient.executeMethod<{
-      success: boolean;
-      message: string;
-    }>(
-      'deletePptImage',
-      { slideIndex, imageIndex },
-      WpsAppType.PRESENTATION
-    );
-
-    if (response.success) {
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [
-          {
-            type: 'text',
-            text: `图片删除成功！\n幻灯片: 第 ${slideIndex} 页\n图片: 第 ${imageIndex} 张`,
-          },
-        ],
-      };
-    } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `删除图片失败: ${response.error}` }],
-        error: response.error,
-      };
-    }
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `删除图片出错: ${errMsg}` }],
-      error: errMsg,
-    };
-  }
+  const r = await call('deletePptImage', { slideIndex, imageIndex });
+  if (!r.ok) return fail(errText('删除图片失败', r), r.error);
+  return ok(`图片删除成功！\n幻灯片: 第 ${slideIndex} 页\n图片: 第 ${imageIndex} 张`, r.warnings);
 };
 
-// ==================== 3. 设置图片样式 ====================
+// ==================== 4. 设置图片样式 ====================
 
 export const setImageStyleDefinition: ToolDefinition = {
   name: 'wps_ppt_set_image_style',
@@ -272,47 +284,12 @@ export const setImageStyleHandler: ToolHandler = async (
     style: Record<string, unknown>;
   };
 
-  try {
-    const response = await wpsClient.executeMethod<{
-      success: boolean;
-      message: string;
-    }>(
-      'setImageStyle',
-      { slideIndex, imageIndex, style },
-      WpsAppType.PRESENTATION
-    );
-
-    if (response.success) {
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [
-          {
-            type: 'text',
-            text: `图片样式设置成功！\n幻灯片: 第 ${slideIndex} 页\n图片: 第 ${imageIndex} 张`,
-          },
-        ],
-      };
-    } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `设置图片样式失败: ${response.error}` }],
-        error: response.error,
-      };
-    }
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `设置图片样式出错: ${errMsg}` }],
-      error: errMsg,
-    };
-  }
+  const r = await call('setImageStyle', { slideIndex, imageIndex, style });
+  if (!r.ok) return fail(errText('设置图片样式失败', r), r.error);
+  return ok(`图片样式设置成功！\n幻灯片: 第 ${slideIndex} 页\n图片: 第 ${imageIndex} 张`, r.warnings);
 };
 
-// ==================== 4. 导出幻灯片为图片 ====================
+// ==================== 5. 导出幻灯片为图片 ====================
 
 export const exportSlideAsImageDefinition: ToolDefinition = {
   name: 'wps_ppt_export_slide_as_image',
@@ -383,64 +360,42 @@ export const exportSlideAsImageHandler: ToolHandler = async (
   const finalWidth = width || 1280;
   const finalHeight = height || 720;
 
-  try {
-    const response = await wpsClient.executeMethod<{
-      success: boolean;
-      message?: string;
-      slideIndex?: number;
-      outputPath?: string;
-      format?: string;
-    }>(
-      'exportSlideAsImage',
-      {
-        slideIndex,
-        outputPath,
-        // 参数对齐：底层同时读取 path/outputPath，需一并发送
-        path: outputPath,
-        format: filterName,
-        width: finalWidth,
-        height: finalHeight,
-      },
-      WpsAppType.PRESENTATION
-    );
-
-    if (response.success) {
-      const text =
-        `幻灯片导出图片成功！\n` +
-        `幻灯片: 第 ${slideIndex} 页\n` +
-        `格式: ${filterName}\n` +
-        `尺寸: ${finalWidth} x ${finalHeight}\n` +
-        `输出路径: ${outputPath}`;
-
-      // 图像内联（2026-10-26 对标）：把导出的图作为工具结果一并返回，AI 能直接"看到"效果自查
-      const image = await imageContentBlock(outputPath, filterName === 'PNG' ? 'image/png' : 'image/jpeg');
-      const content: ToolContent[] = image ? [{ type: 'text' as const, text }, image] : [{ type: 'text' as const, text }];
-
-      return {
-        id: uuidv4(),
-        success: true,
-        content,
-      };
-    } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `导出幻灯片为图片失败: ${response.error}` }],
-        error: response.error,
-      };
+  const r = await call<{
+    slideIndex?: number;
+    outputPath?: string;
+    format?: string;
+  }>(
+    'exportSlideAsImage',
+    {
+      slideIndex,
+      outputPath,
+      // 参数对齐：底层同时读取 path/outputPath，需一并发送
+      path: outputPath,
+      format: filterName,
+      width: finalWidth,
+      height: finalHeight,
     }
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `导出幻灯片为图片出错: ${errMsg}` }],
-      error: errMsg,
-    };
-  }
+  );
+  if (!r.ok) return fail(errText('导出幻灯片为图片失败', r), r.error);
+  const text =
+    `幻灯片导出图片成功！\n` +
+    `幻灯片: 第 ${slideIndex} 页\n` +
+    `格式: ${filterName}\n` +
+    `尺寸: ${finalWidth} x ${finalHeight}\n` +
+    `输出路径: ${outputPath}`;
+
+  // 图像内联（2026-10-26 对标）：把导出的图作为工具结果一并返回，AI 能直接"看到"效果自查
+  const image = await imageContentBlock(outputPath, filterName === 'PNG' ? 'image/png' : 'image/jpeg');
+  const content: ToolContent[] = image ? [{ type: 'text' as const, text }, image] : [{ type: 'text' as const, text }];
+
+  return {
+    id: uuidv4(),
+    success: true,
+    content,
+  };
 };
 
-// ==================== 5. 原位替换图片（换图不动版式） ====================
+// ==================== 6. 原位替换图片（换图不动版式） ====================
 
 export const replacePptImageDefinition: ToolDefinition = {
   name: 'wps_ppt_replace_ppt_image',
@@ -491,63 +446,34 @@ export const replacePptImageHandler: ToolHandler = async (
 
   // 定位参数至少给一个：都缺时 ps1 会 Shapes.Item($null) 直接炸（审计三.6），前置拦
   if (!shapeIndex && !name) {
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `要给 shapeIndex（图片形状序号，get_shapes 里看）或 name（形状名）至少一个，否则不知道替换哪张图` }],
-      error: 'Missing required parameter: shapeIndex / name（二选一）',
-    };
-  }
-
-  try {
-    const response = await wpsClient.executeMethod<{
-      success: boolean;
-      message: string;
-      name: string;
-      left: number;
-      top: number;
-      width: number;
-      height: number;
-    }>(
-      'replacePptImage',
-      { slideIndex, shapeIndex, name, filePath, path: filePath, imagePath: filePath },
-      WpsAppType.PRESENTATION
+    return fail(
+      `要给 shapeIndex（图片形状序号，get_shapes 里看）或 name（形状名）至少一个，否则不知道替换哪张图`,
+      'Missing required parameter: shapeIndex / name（二选一）'
     );
-
-    if (response.success && response.data) {
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [
-          {
-            type: 'text',
-            text: `图片已原位替换（位置尺寸不变）！\n幻灯片: 第 ${slideIndex} 页\n新图: ${filePath}\n位置: (${Math.round(response.data.left)}, ${Math.round(response.data.top)})  尺寸: ${Math.round(response.data.width)} x ${Math.round(response.data.height)}`,
-          },
-        ],
-      };
-    } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `替换图片失败: ${response.error}` }],
-        error: response.error,
-      };
-    }
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `替换图片出错: ${errMsg}` }],
-      error: errMsg,
-    };
   }
+
+  const r = await call<{
+    name: string;
+    left: number;
+    top: number;
+    width: number;
+    height: number;
+  }>(
+    'replacePptImage',
+    { slideIndex, shapeIndex, name, filePath, path: filePath, imagePath: filePath }
+  );
+  if (!r.ok || !r.data) return fail(errText('替换图片失败', r), r.error);
+  return ok(
+    `图片已原位替换（位置尺寸不变）！\n幻灯片: 第 ${slideIndex} 页\n新图: ${filePath}\n位置: (${Math.round(r.data.left)}, ${Math.round(r.data.top)})  尺寸: ${Math.round(r.data.width)} x ${Math.round(r.data.height)}`,
+    r.warnings
+  );
 };
 
 /**
  * 导出所有图片相关的Tools
  */
 export const imageTools: RegisteredTool[] = [
+  { definition: insertImageDefinition, handler: insertImageHandler },
   { definition: insertPptImageDefinition, handler: insertPptImageHandler },
   { definition: deletePptImageDefinition, handler: deletePptImageHandler },
   { definition: setImageStyleDefinition, handler: setImageStyleHandler },

@@ -14,7 +14,6 @@
  * - wps_ppt_create_timeline: 创建时间线
  */
 
-import { v4 as uuidv4 } from 'uuid';
 import {
   ToolDefinition,
   ToolHandler,
@@ -22,8 +21,7 @@ import {
   ToolCategory,
   RegisteredTool,
 } from '../../types/tools';
-import { wpsClient } from '../../client/wps-client';
-import { WpsAppType } from '../../types/wps';
+import { call, ok, fail, errText } from './helpers';
 
 // ==================== 1. 插入图表 ====================
 
@@ -90,60 +88,30 @@ export const insertPptChartHandler: ToolHandler = async (
   const { slideIndex, chartType, data, left, top } = args as {
     slideIndex: number;
     chartType: string;
-    data: Record<string, unknown>;
+    data?: Record<string, unknown>;
     left?: number;
     top?: number;
   };
 
-  try {
-    const response = await wpsClient.executeMethod<{
-      success: boolean;
-      message: string;
-      chartIndex: number;
-    }>(
-      'insertPptChart',
-      { slideIndex, chartType, data, left, top },
-      WpsAppType.PRESENTATION
-    );
+  const r = await call<{ chartIndex: number }>(
+    'insertPptChart',
+    { slideIndex, chartType, data, left, top }
+  );
+  if (!r.ok || !r.data) return fail(errText('插入图表失败', r), r.error);
+  const chartTypeName: Record<string, string> = {
+    bar: '柱状图',
+    line: '折线图',
+    pie: '饼图',
+    area: '面积图',
+    scatter: '散点图',
+    doughnut: '环形图',
+    radar: '雷达图',
+  };
 
-    if (response.success && response.data) {
-      const chartTypeName: Record<string, string> = {
-        bar: '柱状图',
-        line: '折线图',
-        pie: '饼图',
-        area: '面积图',
-        scatter: '散点图',
-        doughnut: '环形图',
-        radar: '雷达图',
-      };
-
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [
-          {
-            type: 'text',
-            text: `图表插入成功！\n幻灯片: 第 ${slideIndex} 页\n类型: ${chartTypeName[chartType] || chartType}\n图表索引: ${response.data.chartIndex}`,
-          },
-        ],
-      };
-    } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `插入图表失败: ${response.error}` }],
-        error: response.error,
-      };
-    }
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `插入图表出错: ${errMsg}` }],
-      error: errMsg,
-    };
-  }
+  return ok(
+    `图表插入成功！\n幻灯片: 第 ${slideIndex} 页\n类型: ${chartTypeName[chartType] || chartType}\n图表索引: ${r.data.chartIndex}`,
+    r.warnings
+  );
 };
 
 // ==================== 2. 设置图表数据 ====================
@@ -190,44 +158,12 @@ export const setPptChartDataHandler: ToolHandler = async (
     data: Record<string, unknown>;
   };
 
-  try {
-    const response = await wpsClient.executeMethod<{
-      success: boolean;
-      message: string;
-    }>(
-      'setPptChartData',
-      { slideIndex, chartIndex, data },
-      WpsAppType.PRESENTATION
-    );
-
-    if (response.success) {
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [
-          {
-            type: 'text',
-            text: `图表数据更新成功！\n幻灯片: 第 ${slideIndex} 页\n图表: 第 ${chartIndex} 个`,
-          },
-        ],
-      };
-    } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `更新图表数据失败: ${response.error}` }],
-        error: response.error,
-      };
-    }
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `更新图表数据出错: ${errMsg}` }],
-      error: errMsg,
-    };
-  }
+  const r = await call('setPptChartData', { slideIndex, chartIndex, data });
+  if (!r.ok) return fail(errText('更新图表数据失败', r), r.error);
+  return ok(
+    `图表数据更新成功！\n幻灯片: 第 ${slideIndex} 页\n图表: 第 ${chartIndex} 个`,
+    r.warnings
+  );
 };
 
 // ==================== 3. 设置图表样式 ====================
@@ -282,45 +218,13 @@ export const setPptChartStyleHandler: ToolHandler = async (
     style: Record<string, unknown>;
   };
 
-  try {
-    const response = await wpsClient.executeMethod<{
-      success: boolean;
-      message: string;
-    }>(
-      'setPptChartStyle',
-      { slideIndex, chartIndex, style },
-      WpsAppType.PRESENTATION
-    );
-
-    if (response.success) {
-      const styleItems = Object.keys(style).join('、');
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [
-          {
-            type: 'text',
-            text: `图表样式设置成功！\n幻灯片: 第 ${slideIndex} 页\n图表: 第 ${chartIndex} 个\n已更新属性: ${styleItems}`,
-          },
-        ],
-      };
-    } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `设置图表样式失败: ${response.error}` }],
-        error: response.error,
-      };
-    }
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `设置图表样式出错: ${errMsg}` }],
-      error: errMsg,
-    };
-  }
+  const r = await call('setPptChartStyle', { slideIndex, chartIndex, style });
+  if (!r.ok) return fail(errText('设置图表样式失败', r), r.error);
+  const styleItems = Object.keys(style).join('、');
+  return ok(
+    `图表样式设置成功！\n幻灯片: 第 ${slideIndex} 页\n图表: 第 ${chartIndex} 个\n已更新属性: ${styleItems}`,
+    r.warnings
+  );
 };
 
 // ==================== 4. 创建流程图 ====================
@@ -395,46 +299,15 @@ export const createFlowChartHandler: ToolHandler = async (
     connections?: Array<Record<string, unknown>>;
   };
 
-  try {
-    const response = await wpsClient.executeMethod<{
-      success: boolean;
-      message: string;
-      nodeCount: number;
-      connectionCount: number;
-    }>(
-      'createFlowChart',
-      { slideIndex, nodes, connections: connections || [] },
-      WpsAppType.PRESENTATION
-    );
-
-    if (response.success && response.data) {
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [
-          {
-            type: 'text',
-            text: `流程图创建成功！\n幻灯片: 第 ${slideIndex} 页\n节点数: ${response.data.nodeCount} 个\n连接线: ${response.data.connectionCount} 条`,
-          },
-        ],
-      };
-    } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `创建流程图失败: ${response.error}` }],
-        error: response.error,
-      };
-    }
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `创建流程图出错: ${errMsg}` }],
-      error: errMsg,
-    };
-  }
+  const r = await call<{ nodeCount: number; connectionCount: number }>(
+    'createFlowChart',
+    { slideIndex, nodes, connections: connections || [] }
+  );
+  if (!r.ok || !r.data) return fail(errText('创建流程图失败', r), r.error);
+  return ok(
+    `流程图创建成功！\n幻灯片: 第 ${slideIndex} 页\n节点数: ${r.data.nodeCount} 个\n连接线: ${r.data.connectionCount} 条`,
+    r.warnings
+  );
 };
 
 // ==================== 5. 创建组织架构图 ====================
@@ -481,46 +354,12 @@ export const createOrgChartHandler: ToolHandler = async (
     data: Record<string, unknown>;
   };
 
-  try {
-    const response = await wpsClient.executeMethod<{
-      success: boolean;
-      message: string;
-      nodeCount: number;
-      levelCount: number;
-    }>(
-      'createOrgChart',
-      { slideIndex, data },
-      WpsAppType.PRESENTATION
-    );
-
-    if (response.success && response.data) {
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [
-          {
-            type: 'text',
-            text: `组织架构图创建成功！\n幻灯片: 第 ${slideIndex} 页\n节点数: ${response.data.nodeCount} 个\n层级数: ${response.data.levelCount} 层`,
-          },
-        ],
-      };
-    } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `创建组织架构图失败: ${response.error}` }],
-        error: response.error,
-      };
-    }
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `创建组织架构图出错: ${errMsg}` }],
-      error: errMsg,
-    };
-  }
+  const r = await call<{ nodeCount: number; levelCount: number }>('createOrgChart', { slideIndex, data });
+  if (!r.ok || !r.data) return fail(errText('创建组织架构图失败', r), r.error);
+  return ok(
+    `组织架构图创建成功！\n幻灯片: 第 ${slideIndex} 页\n节点数: ${r.data.nodeCount} 个\n层级数: ${r.data.levelCount} 层`,
+    r.warnings
+  );
 };
 
 // ==================== 6. 创建时间线 ====================
@@ -576,45 +415,12 @@ export const createTimelineHandler: ToolHandler = async (
     events: Array<Record<string, unknown>>;
   };
 
-  try {
-    const response = await wpsClient.executeMethod<{
-      success: boolean;
-      message: string;
-      eventCount: number;
-    }>(
-      'createTimeline',
-      { slideIndex, events },
-      WpsAppType.PRESENTATION
-    );
-
-    if (response.success && response.data) {
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [
-          {
-            type: 'text',
-            text: `时间线创建成功！\n幻灯片: 第 ${slideIndex} 页\n事件数: ${response.data.eventCount} 个`,
-          },
-        ],
-      };
-    } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `创建时间线失败: ${response.error}` }],
-        error: response.error,
-      };
-    }
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `创建时间线出错: ${errMsg}` }],
-      error: errMsg,
-    };
-  }
+  const r = await call<{ eventCount: number }>('createTimeline', { slideIndex, events });
+  if (!r.ok || !r.data) return fail(errText('创建时间线失败', r), r.error);
+  return ok(
+    `时间线创建成功！\n幻灯片: 第 ${slideIndex} 页\n事件数: ${r.data.eventCount} 个`,
+    r.warnings
+  );
 };
 
 /**
