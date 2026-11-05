@@ -27,7 +27,7 @@
     "gen:install-hash": "node scripts/manual/gen-install-hash.js",
     "gen:docs": "node scripts/manual/gen-versions.js && node scripts/manual/gen-tool-verification.js && node scripts/manual/gen-doc-stats.js && node scripts/manual/gen-tools-doc.js",
     "changeset": "changeset",
-    "version": "changeset version && node scripts/manual/gen-doc-stats.js",
+    "version": "changeset version && node scripts/manual/gen-doc-stats.js && node scripts/manual/gen-versions.js",
     "release": "npm run build && changeset publish",
     "test": "node scripts/manual/verify-all.js --all"
   },
