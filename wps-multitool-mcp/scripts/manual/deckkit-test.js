@@ -85,7 +85,11 @@ console.log('\n=== 10 页型展开（纯函数，坐标/字号/序列）===');
 // imageText
 {
   const p = expandDeck({ slides: [{ kind: 'imageText', heading: '图文', imagePath: 'C:/tmp/x.png', points: ['要点'] }] })[0];
-  ok('imageText 走 insert_ppt_image（非 SVG 非占位）', p.some((x) => x.tool === 'wps_ppt_insert_ppt_image' && x.args.imagePath === 'C:/tmp/x.png'));
+  ok('imageText 走 insert_image（大项②同步：新规范名 + path 参数）', p.some((x) => x.tool === 'wps_ppt_insert_image' && x.args.path === 'C:/tmp/x.png'));
+  // 合并轮 A 段缺陷钉死：图片步必须计入形状序号——图片=#3，其后的要点文本框=#4
+  // （缺陷复盘：SHAPE_CREATING_TOOLS 漏了新名 → 图片步不计数 → 文本框 shapeIndex 少算一格 → 溢出检查测错形状）
+  eq('imageText 文本框记录 shapeIndex（图片步被计入：#2 标题、#4 要点）',
+    pageTextBoxRecords(p).map((r) => r.shapeIndex), [2, 4]);
   let threw = '';
   try { expandDeck({ slides: [{ kind: 'imageText', heading: 'x' }] }); } catch (e) { threw = e.message; }
   ok('缺 imagePath → 拒绝', /imagePath/.test(threw), threw.slice(0, 50));
@@ -263,7 +267,10 @@ console.log('\n=== 排版纪律（未知 kind / 页数上限）===');
     ok('createPresentation 恰好一次（漏发是 B5-T3 首跑真 bug，此断言防回归）', m.comLog.filter((x) => x.action === 'createPresentation').length === 1);
     const pageActionCalls = m.comLog.filter((x) => x.action !== 'getActiveDocumentState').length;
     // E3 口径：create 1 + add_slide 2 + 标题页 6 + 要点页 7 + 溢出读回 2（每页一次 getTextBoxes）
-    ok('页面动作序列完整（create 1 + add_slide 2 + 标题页 6 + 要点页 7 + 溢出读回 2 = 18，快照探测另计）', pageActionCalls === 18, 'pageActions=' + pageActionCalls);
+    // 体验修复轮 A 口径：每个 add_shape/add_textbox 后一次 getShapes 索引回读（9 次：标题 3 + 要点 6）
+    ok('页面动作序列完整（create 1 + add_slide 2 + 标题页 6 + 要点页 7 + 溢出读回 2 + 索引回读 9 = 27，快照探测另计）', pageActionCalls === 27, 'pageActions=' + pageActionCalls);
+    ok('索引回读每 add 一次（getShapes ×9）', m.comLog.filter((x) => x.action === 'getShapes').length === 9);
+    ok('回读落空不打印 undefined（回包无 undefined 字样）', !/undefined/.test(text));
     const adds = m.comLog.filter((x) => x.action === 'addSlide');
     ok('add_slide 两次且 layout=blank（干净页，形状计数前提）', adds.length === 2 && adds.every((x) => x.params.layout === 'blank'), JSON.stringify(adds.map((x) => x.params.layout)));
     ok('溢出读回每页恰好一次（getTextBoxes ×2）', m.comLog.filter((x) => x.action === 'getTextBoxes').length === 2);
@@ -320,6 +327,22 @@ console.log('\n=== 排版纪律（未知 kind / 页数上限）===');
       a0 ? `left=${a0.params.left} top=${a0.params.top} err=${r0.error || '-'}` : '未捕获');
   }
 
+  // 顺车（微轮 · PPT 定位去 Active 化）：get_table_cell 读回 value——
+  // ps1 回的是 value，TS 历史读 text → 恒 undefined。两个键都接（value 优先），此处 mock 钉死
+  {
+    wpsClientMod.wpsClient.executeMethod = async (action, params) => {
+      if (action === 'getPptTableCell') return { success: true, data: { value: '格子里的值' } };
+      return { success: true, data: {} };
+    };
+    const rv = await toolRegistry.callTool({
+      id: 'cell-value-priority',
+      name: 'wps_ppt_get_table_cell',
+      arguments: { slideIndex: 1, tableIndex: 1, row: 1, col: 1 },
+    });
+    ok('get_table_cell 读回 value（ps1 键，非历史 text 键）',
+      rv.success === true && rv.content[0].text.includes('格子里的值') && !rv.content[0].text.includes('undefined'),
+      (rv.content[0].text || '').split('\n').pop());
+  }
 
 
   /* ---- 6. E3 溢出检查：三路 + 降级两路 ---- */
@@ -373,6 +396,27 @@ console.log('\n=== 排版纪律（未知 kind / 页数上限）===');
     ok('D2 读回失败 → 降级且 success=true', rd2.success === true && /降级/.test(rd2.content[0].text));
     eq('D2 degraded=true', jd2.overflow.degraded, true);
     eq('D2 降级警告只记一条（不逐页刷屏）', jd2.overflow.warnings.length, 1);
+
+    // E. 读不到≠没超（体验修复轮 A）：单个形状 boundHeight 回 null（老桥对个别形状量不出）——
+    // 该块不计入溢出判定，但按页出"无法测量"警告；其余可测的照常检查（不整体降级）
+    const e = makeDeckMock();
+    const origFn = e.fn;
+    wpsClientMod.wpsClient.executeMethod = async (action, params) => {
+      const r = await origFn(action, params);
+      if (action === 'getTextBoxes' && r.success && r.data?.textBoxes?.length) {
+        r.data.textBoxes[0] = { ...r.data.textBoxes[0], boundHeight: null, boundWidth: null };
+      }
+      return r;
+    };
+    const re = await handler({ deck: { slides: [{ kind: 'bullets', heading: 'h', points: ['可测的一', '长'.repeat(55)] }] } });
+    ok('E 读不到≠没超：success=true 且按页出"无法测量"警告',
+      re.success === true && /无法测量/.test(re.content[0].text));
+    const je = jsonTail(re);
+    ok('E 其余可测的照常检查（不整体降级，遗留 1 处）',
+      je.overflow.degraded === false && je.overflow.checkedPages === 1 && je.overflow.issues.length === 1,
+      `degraded=${je.overflow.degraded} checked=${je.overflow.checkedPages} issues=${je.overflow.issues.length}`);
+    // 不可测 1 条；55 字点走缩字修复路（A 案），修完不留溢出警告 → 共 1 条
+    eq('E 不可测警告恰 1 条（缩字修复路不留溢出警告）', je.overflow.warnings.length, 1);
   }
 
   /* ---- 7. E3 主题冒烟：三套各出一份（title 页走真入口）---- */

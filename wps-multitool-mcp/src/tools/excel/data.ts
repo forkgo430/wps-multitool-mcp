@@ -36,7 +36,7 @@ import { WpsAppType } from '../../types/wps';
  */
 export const readRangeDefinition: ToolDefinition = {
   name: 'wps_excel_read_range',
-  description: '读取Excel指定范围的单元格数据，返回二维数组格式的数据。',
+  description: '读取Excel指定范围的单元格数据，返回二维数组格式的数据。超过 maxRows（默认 200）行自动截断并提示剩余行数。',
   category: ToolCategory.SPREADSHEET,
   inputSchema: {
     type: 'object',
@@ -53,6 +53,10 @@ export const readRangeDefinition: ToolDefinition = {
         type: 'boolean',
         description: '是否将第一行作为表头返回，默认false',
       },
+      maxRows: {
+        type: 'number',
+        description: '最多返回的行数（体验修复轮 B，默认 200），超出截断并提示剩余',
+      },
     },
     required: ['range'],
   },
@@ -66,6 +70,9 @@ export const readRangeHandler: ToolHandler = async (
     sheet?: string;
     include_header?: boolean;
   };
+  // 回包瘦身（体验修复轮 B · 方案 §4.4，原则"不丢信息只改默认"）：默认 200 行封顶，
+  // 超出截断并明示剩余——全量数据调用方可用 maxRows 放大。200 以内行为逐字不变。
+  const maxRows = typeof args.maxRows === 'number' && args.maxRows > 0 ? Math.floor(args.maxRows) : 200;
 
   try {
     const response = await wpsClient.getRangeData(sheet || 0, range);
@@ -83,19 +90,24 @@ export const readRangeHandler: ToolHandler = async (
       };
     }
 
-    // 格式化输出
-    let output = `范围 ${range} 的数据（${response.length}行 x ${response[0]?.length || 0}列）：\n\n`;
+    // 截断：超出 maxRows 的行切掉，但总行数如实带回
+    const totalRows = response.length;
+    const rows = totalRows > maxRows ? response.slice(0, maxRows) : response;
+    const truncated = totalRows - rows.length;
 
-    if (include_header && response.length > 0) {
-      const headers = response[0] as unknown[];
+    // 格式化输出
+    let output = `范围 ${range} 的数据（${totalRows}行 x ${rows[0]?.length || 0}列）${truncated ? `：仅展示前 ${rows.length} 行，剩余 ${truncated} 行未展示——需要完整数据用 maxRows 放大或缩小 range` : ''}：\n\n`;
+
+    if (include_header && rows.length > 0) {
+      const headers = rows[0] as unknown[];
       output += `表头: ${headers.join(' | ')}\n`;
       output += '-'.repeat(50) + '\n';
 
-      for (let i = 1; i < response.length; i++) {
-        output += `第${i}行: ${(response[i] as unknown[]).join(' | ')}\n`;
+      for (let i = 1; i < rows.length; i++) {
+        output += `第${i}行: ${(rows[i] as unknown[]).join(' | ')}\n`;
       }
     } else {
-      response.forEach((row, index) => {
+      rows.forEach((row, index) => {
         output += `第${index + 1}行: ${(row as unknown[]).join(' | ')}\n`;
       });
     }

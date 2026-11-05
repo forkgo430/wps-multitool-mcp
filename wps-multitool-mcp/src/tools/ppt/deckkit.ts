@@ -283,7 +283,7 @@ const pageSteps: Record<string, (slide: number, s: any, T: DeckTypoCtx) => DeckS
     if (!s.imagePath) throw new Error('imageText 页需要 imagePath');
     return [
       ...headingBand(slide, s.heading, T),
-      { tool: 'wps_ppt_insert_ppt_image', args: { slideIndex: slide, imagePath: s.imagePath, left: T.margin, top: T.bodyTop, width: 420, height: 340 } },
+      { tool: 'wps_ppt_insert_image', args: { slideIndex: slide, path: s.imagePath, left: T.margin, top: T.bodyTop, width: 420, height: 340 } },
       textbox(slide, { left: T.margin + 440, top: T.bodyTop, width: T.slideWidth - T.margin * 2 - 440, height: 340, text: (s.points || []).map((p: string, i: number) => `${i + 1}. ${p}`).join('\n'), fontSize: T.bodyFont, fontName: T.theme.fontPair.body }),
     ];
   },
@@ -434,10 +434,15 @@ export const getTextboxMetricsHandler: ToolHandler = async (args) => {
       };
     }
     const list = response.data?.textBoxes ?? [];
+    // 降级标记（体验修复轮 A）：boundHeight 拿得到 = 桥是 E3 增补后的；拿不到 = 老桥，
+    // 消费方（溢出检查）必须把"读不到"与"没超"分开表述，不许把读不到当没超。
+    const boundSupported = list.some(
+      (x) => x && typeof x === 'object' && x.boundHeight !== undefined && x.boundHeight !== null
+    );
     return {
       id: uuidv4(),
       success: true,
-      content: [{ type: 'text', text: JSON.stringify({ slideIndex, textBoxes: list }) }],
+      content: [{ type: 'text', text: JSON.stringify({ slideIndex, boundSupported, textBoxes: list }) }],
     };
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
@@ -454,11 +459,14 @@ export const getTextboxMetricsHandler: ToolHandler = async (args) => {
 // 生成后溢出检查（E3）：BoundHeight 实际文字高度 vs 帧高；超框 → warnings + 缩字一档重排复测一次
 // ============================================================================
 
-/** 每页的文本框静态记录（shapeIndex 按 SHAPE_CREATING_TOOLS 次序数出，与 COM Shapes 序号同空间） */
+/** 每页的文本框静态记录（shapeIndex 按 SHAPE_CREATING_TOOLS 次序数出，与 COM Shapes 序号同空间）。
+ *  【大项②判定缺陷修复 2026-11-04】图片步旧名 insert_ppt_image 已转别名，deckkit 同步改发
+ *  wps_ppt_insert_image——本表没跟着换，导致 imageText 页图片步不被计数、其后的文本框
+ *  shapeIndex 少算一格、溢出检查测错形状。 */
 const SHAPE_CREATING_TOOLS = new Set([
   'wps_ppt_add_shape',
   'wps_ppt_add_textbox',
-  'wps_ppt_insert_ppt_image',
+  'wps_ppt_insert_image',
   'wps_ppt_insert_ppt_chart',
 ]);
 
@@ -549,9 +557,17 @@ async function checkPageOverflow(slide: number, steps: DeckStep[]): Promise<{ is
   const issues: DeckOverflowIssue[] = [];
   const warnings: string[] = [];
   const shrinking: Array<{ rec: DeckTextBoxRecord; m: TextBoxMetric; target: number }> = [];
+  // "读不到"≠"没超"（体验修复轮 A）：桥回传 boundHeight 为 null 的块不计入溢出判定，
+  // 但必须按页如实说一声，不许静默漏过
+  let unmeasurable = 0;
   for (const rec of records) {
     const m = metrics.find((x) => x.index === rec.shapeIndex);
-    if (!m || typeof m.boundHeight !== 'number' || !isOverflow(m)) continue;
+    if (!m) continue;
+    if (typeof m.boundHeight !== 'number') {
+      unmeasurable += 1;
+      continue;
+    }
+    if (!isOverflow(m)) continue;
     const cur = typeof m.fontSize === 'number' && m.fontSize > 0 ? m.fontSize : rec.fontSize;
     const target = Math.max(cur - DECK_OVERFLOW.fontStep, DECK_TYPO.bodyFontMin);
     if (target < cur) {
@@ -560,6 +576,11 @@ async function checkPageOverflow(slide: number, steps: DeckStep[]): Promise<{ is
       issues.push({ slide, shapeIndex: rec.shapeIndex, snippet: snippetOf(rec.text), frameHeight: m.height ?? null, boundHeight: m.boundHeight, fixed: false, note: '已达正文字号下限，不强改' });
       warnings.push(`第 ${slide} 页第 ${rec.shapeIndex} 块文字溢出（帧高 ${m.height}pt/实际 ${m.boundHeight}pt）："${snippetOf(rec.text)}"——已达正文字号下限 ${DECK_TYPO.bodyFontMin}pt，请手工调整`);
     }
+  }
+  if (unmeasurable > 0) {
+    warnings.push(
+      `第 ${slide} 页有 ${unmeasurable} 块文字无法测量（读回 BoundHeight 为空），未计入溢出检查——这与"没超框"是两回事，建议 wps_ppt_get_textbox_metrics 人工看一眼`
+    );
   }
   if (shrinking.length) {
     for (const s of shrinking) {

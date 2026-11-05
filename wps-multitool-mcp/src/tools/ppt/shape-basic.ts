@@ -32,7 +32,7 @@ import {
   ToolCategory,
   RegisteredTool,
 } from '../../types/tools';
-import { call, ok, fail, errText } from './helpers';
+import { call, ok, fail, errText, shapeIndexByName } from './helpers';
 
 // ==================== 1. 添加形状 ====================
 
@@ -71,19 +71,19 @@ export const addShapeDefinition: ToolDefinition = {
       },
       left: {
         type: 'number',
-        description: '左边距（像素），默认100',
+        description: '左边距（磅），默认100',
       },
       top: {
         type: 'number',
-        description: '上边距（像素），默认100',
+        description: '上边距（磅），默认100',
       },
       width: {
         type: 'number',
-        description: '宽度（像素），默认100',
+        description: '宽度（磅），默认100',
       },
       height: {
         type: 'number',
-        description: '高度（像素），默认100',
+        description: '高度（磅），默认100',
       },
       text: {
         type: 'string',
@@ -113,8 +113,8 @@ export const addShapeHandler: ToolHandler = async (
   };
 
   const r = await call<{
-    name: string;
-    slideIndex: number;
+    name?: string;
+    slideIndex?: number;
   }>(
     'addShape',
     {
@@ -130,7 +130,7 @@ export const addShapeHandler: ToolHandler = async (
       fillColor,
     }
   );
-  if (!r.ok || !r.data) return fail(errText('添加形状失败', r), r.error);
+  if (!r.ok) return fail(errText('添加形状失败', r), r.error);
   const shapeNameMap: Record<string, string> = {
     rectangle: '矩形', oval: '椭圆', triangle: '三角形', diamond: '菱形',
     pentagon: '五边形', hexagon: '六边形', arrow: '箭头', star: '星形',
@@ -138,10 +138,19 @@ export const addShapeHandler: ToolHandler = async (
   };
   const typeName = shapeNameMap[type || 'rectangle'] || type;
 
-  return ok(
-    `形状添加成功！\n幻灯片: 第 ${r.data.slideIndex} 页\n形状类型: ${typeName}\n形状名称: ${r.data.name}${text ? `\n文本: ${text}` : ''}${fillColor ? `\n填充色: ${fillColor}` : ''}`,
-    r.warnings
-  );
+  // 回包逐项拼：数据缺失就不打印该行（体验修复轮 A——此前"第 undefined 页、名称 undefined"就是这么来的）
+  const parts: string[] = [];
+  if (r.data?.slideIndex !== undefined) parts.push(`幻灯片: 第 ${r.data.slideIndex} 页`);
+  parts.push(`形状类型: ${typeName}`);
+  if (r.data?.name) {
+    parts.push(`形状名称: ${r.data.name}`);
+    const idx = await shapeIndexByName(r.data.slideIndex ?? slideIndex ?? 1, r.data.name);
+    if (idx !== undefined) parts.push(`形状索引: ${idx}（后续 set_shape_text / set_animation 用）`);
+  }
+  if (text) parts.push(`文本: ${text}`);
+  if (fillColor) parts.push(`填充色: ${fillColor}`);
+
+  return ok(`形状添加成功！\n${parts.join('\n')}`, r.warnings);
 };
 
 // ==================== 2. 添加文本框 ====================
@@ -164,19 +173,19 @@ export const addTextboxDefinition: ToolDefinition = {
       },
       left: {
         type: 'number',
-        description: '左边距（像素），默认100',
+        description: '左边距（磅），默认100',
       },
       top: {
         type: 'number',
-        description: '上边距（像素），默认100',
+        description: '上边距（磅），默认100',
       },
       width: {
         type: 'number',
-        description: '宽度（像素），默认200',
+        description: '宽度（磅），默认200',
       },
       height: {
         type: 'number',
-        description: '高度（像素），默认50',
+        description: '高度（磅），默认50',
       },
       text: {
         type: 'string',
@@ -210,8 +219,8 @@ export const addTextboxHandler: ToolHandler = async (
   };
 
   const r = await call<{
-    name: string;
-    slideIndex: number;
+    name?: string;
+    slideIndex?: number;
   }>(
     'addTextBox',
     {
@@ -226,11 +235,20 @@ export const addTextboxHandler: ToolHandler = async (
       fontName,
     }
   );
-  if (!r.ok || !r.data) return fail(errText('添加文本框失败', r), r.error);
-  return ok(
-    `文本框添加成功！\n幻灯片: 第 ${r.data.slideIndex} 页\n名称: ${r.data.name}${text ? `\n内容: "${text}"` : ''}${fontSize ? `\n字号: ${fontSize}` : ''}${fontName ? `\n字体: ${fontName}` : ''}`,
-    r.warnings
-  );
+  if (!r.ok) return fail(errText('添加文本框失败', r), r.error);
+  // 回包逐项拼：数据缺失就不打印该行（同 add_shape，体验修复轮 A）
+  const parts: string[] = [];
+  if (r.data?.slideIndex !== undefined) parts.push(`幻灯片: 第 ${r.data.slideIndex} 页`);
+  if (r.data?.name) {
+    parts.push(`名称: ${r.data.name}`);
+    const idx = await shapeIndexByName(r.data.slideIndex ?? slideIndex ?? 1, r.data.name);
+    if (idx !== undefined) parts.push(`文本框索引: ${idx}（后续 set_textbox_text / set_textbox_style 用）`);
+  }
+  if (text) parts.push(`内容: "${text}"`);
+  if (fontSize) parts.push(`字号: ${fontSize}`);
+  if (fontName) parts.push(`字体: ${fontName}`);
+
+  return ok(`文本框添加成功！\n${parts.join('\n')}`, r.warnings);
 };
 
 // ==================== 3. 删除形状 ====================
@@ -278,7 +296,7 @@ export const getShapesDefinition: ToolDefinition = {
   name: 'wps_ppt_get_shapes',
   description: `获取幻灯片中所有形状的列表信息。
 
-返回每个形状的类型、位置、大小等属性。
+brief 模式（默认开，回包瘦身）：只回序号/名称/几何摘要；全量字段传 brief:false。
 
 使用场景：
 - "这页PPT有哪些形状"
@@ -291,6 +309,10 @@ export const getShapesDefinition: ToolDefinition = {
         type: 'number',
         description: '幻灯片页码（从1开始）',
       },
+      brief: {
+        type: 'boolean',
+        description: '回包瘦身开关（体验修复轮 B），默认 true 只回 index/name/几何摘要；false 回全量字段',
+      },
     },
     required: ['slideIndex'],
   },
@@ -299,8 +321,9 @@ export const getShapesDefinition: ToolDefinition = {
 export const getShapesHandler: ToolHandler = async (
   args: Record<string, unknown>
 ): Promise<ToolCallResult> => {
-  const { slideIndex } = args as {
+  const { slideIndex, brief = true } = args as {
     slideIndex: number;
+    brief?: boolean;
   };
 
   const r = await call<{
@@ -312,14 +335,19 @@ export const getShapesHandler: ToolHandler = async (
       top: number;
       width: number;
       height: number;
+      text?: string;
     }>;
   }>('getShapes', { slideIndex });
   if (!r.ok || !r.data) return fail(errText('获取形状列表失败', r), r.error);
   const shapes = r.data.shapes;
-  let output = `幻灯片第 ${slideIndex} 页的形状列表（共 ${shapes.length} 个）：\n\n`;
+  let output = `幻灯片第 ${slideIndex} 页的形状列表（共 ${shapes.length} 个${brief ? '，brief 摘要模式' : ''}）：\n\n`;
   shapes.forEach((s) => {
-    output += `[${s.index}] ${s.name} (${s.type})\n`;
-    output += `    位置: (${s.left}, ${s.top}) 大小: ${s.width} x ${s.height}\n`;
+    if (brief) {
+      output += `[${s.index}] ${s.name} — (${s.left}, ${s.top}) ${s.width} x ${s.height}\n`;
+    } else {
+      output += `[${s.index}] ${s.name} (${s.type})\n`;
+      output += `    位置: (${s.left}, ${s.top}) 大小: ${s.width} x ${s.height}\n`;
+    }
   });
 
   return ok(output, r.warnings);

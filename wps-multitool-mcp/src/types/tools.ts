@@ -139,6 +139,12 @@ export interface ToolWarning {
   step?: string;
   /** 给人看的一句话，说清"什么没成" */
   message: string;
+  /**
+   * 分级（体验修复轮 B）：'warning'（缺省）= 真部分失败/缺保险，渲染挂
+   * "[部分成功|…未按预期]"头；'info' = 不影响本次结果的提醒（快照提示、协作提醒、
+   * 修订模式建议），渲染降为"[备注]"轻头。分级只改展示权重，不删不藏任何一条。
+   */
+  severity?: 'info' | 'warning';
 }
 
 export interface ToolCallResult {

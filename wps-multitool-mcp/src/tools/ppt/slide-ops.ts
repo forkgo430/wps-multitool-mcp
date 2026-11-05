@@ -347,14 +347,18 @@ export const getSlideNotesHandler: ToolHandler = async (
 
 export const setSlideSizeDefinition: ToolDefinition = {
   name: 'wps_ppt_set_slide_size',
-  description: `设置演示文稿的幻灯片尺寸（按像素给，内部换算成 WPS 的磅）。
+  description: `设置演示文稿的幻灯片尺寸（单位：磅）。
 
-常用尺寸：
-- 标准(4:3): 宽960, 高720
-- 宽屏(16:9): 宽960, 高540
+**⚠️ v1.0.5 起单位为磅**（此前版本按像素收并自动 ×0.75 换算成磅）。
+迁移提示：16:9 的 960×540 数值恰好磅/像素相同，旧调用不受影响；
+4:3 旧写法 960×720 现在会得到更大的 960×720 磅版面——4:3 请改传 **720×540**。
+
+常用尺寸（磅）：
+- 标准(4:3): 宽720, 高540（10×7.5 英寸）
+- 宽屏(16:9): 宽960, 高540（13.3×7.5 英寸）
 - 宽屏(16:10): 宽960, 高600
-- A4横版: 宽1123, 高794
-- A4竖版: 宽794, 高1123
+- A4横版: 宽842, 高595
+- A4竖版: 宽595, 高842
 
 注意：改尺寸会重排整份文稿，元素可能溢出页面。改完建议 wps_ppt_export_slide_as_image 看一眼。
 
@@ -368,11 +372,11 @@ export const setSlideSizeDefinition: ToolDefinition = {
     properties: {
       width: {
         type: 'number',
-        description: '幻灯片宽度（像素，96 DPI；内部 ×0.75 换算成磅）',
+        description: '幻灯片宽度（磅）。v1.0.5 起为磅；16:9 用 960，4:3 用 720',
       },
       height: {
         type: 'number',
-        description: '幻灯片高度（像素，96 DPI；内部 ×0.75 换算成磅）',
+        description: '幻灯片高度（磅）。v1.0.5 起为磅；16:9 用 540，4:3 用 540',
       },
     },
     required: ['width', 'height'],
@@ -389,11 +393,12 @@ export const setSlideSizeHandler: ToolHandler = async (
 
   const r = await call(
     // 第 1 期第 2 章第 2 轮：这句原为「仅Windows支持」，是假注释 —— 该动作曾长期不存在于 ps1。第 6 轮已补 case，现在 Windows 上真能用。
+    // v1.0.5 起单位为磅（ps1 的 ×0.75 换算已按所有者裁定移除），schema 描述已同步。
     'setSlideSize',
     { width, height }
   );
   if (!r.ok) return fail(errText('设置幻灯片尺寸失败', r), r.error);
-  return ok(`幻灯片尺寸设置成功！\n宽度: ${width}px\n高度: ${height}px`, r.warnings);
+  return ok(`幻灯片尺寸设置成功！\n宽度: ${width} 磅\n高度: ${height} 磅`, r.warnings);
 };
 
 // ============================================================

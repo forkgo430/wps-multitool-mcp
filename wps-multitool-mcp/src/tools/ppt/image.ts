@@ -5,9 +5,9 @@
  * PPT图片Tools - 图片管理模块
  * 处理图片的插入、删除、样式设置以及幻灯片导出为位图操作
  *
- * 包含（6 个；insert_image 自 slide-ops.ts 迁入——风格统一+拆分轮，见 ppt-audit §三之二）：
+ * 包含（5 个；insert_image 自 slide-ops.ts 迁入——风格统一+拆分轮，见 ppt-audit §三之二）：
  * - wps_ppt_insert_image: 在幻灯片中插入图片（canonical，参数最全：path + width/height）
- * - wps_ppt_insert_ppt_image: 插入图片到幻灯片（DEPRECATED，待转别名）
+ * - wps_ppt_insert_ppt_image: 已转别名指向 insert_image（2026-11-03 大项②，见 tool-aliases.json）
  * - wps_ppt_delete_ppt_image: 删除幻灯片中的图片
  * - wps_ppt_set_image_style: 设置图片样式
  * - wps_ppt_export_slide_as_image: 将指定幻灯片导出为位图图片（PNG/JPG/GIF/BMP）
@@ -24,7 +24,7 @@ import {
   ToolCategory,
   RegisteredTool,
 } from '../../types/tools';
-import { call, ok, fail, errText } from './helpers';
+import { call, ok, fail, errText, shapeIndexByName } from './helpers';
 
 // ==================== 1. 插入图片（canonical） ====================
 
@@ -50,19 +50,19 @@ export const insertImageDefinition: ToolDefinition = {
       },
       left: {
         type: 'number',
-        description: '左边距（像素），默认100',
+        description: '左边距（磅），默认100',
       },
       top: {
         type: 'number',
-        description: '上边距（像素），默认100',
+        description: '上边距（磅），默认100',
       },
       width: {
         type: 'number',
-        description: '宽度（像素），不填则保持原始尺寸',
+        description: '宽度（磅），不填则保持原始尺寸',
       },
       height: {
         type: 'number',
-        description: '高度（像素），不填则保持原始尺寸',
+        description: '高度（磅），不填则保持原始尺寸',
       },
     },
     required: ['path'],
@@ -81,7 +81,7 @@ export const insertImageHandler: ToolHandler = async (
     height?: number;
   };
 
-  const r = await call<{ name: string; path: string }>(
+  const r = await call<{ name?: string; path?: string; slideIndex?: number }>(
     'insertPptImage',
     {
       slideIndex: slideIndex || 1,
@@ -93,80 +93,19 @@ export const insertImageHandler: ToolHandler = async (
       height: height ?? -1,
     }
   );
-  if (!r.ok || !r.data) return fail(errText('插入图片失败', r), r.error);
-  return ok(
-    `图片插入成功！\n幻灯片: 第 ${slideIndex || 1} 页\n图片名称: ${r.data.name}\n图片路径: ${r.data.path}`,
-    r.warnings
-  );
-};
-
-// ==================== 2. 插入图片（DEPRECATED 旧名） ====================
-
-export const insertPptImageDefinition: ToolDefinition = {
-  name: 'wps_ppt_insert_ppt_image',
-  description:
-    '[DEPRECATED·改用 wps_ppt_insert_image] 插入图片到幻灯片中。\n\n' +
-    '支持常见图片格式（PNG、JPG、BMP、GIF等）。可以指定图片的位置和大小，不指定则使用默认值。\n\n' +
-    '什么时候用：已被 wps_ppt_insert_image 取代（同一个 insertPptImage 动作），' +
-    '旧参数是 filePath，新工具必填 path —— 别两个混着用。',
-  category: ToolCategory.PRESENTATION,
-  inputSchema: {
-    type: 'object',
-    properties: {
-      slideIndex: {
-        type: 'number',
-        description: '幻灯片页码（从1开始）',
-      },
-      filePath: {
-        type: 'string',
-        description: '图片文件路径',
-      },
-      left: {
-        type: 'number',
-        description: '左边距（磅），可选',
-      },
-      top: {
-        type: 'number',
-        description: '上边距（磅），可选',
-      },
-      width: {
-        type: 'number',
-        description: '宽度（磅），可选，不指定则按原始比例',
-      },
-      height: {
-        type: 'number',
-        description: '高度（磅），可选，不指定则按原始比例',
-      },
-    },
-    required: ['slideIndex', 'filePath'],
-  },
-};
-
-export const insertPptImageHandler: ToolHandler = async (
-  args: Record<string, unknown>
-): Promise<ToolCallResult> => {
-  const { slideIndex, filePath, left, top, width, height } = args as {
-    slideIndex: number;
-    filePath: string;
-    left?: number;
-    top?: number;
-    width?: number;
-    height?: number;
-  };
-
-  // 参数对齐：底层读取 params.path，需同时发送 path/imagePath
-  const r = await call<{ imageIndex?: number }>(
-    'insertPptImage',
-    { slideIndex, filePath, path: filePath, imagePath: filePath, left, top, width, height }
-  );
   if (!r.ok) return fail(errText('插入图片失败', r), r.error);
-  let text = `图片插入成功！\n幻灯片: 第 ${slideIndex} 页\n文件: ${filePath}`;
-  if (left !== undefined && top !== undefined) text += `\n位置: (${left}, ${top})`;
-  if (width !== undefined) text += `\n宽度: ${width}`;
-  if (height !== undefined) text += `\n高度: ${height}`;
-  if (r.data?.imageIndex) text += `\n图片索引: ${r.data.imageIndex}`;
+  // 回包逐项拼：数据缺失就不打印该行（体验修复轮 A，同 add_shape 的守卫与索引回读）
+  const parts: string[] = [];
+  const effSlide = r.data?.slideIndex ?? slideIndex ?? 1;
+  parts.push(`幻灯片: 第 ${effSlide} 页`);
+  if (r.data?.name) {
+    parts.push(`图片名称: ${r.data.name}`);
+    const idx = await shapeIndexByName(effSlide, r.data.name);
+    if (idx !== undefined) parts.push(`图片索引: ${idx}（后续 set_image_style / delete_ppt_image 用）`);
+  }
+  if (r.data?.path) parts.push(`图片路径: ${r.data.path}`);
 
-  return ok(text, r.warnings);
+  return ok(`图片插入成功！\n${parts.join('\n')}`, r.warnings);
 };
 
 // ==================== 3. 删除图片 ====================
@@ -338,6 +277,10 @@ export const exportSlideAsImageDefinition: ToolDefinition = {
         type: 'number',
         description: '输出图片高度（像素），默认 720',
       },
+      inline: {
+        type: 'boolean',
+        description: '是否把导出的图内联进回包（体验修复轮 B 开关，默认 true 保持现状；false 只回路径省带宽）',
+      },
     },
     required: ['slideIndex', 'outputPath'],
   },
@@ -346,12 +289,13 @@ export const exportSlideAsImageDefinition: ToolDefinition = {
 export const exportSlideAsImageHandler: ToolHandler = async (
   args: Record<string, unknown>
 ): Promise<ToolCallResult> => {
-  const { slideIndex, outputPath, format, width, height } = args as {
+  const { slideIndex, outputPath, format, width, height, inline = true } = args as {
     slideIndex: number;
     outputPath: string;
     format?: string;
     width?: number;
     height?: number;
+    inline?: boolean;
   };
 
   // 归一化 format：JPEG 在 WPS COM 中实际对应 JPG 滤镜
@@ -384,9 +328,13 @@ export const exportSlideAsImageHandler: ToolHandler = async (
     `尺寸: ${finalWidth} x ${finalHeight}\n` +
     `输出路径: ${outputPath}`;
 
-  // 图像内联（2026-10-26 对标）：把导出的图作为工具结果一并返回，AI 能直接"看到"效果自查
-  const image = await imageContentBlock(outputPath, filterName === 'PNG' ? 'image/png' : 'image/jpeg');
-  const content: ToolContent[] = image ? [{ type: 'text' as const, text }, image] : [{ type: 'text' as const, text }];
+  // 图像内联（2026-10-26 对标）：把导出的图作为工具结果一并返回，AI 能直接"看到"效果自查。
+  // inline 开关（体验修复轮 B）：默认 true 保持现状；1.5MB 上限逻辑不变。
+  const content: ToolContent[] = [{ type: 'text' as const, text }];
+  if (inline) {
+    const image = await imageContentBlock(outputPath, filterName === 'PNG' ? 'image/png' : 'image/jpeg');
+    if (image) content.push(image);
+  }
 
   return {
     id: uuidv4(),
@@ -474,7 +422,6 @@ export const replacePptImageHandler: ToolHandler = async (
  */
 export const imageTools: RegisteredTool[] = [
   { definition: insertImageDefinition, handler: insertImageHandler },
-  { definition: insertPptImageDefinition, handler: insertPptImageHandler },
   { definition: deletePptImageDefinition, handler: deletePptImageHandler },
   { definition: setImageStyleDefinition, handler: setImageStyleHandler },
   { definition: exportSlideAsImageDefinition, handler: exportSlideAsImageHandler },

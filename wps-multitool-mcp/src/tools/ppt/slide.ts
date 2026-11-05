@@ -10,7 +10,7 @@
  * - wps_ppt_beautify: 美化幻灯片（核心功能）
  * - wps_ppt_unify_font: 统一字体
  * - wps_ppt_set_font_color: 设置文字颜色
- * - wps_ppt_align_objects: 对齐幻灯片中的对象
+ * - wps_ppt_align_objects: 已转别名指向 align_shapes（2026-11-04 大项②裁决砍值）
  */
 
 import {
@@ -102,45 +102,61 @@ export const addSlideHandler: ToolHandler = async (
  */
 export const beautifyDefinition: ToolDefinition = {
   name: 'wps_ppt_beautify',
-  description: `一键美化幻灯片，优化排版、配色、字体和间距。
+  description: `美化幻灯片（合并轮后是美化族的唯一入口；op 三分支，覆盖原 beautify / auto_beautify_slide / beautify_all_slides 三工具）。
 
-支持的配色方案：
+**op 三分支**：
+- \`op:'quick'\`（默认）：快速美化——统一字体 + 配色，可单页（slideIndex）或全篇（beautifyAll:true）
+- \`op:'auto'\`：单页深度优化——字体/间距/对齐/配色/布局/字号逐项处理（原 auto_beautify_slide）
+- \`op:'style'\`：全篇风格统一——business/tech/creative/minimal/academic 五种（原 beautify_all_slides）
+
+支持的配色方案（quick）：
 - business: 商务风（深蓝+灰色）
 - tech: 科技风（蓝色+绿色）
 - creative: 创意风（珊瑚红+金色）
 - minimal: 简约风（黑白灰）
 
-美化【实际会做】的操作：
+quick【实际会做】的操作：
 - 统一字体（改所有有文字的文本框的字体名）
 - 应用配色方案（按字号分标题/正文上色）
 
-注意：不做自动对齐，也不动行距/间距 —— 这些改起来没有唯一正确答案，
-一键"优化"很容易把用户排版搞乱。要精确调版面用 align_shapes / set_shape_position。
+注意：quick 不做自动对齐，也不动行距/间距 —— 这些改起来没有唯一正确答案，
+一键"优化"很容易把用户排版搞乱。要精确调版面用 align_shapes / set_shape_position；
+要深度排版优化用 op:'auto'。
 
 使用场景：
-- "美化这页PPT"
-- "用商务风格优化一下"
-- "把PPT弄好看点"`,
+- "美化这页PPT" → { op:'quick', slideIndex:1 }
+- "用商务风格优化一下" → { op:'quick', slideIndex:1, colorScheme:'business' }
+- "这页深度优化一下" → { op:'auto', slideIndex:1 }
+- "整个PPT统一成商务风" → { op:'style', style:'business' }`,
   category: ToolCategory.PRESENTATION,
   inputSchema: {
     type: 'object',
     properties: {
-      slide_index: {
-        type: 'number',
-        description: '要美化的幻灯片页码，不填则美化当前页',
-      },
-      color_scheme: {
+      op: {
         type: 'string',
-        description: '配色方案',
+        enum: ['quick', 'auto', 'style'],
+        description: '美化方式：quick 快速（默认）/ auto 单页深度 / style 全篇风格',
+      },
+      slideIndex: {
+        type: 'number',
+        description: '要美化的幻灯片页码（quick：不填美化当前页；auto：必填；style：忽略）',
+      },
+      colorScheme: {
+        type: 'string',
+        description: '配色方案（quick）',
         enum: ['business', 'tech', 'creative', 'minimal'],
       },
       font: {
         type: 'string',
-        description: '统一使用的字体，如 "微软雅黑"、"思源黑体"',
+        description: '统一使用的字体，如 "微软雅黑"、"思源黑体"（quick）',
       },
-      beautify_all: {
+      beautifyAll: {
         type: 'boolean',
-        description: '是否美化所有幻灯片，默认false只美化指定页',
+        description: '是否美化所有幻灯片，默认false只美化指定页（quick；老参数，与 op:"style" 等效但风格来自 colorScheme）',
+      },
+      style: {
+        type: 'string',
+        description: '全篇风格（style）：business/tech/creative/minimal/academic，不填默认 business',
       },
     },
     required: [],
@@ -150,22 +166,79 @@ export const beautifyDefinition: ToolDefinition = {
 export const beautifyHandler: ToolHandler = async (
   args: Record<string, unknown>
 ): Promise<ToolCallResult> => {
-  const { slide_index, color_scheme, font, beautify_all } = args as {
-    slide_index?: number;
-    color_scheme?: string;
+  const { slideIndex, colorScheme, font, beautifyAll, style } = args as {
+    slideIndex?: number;
+    colorScheme?: string;
     font?: string;
-    beautify_all?: boolean;
+    beautifyAll?: boolean;
+    style?: string;
   };
+  const op = (args.op as string) || 'quick';
 
+  // ---- op:'auto' —— 原 wps_ppt_auto_beautify_slide（单页深度优化，合并轮 B 段吸收）----
+  if (op === 'auto') {
+    if (!slideIndex) {
+      return fail(`op='auto' 必须给 slideIndex（要深度优化的页码）`, 'Missing required parameter: slideIndex');
+    }
+    const ra = await call<{
+      operations?: Array<{ operation: string; count: number; details?: string }>;
+    }>('autoBeautifySlide', { slideIndex });
+    if (!ra.ok || !ra.data) return fail(errText('自动美化失败', ra), ra.error);
+    let outputAuto = `幻灯片自动美化完成！\n幻灯片: 第 ${slideIndex} 页\n\n优化详情：\n`;
+
+    const autoOpNames: Record<string, string> = {
+      unify_font: '统一字体',
+      optimize_spacing: '优化间距',
+      align_elements: '对齐元素',
+      adjust_colors: '调整配色',
+      fix_layout: '修正布局',
+      adjust_text_size: '调整文字大小',
+    };
+
+    // PS 侧只回 {style,count}（老版本）时 operations 不存在，直接 .forEach 会把整个工具打崩
+    // —— 与 wps_ppt_beautify 同一个坑，那边已经兜过，这里漏了。
+    const autoOps = Array.isArray(ra.data.operations) ? ra.data.operations : [];
+    if (autoOps.length === 0) {
+      outputAuto += '- 没有可优化的文本（本页可能是空占位符，或元素都没有文字）\n';
+    }
+    autoOps.forEach((opItem) => {
+      outputAuto += `- ${autoOpNames[opItem.operation] || opItem.operation}: 处理了 ${opItem.count} 个元素${opItem.details ? ` (${opItem.details})` : ''}\n`;
+    });
+
+    return ok(outputAuto, ra.warnings);
+  }
+
+  // ---- op:'style' —— 原 wps_ppt_beautify_all_slides（全篇风格统一，合并轮 B 段吸收）----
+  if (op === 'style') {
+    const rs = await call<{ slideCount: number; style: string }>(
+      'beautifyAllSlides',
+      { style: style || 'business' }
+    );
+    if (!rs.ok || !rs.data) return fail(errText('批量美化失败', rs), rs.error);
+    const styleNames: Record<string, string> = {
+      business: '商务风',
+      tech: '科技风',
+      creative: '创意风',
+      minimal: '极简风',
+      academic: '学术风',
+    };
+
+    return ok(
+      `全部幻灯片美化完成！\n风格: ${styleNames[rs.data.style] || rs.data.style}\n处理页数: ${rs.data.slideCount} 页`,
+      rs.warnings
+    );
+  }
+
+  // ---- op:'quick'（默认）—— 原主路径：统一字体 + 配色 ----
   const r = await call<{
     slideIndex: number | string;
     operations?: Array<{ operation: string; count: number; details?: string }>;
   }>(
     'beautifySlide',
     {
-      slideIndex: beautify_all ? 'all' : slide_index,
+      slideIndex: beautifyAll ? 'all' : slideIndex,
       style: {
-        colorScheme: color_scheme || 'business',
+        colorScheme: colorScheme || 'business',
         font: font || '微软雅黑',
       },
     }
@@ -177,10 +250,10 @@ export const beautifyHandler: ToolHandler = async (
     tech: '科技风',
     creative: '创意风',
     minimal: '简约风',
-  }[color_scheme || 'business'] || color_scheme;
+  }[colorScheme || 'business'] || colorScheme;
 
   let output = `幻灯片美化完成！\n`;
-  output += `范围: ${beautify_all ? '所有幻灯片' : `第 ${result.slideIndex} 页`}\n`;
+  output += `范围: ${beautifyAll ? '所有幻灯片' : `第 ${result.slideIndex} 页`}\n`;
   output += `配色方案: ${schemeName}\n`;
   output += `字体: ${font || '微软雅黑'}\n\n`;
 
@@ -232,19 +305,19 @@ export const unifyFontDefinition: ToolDefinition = {
   inputSchema: {
     type: 'object',
     properties: {
-      font_name: {
+      fontName: {
         type: 'string',
         description: '要统一使用的字体名称，如 "微软雅黑"、"思源黑体"',
       },
-      slide_index: {
+      slideIndex: {
         type: 'number',
         description: '只处理指定页，不填则处理所有页',
       },
-      include_title: {
+      includeTitle: {
         type: 'boolean',
         description: '是否包含标题，默认true',
       },
-      include_body: {
+      includeBody: {
         type: 'boolean',
         description: '是否包含正文，默认true',
       },
@@ -256,11 +329,11 @@ export const unifyFontDefinition: ToolDefinition = {
 export const unifyFontHandler: ToolHandler = async (
   args: Record<string, unknown>
 ): Promise<ToolCallResult> => {
-  const { font_name, slide_index, include_title, include_body } = args as {
-    font_name: string;
-    slide_index?: number;
-    include_title?: boolean;
-    include_body?: boolean;
+  const { fontName, slideIndex, includeTitle, includeBody } = args as {
+    fontName: string;
+    slideIndex?: number;
+    includeTitle?: boolean;
+    includeBody?: boolean;
   };
 
   const r = await call<{ font: string; count: number; slideCount: number }>(
@@ -270,10 +343,10 @@ export const unifyFontHandler: ToolHandler = async (
     // 认这三个参数的是另一个 case：slide.unifyFont。
     'slide.unifyFont',
     {
-      fontName: font_name,
-      slideIndex: slide_index,
-      includeTitle: include_title !== false,
-      includeBody: include_body !== false,
+      fontName: fontName,
+      slideIndex: slideIndex,
+      includeTitle: includeTitle !== false,
+      includeBody: includeBody !== false,
     }
   );
   if (!r.ok || !r.data) return fail(errText('统一字体失败', r), r.error);
@@ -337,71 +410,10 @@ export const setFontColorHandler: ToolHandler = async (
   );
 };
 
-/**
- * 对齐幻灯片中的对象
- * 支持多种对齐方式
- */
-export const alignObjectsDefinition: ToolDefinition = {
-  name: 'wps_ppt_align_objects',
-  description:
-    '[DEPRECATED·改用 wps_ppt_align_shapes] 对齐幻灯片中的对象。\n\n' +
-    '什么时候用：已被 wps_ppt_align_shapes 取代（同一个 alignShapes 动作、同一套参数），' +
-    '新调用一律用 wps_ppt_align_shapes，别两个混着用。\n\n' +
-    '注意：shapeIndices 现在是**必填**。这个工具原来没有形状清单参数，底层拿到空清单时' +
-    '不是报错，而是"把整页所有形状一起对齐" —— 实测会把同页的表格和图片也搬走，' +
-    '而工具照样回 success。要对齐的形状必须显式列出来。',
-  category: ToolCategory.PRESENTATION,
-  inputSchema: {
-    type: 'object',
-    properties: {
-      slideIndex: {
-        type: 'number',
-        description: '幻灯片页码（从1开始）',
-      },
-      alignment: {
-        type: 'string',
-        description: '对齐方式',
-        enum: ['left', 'center', 'right', 'top', 'middle', 'bottom', 'distribute_h', 'distribute_v'],
-      },
-      shapeIndices: {
-        type: 'array',
-        items: { type: 'number' },
-        description:
-          '要参与对齐的形状索引数组（从1开始）。**必填**：不给的话底层会退化成"整页所有形状一起对齐"，' +
-          '把没打算动的表格/图片也搬走。要对齐全部就别用这个工具，用 wps_ppt_align_shapes 并显式列出。',
-      },
-    },
-    required: ['slideIndex', 'alignment', 'shapeIndices'],
-  },
-};
-
-export const alignObjectsHandler: ToolHandler = async (
-  args: Record<string, unknown>
-): Promise<ToolCallResult> => {
-  const { slideIndex, alignment, shapeIndices } = args as {
-    slideIndex: number;
-    alignment: string;
-    shapeIndices: number[];
-  };
-
-  const r = await call<{ count?: number }>('alignShapes', { slideIndex, shapeIndices, alignment });
-  if (!r.ok) return fail(errText('对齐对象失败', r), r.error);
-  const alignName: Record<string, string> = {
-    left: '左对齐',
-    center: '水平居中',
-    right: '右对齐',
-    top: '顶部对齐',
-    middle: '垂直居中',
-    bottom: '底部对齐',
-    distribute_h: '水平等距分布',
-    distribute_v: '垂直等距分布',
-  };
-
-  return ok(
-    `对象对齐完成！\n幻灯片: 第 ${slideIndex} 页\n对齐方式: ${alignName[alignment] || alignment}${r.data?.count ? `\n处理对象: ${r.data.count} 个` : ''}`,
-    r.warnings
-  );
-};
+// wps_ppt_align_objects 已于 2026-11-04（大项②裁决=砍值）转别名指向 wps_ppt_align_shapes：
+// 参数同名零映射。裁决依据：align_objects schema 里的 distribute_h/v 两值从未正确工作——
+// ps1 alignShapes 的 alignMap 只有 6 个对齐值，未知值兜底成左对齐（真机：success 但坐标零变化）。
+// 转别名后老调用传 distribute_h/v 会拿到清晰的 enum 校验错误；分布需求用 wps_ppt_distribute_shapes。
 
 /**
  * 导出所有幻灯片相关的Tools
@@ -411,7 +423,6 @@ export const slideTools: RegisteredTool[] = [
   { definition: beautifyDefinition, handler: beautifyHandler },
   { definition: unifyFontDefinition, handler: unifyFontHandler },
   { definition: setFontColorDefinition, handler: setFontColorHandler },
-  { definition: alignObjectsDefinition, handler: alignObjectsHandler },
 ];
 
 export default slideTools;

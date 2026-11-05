@@ -34,12 +34,14 @@ const { allTools } = require(path.join(ROOT, 'dist/tools/index.js'));
 const guard = require(path.join(ROOT, 'dist/server/collab-guard.js'));
 
 let editProbe = 'P1';
+let docName = 'probe-workbook.xlsx';
+let docFullName = FAKE;
 wpsClient.invokeAction = async (action) => {
   if (action === 'getActiveDocumentState') {
     return {
       success: true,
       data: {
-        app: 'excel', name: 'probe-workbook.xlsx', fullName: FAKE,
+        app: 'excel', name: docName, fullName: docFullName,
         saved: true, readOnly: false, hasPath: true, editProbe,
       },
     };
@@ -73,6 +75,8 @@ const warningsOf = (r) => (r.warnings || []).map((w) => w.message || '');
   const r2 = await call('wps_excel_delete_rows', { startRow: 2, count: 1 });
   ok('提醒"可能是人工编辑"', warningsOf(r2).some((w) => w.includes('人工编辑')), JSON.stringify(warningsOf(r2)));
   ok('提醒里建议重新读取', warningsOf(r2).some((w) => w.includes('重新读取')));
+  ok('提醒带上下文（上次存档→本次，误报可自查）', warningsOf(r2).some((w) => w.includes('上次存档') && w.includes('本次')));
+  ok('提醒 severity=info（体验修复轮 B：不挂"部分成功"头）', (r2.warnings || []).every((w) => w.severity === 'info'), JSON.stringify((r2.warnings || []).map((w) => w.severity)));
   ok('写入没有被阻断（success=true）', r2.success === true);
 
   console.log('\n=== 3. 紧接着再写（无新的人工编辑）：不重复提醒 ===');
@@ -109,6 +113,23 @@ const warningsOf = (r) => (r.warnings || []).map((w) => w.message || '');
   }
   wpsClient.invokeAction = origInvoke;
   ok('异常被吞掉、返回空提醒', silenced);
+
+  console.log('\n=== 6. 换文档不误报（体验修复轮 B：save_as/切换文档器场景）===');
+  guard.resetCollabGuardForTest();
+  editProbe = 'D1'; docName = '报告A.xlsx'; docFullName = path.join(TMP, '报告A.xlsx');
+  await call('wps_excel_delete_rows', { startRow: 1, count: 1 }); // 文档A：首次写入建档
+  editProbe = 'D9'; docName = '报告B.xlsx'; docFullName = path.join(TMP, '报告B.xlsx');
+  const c2 = await call('wps_excel_delete_rows', { startRow: 1, count: 1 }); // 另存/切到文档B
+  ok('切到新文档 → 不误报"人工编辑"（静默重建档）',
+    !warningsOf(c2).some((w) => w.includes('人工编辑')), JSON.stringify(warningsOf(c2)));
+  editProbe = 'D10';
+  const c3 = await call('wps_excel_delete_rows', { startRow: 2, count: 1 }); // B 内真有人工改动
+  ok('新文档内真有人工改动 → 照常提醒（键是文档级，B 有了自己的基线）',
+    warningsOf(c3).some((w) => w.includes('人工编辑')), JSON.stringify(warningsOf(c3)));
+  editProbe = 'D1'; docName = '报告A.xlsx'; docFullName = path.join(TMP, '报告A.xlsx');
+  const c4 = await call('wps_excel_delete_rows', { startRow: 1, count: 1 }); // 切回A，期间无人动
+  ok('切回旧文档且指纹未变 → 不误报（A 的基线还在）',
+    !warningsOf(c4).some((w) => w.includes('人工编辑')), JSON.stringify(warningsOf(c4)));
 
   console.log(`\n汇总：${pass}/${pass + fail} 通过`);
   try { fs.rmSync(TMP, { recursive: true, force: true }); } catch { /* 清不掉不影响结论 */ }

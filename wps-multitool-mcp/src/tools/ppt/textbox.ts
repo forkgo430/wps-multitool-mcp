@@ -47,12 +47,16 @@ export const deleteTextboxHandler: ToolHandler = async (
 
 export const getTextboxesDefinition: ToolDefinition = {
   name: 'wps_ppt_get_textboxes',
-  description: '获取幻灯片上所有文本框的列表。',
+  description: '获取幻灯片上所有文本框的列表。brief 模式（默认开，回包瘦身）只回 index/名称/几何摘要；全量传 brief:false。',
   category: ToolCategory.PRESENTATION,
   inputSchema: {
     type: 'object',
     properties: {
       slideIndex: { type: 'number', description: '幻灯片索引（从1开始）' },
+      brief: {
+        type: 'boolean',
+        description: '回包瘦身开关（体验修复轮 B），默认 true 只回 index/name/几何摘要；false 回全量字段',
+      },
     },
     required: ['slideIndex'],
   },
@@ -61,12 +65,19 @@ export const getTextboxesDefinition: ToolDefinition = {
 export const getTextboxesHandler: ToolHandler = async (
   args: Record<string, unknown>
 ): Promise<ToolCallResult> => {
-  const { slideIndex } = args as { slideIndex: number };
+  const { slideIndex, brief = true } = args as { slideIndex: number; brief?: boolean };
   // PS 回的键是 textBoxes（大写 B），这里历史上读的是 textboxes → 永远拿到 undefined，
   // 打印出来永远是"第N页文本框: []"，读回形同虚设。两个键都接。
-  const r = await call<{ textBoxes?: unknown[]; textboxes?: unknown[] }>('getTextBoxes', { slideIndex });
+  const r = await call<{ textBoxes?: Array<Record<string, unknown>>; textboxes?: Array<Record<string, unknown>> }>('getTextBoxes', { slideIndex });
   if (!r.ok) return fail(errText('获取文本框列表失败', r), r.error);
-  const list = r.data?.textBoxes ?? r.data?.textboxes ?? [];
+  const rawList = (r.data?.textBoxes ?? r.data?.textboxes ?? []) as Array<Record<string, unknown>>;
+  // brief 模式（体验修复轮 B）：只留 index/name/几何摘要，正文与详细属性瘦身掉——全量传 brief:false
+  const list = brief
+    ? rawList.map((b) => {
+        const { text, ...rest } = b;
+        return rest;
+      })
+    : rawList;
   return ok(`第${slideIndex}页文本框（${list.length} 个）:\n${JSON.stringify(list, null, 2)}`, r.warnings);
 };
 

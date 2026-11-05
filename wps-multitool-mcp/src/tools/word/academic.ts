@@ -78,16 +78,16 @@ export const getOutlineDefinition: ToolDefinition = {
 - 改章节编号前先确认结构
 
 参数：
-- limit: 最多返回多少个标题，默认 500`,
+- limit: 最多返回多少个标题，默认 100（体验修复轮 B 由 500 收紧——大纲是导航不是全量导出）`,
   category: ToolCategory.DOCUMENT,
-  inputSchema: { type: 'object', properties: { target: WORD_TARGET_PROPERTY,  limit: { type: 'number', description: '最多返回标题数，默认 500' } } },
+  inputSchema: { type: 'object', properties: { target: WORD_TARGET_PROPERTY,  limit: { type: 'number', description: '最多返回标题数，默认 100（体验修复轮 B 收紧）' } } },
 };
 
 export const getOutlineHandler: ToolHandler = async (args) => {
   try {
     const r = await call<{ headings: Array<{ index: number; level: number; text: string }>; count: number }>(
       'getOutline',
-      { limit: args.limit ?? 500 }
+      { limit: args.limit ?? 100 }
     );
     if (!r.ok) return fail(`抽取大纲失败：${r.error}`, r.error);
     const hs = r.data?.headings ?? [];

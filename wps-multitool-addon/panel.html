@@ -15,6 +15,11 @@
   - AI 活动指示：队列 > 0 时标题区显示"AI 执行中"脉冲动画
   - 卡片间距/分组微调
 
+  v3.4（2026-11-04 第七任 · 面板诚实化）：
+  - 桥是懒加载：无任何 MCP 工具调用时不运行——此前一直显示"未连接"是如实汇报但没说清原因。
+    未连接/连不上文案改为说明"等待 MCP 调用拉起，几秒内自动连上"
+  - （部署副本显示"上游"字样 = 远古版本残留，重跑 deploy-addon.ps1 即换成本版）
+
   v3.3（2026-10-29 决策者协作轮 · 第六任）：
   - 新增"暂停 AI"按钮：走桥的 POST /hold，暂停期间命令排队不执行、不丢失，
     恢复后按原序继续（配合桥端同日上线的暂停闸门）
@@ -221,7 +226,7 @@
     <div class="kv"><span class="k">作者</span><span>赢容</span></div>
     <div class="kv"><span class="k">许可</span><span>MIT</span></div>
     <ul>
-      <li>287 个 MCP 工具，默认只列 40 个基础工具</li>
+      <li>283 个 MCP 工具，默认只列 40 个基础工具</li>
       <li>常驻桥进程，冷启动后 2~3ms/次</li>
       <li>快照 / 撤销 / 导出 / 诊断</li>
     </ul>
@@ -318,7 +323,7 @@ function renderImpl(d) {
 
   $('v-bridge').innerHTML = d.uptimeMs > 0
     ? '<span class="ok">已连接 · ' + fmtUptime(d.uptimeMs) + '</span>'
-    : '<span class="err">未连接</span>';
+    : '<span class="err">未连接 · 等待 MCP 调用拉起桥</span>';
 
   var running = d.appsRunning || [];
   $('v-app').textContent = running.length
@@ -366,8 +371,8 @@ function poll() {
     listDocs();
   }).catch(function () {
     $('hdr').className = 'hdr';
-    $('v-bridge').innerHTML = '<span class="err">连不上桥</span>';
-    $('doclist').innerHTML = '<div class="doc-empty">桥未连接</div>';
+    $('v-bridge').innerHTML = '<span class="err">连不上桥（等待 MCP 拉起）</span>';
+    $('doclist').innerHTML = '<div class="doc-empty">桥未运行——任意 MCP 工具调用后自动拉起，几秒内连上</div>';
   });
 }
 

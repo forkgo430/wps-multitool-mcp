@@ -234,8 +234,8 @@ export const insertExcelImageDefinition: ToolDefinition = {
     properties: {
       filePath: { type: 'string', description: '图片文件路径' },
       cell: { type: 'string', description: '插入位置的单元格地址，如 A1。不填则插入到当前选中位置' },
-      width: { type: 'number', description: '图片宽度（像素），不填则使用原始宽度' },
-      height: { type: 'number', description: '图片高度（像素），不填则使用原始高度' },
+      width: { type: 'number', description: '图片宽度（磅），不填则使用原始宽度' },
+      height: { type: 'number', description: '图片高度（磅），不填则使用原始高度' },
       sheet: { type: 'string', description: '工作表名称，不填则使用当前活动工作表' },
     },
     required: ['filePath'],

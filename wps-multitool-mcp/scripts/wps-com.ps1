@@ -326,14 +326,69 @@ function Get-WpsExePath {
     return $null
 }
 
+# 演示文稿健康检查（微轮 · PPT 定位去 Active 化 2026-11-05）：Name 非空 且 Slides.Count 可读。
+# 对应 word 侧的 Test-DocHealthy——Active* 是弱引用（依赖 UI 焦点，自动化场景不可靠），
+# 冷启动/焦点落在首页时会给出 null/空壳，必须过健康检查才能当"解析成功"。
+function Test-PresHealthy($pres) {
+    if ($null -eq $pres) { return $false }
+    try {
+        $n = [string]$pres.Name
+        if ([string]::IsNullOrWhiteSpace($n)) { return $false }
+    } catch { return $false }
+    try { $null = $pres.Slides.Count } catch { return $false }
+    return $true
+}
+
+# 按名字找演示文稿：先按 FullName 全等，再按 Name 全等，最后按"文件名（无扩展名）"全等。
+function Find-PresByName($ppt, [string]$want) {
+    if ($null -eq $ppt -or [string]::IsNullOrWhiteSpace($want)) { return $null }
+    $items = @()
+    try { $items = @($ppt.Presentations) } catch { return $null }
+    foreach ($c in $items) {
+        try { if ([string]$c.FullName -eq $want) { return $c } } catch {}
+    }
+    foreach ($c in $items) {
+        try { if ([string]$c.Name -eq $want) { return $c } } catch {}
+    }
+    $stem = [System.IO.Path]::GetFileNameWithoutExtension($want)
+    if (-not [string]::IsNullOrWhiteSpace($stem)) {
+        foreach ($c in $items) {
+            try { if ([string]$c.Name -eq $stem) { return $c } } catch {}
+            try { if ([System.IO.Path]::GetFileNameWithoutExtension([string]$c.Name) -eq $stem) { return $c } } catch {}
+        }
+    }
+    return $null
+}
+
+# 解析目标演示文稿（微轮 · PPT 定位去 Active 化，照 Resolve-Doc 形制）：
+# 1) presentationName 精确定位（找不到返回 $null，不静默回退——否则用户以为在改 A 结果改的是 B）；
+# 2) ActivePresentation 必须过 Test-PresHealthy（弱引用/幽灵窗口在恶劣状态下给出 null/空壳）；
+# 3) 空壳 → 遍历 Presentations 取第一个健康的；
+# 4) 全空返回 $null，由调用方报明确错误。
+function Resolve-Pres($ppt, $p) {
+    if ($null -eq $ppt) { return $null }
+    if ($p -and $p.presentationName) {
+        $d = Find-PresByName $ppt ([string]$p.presentationName)
+        if ($d) { return $d }
+        return $null
+    }
+    try { $act = $ppt.ActivePresentation } catch { $act = $null }
+    if (Test-PresHealthy $act) { return $act }
+    try {
+        foreach ($c in @($ppt.Presentations)) {
+            if (Test-PresHealthy $c) { return $c }
+        }
+    } catch {}
+    return $null
+}
+
 # 解析目标演示文稿：优先按 presentationName 精确定位（避免多文稿打开时 ActivePresentation 漂移），
 # 未提供则回退到当前活动文稿；提供了但找不到则返回 $null（让调用方报明确错误，而不是误改其它文稿）。
+# 微轮（2026-11-05）：实现体收敛到 Resolve-Pres（Active 过健康检查 + 空壳遍历）——
+# 全组用 Get-TargetPres 的 PPT 工具自动获得去 Active 化后的解析。
 function Get-TargetPres($ppt, $p) {
     if ($null -eq $ppt) { return $null }
-    if ($p.presentationName) {
-        try { return $ppt.Presentations.Item([string]$p.presentationName) } catch { return $null }
-    }
-    return $ppt.ActivePresentation
+    return Resolve-Pres $ppt $p
 }
 
 # 取整型参数并带默认值。写成函数而不是内联 $(if ...)：内联 if 在 [int] 转换里
@@ -1864,11 +1919,20 @@ switch ($Action) {
         $ppt = Get-WpsPpt
         if ($null -eq $ppt) { Output-Json @{ success = $false; error = "WPS PPT not running" }; return }
         $pres = $ppt.Presentations.Add()
+        # 微轮 · PPT 定位去 Active 化（2026-11-05）：Add() 不带窗口不物化——0 页幽灵演示文稿
+        # 会毒化 ActivePresentation 焦点（后续 Slides.Add 报"对 Null 调方法"）。Add 后立即
+        # Activate 物化窗口，从源头杀幽灵；Activate 失败进 warnings 不阻断。
+        $actWarn = $null
+        try { $pres.Activate() } catch { $actWarn = "新演示文稿窗口物化失败（Activate）：" + $_.Exception.Message }
         # 必须回 data：Node 侧的 handler 判的是 success && data，
         # 只回 success 会被当成失败（"新建演示文稿失败: undefined" —— 实测踩过）
         $nm = ""
         try { $nm = [string]$pres.Name } catch {}
-        Output-Json @{ success = $true; data = @{ name = $nm; count = $ppt.Presentations.Count } }
+        if ($actWarn) {
+            Output-Json @{ success = $true; data = @{ name = $nm; count = $ppt.Presentations.Count }; warnings = @(@{ step = 'createPresentation'; message = $actWarn }) }
+        } else {
+            Output-Json @{ success = $true; data = @{ name = $nm; count = $ppt.Presentations.Count } }
+        }
     }
 
     "convertToPDF" {
@@ -5203,14 +5267,12 @@ switch ($Action) {
             Output-Json @{ success = $false; error = "[勿重试·先改参数] 宽高必须是正数（收到 width=$($p.width) height=$($p.height)）" }
             return
         }
-        # 单位换算：TS 的 schema 承诺的是【像素】，而 WPS 的 PageSetup 要的是【磅】。
-        # 1 px = 0.75 pt（96 DPI）。不换算的话 960×720 会被当成 960×720 磅 = 13.3×10 英寸，
-        # 页面上所有元素都跑到角落里去 —— 用户看到的是"设完尺寸版面全乱了"。
-        $wPt = $w * 0.75
-        $hPt = $h * 0.75
-        $pres.PageSetup.SlideWidth = $wPt
-        $pres.PageSetup.SlideHeight = $hPt
-        Output-Json @{ success = $true; data = @{ width = $w; height = $h; widthPt = $wPt; heightPt = $hPt; slideCount = $pres.Slides.Count } }
+        # 单位裁定（2026-11-03 所有者授权决策者定）：全组统一【磅】——COM/VBA/Office JS 原生单位，
+        # 一套闭环最广。v1.0.5 起本动作收到的 width/height 直接就是磅，不再做 px→pt 的 ×0.75 换算
+        # （旧口径曾按 96 DPI 折算：960×720"像素"进来变 720×540 磅出去；迁移提示写在 TS schema 里）。
+        $pres.PageSetup.SlideWidth = $w
+        $pres.PageSetup.SlideHeight = $h
+        Output-Json @{ success = $true; data = @{ width = $w; height = $h; widthPt = $w; heightPt = $h; slideCount = $pres.Slides.Count } }
     }
 
     "setSlideTheme" {

@@ -52,3 +52,16 @@ export function errText(prefix: string, r: { error?: string }): string {
 export function errMsg(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
+
+/** add_* 后按回传的形状名回读它在页内的序号（体验修复轮 A）。
+ *  为什么走 TS 回读而不是 ps1 加回传：ps1 本轮冻结（只许动 setSlideSize 一处），
+ *  而形状追加在页尾、getShapes 的 index 就是 Shapes.Item 序号——按 name 精确命中，一次廉价读回。
+ *  找不到/读回失败一律 undefined，调用方按缺失不打印——绝不为了 index 造假数据。 */
+export async function shapeIndexByName(
+  slideIndex: number,
+  name: string
+): Promise<number | undefined> {
+  const g = await call<{ shapes?: Array<{ index: number; name: string }> }>('getShapes', { slideIndex });
+  const hit = g.data?.shapes?.find((s) => s.name === name);
+  return hit?.index;
+}

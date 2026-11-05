@@ -466,11 +466,11 @@ const CURATED: Record<
       '取消切换用 effect=none，不要找"删除切换"的工具（旧名 remove_slide_transition 仍可调用）',
     ],
   },
-  // PPT：3 个 image 插入
+  // PPT：image 插入（insert_slide_image / insert_ppt_image 已于 2026-11-03 大项②转别名指向本工具）
   wps_ppt_insert_image: {
     examples: ['第 3 页放这张截图', '把 logo 插到首页左上角'],
-    aliases: ['插入图片', '加图片'],
-    notFor: ['按页插用 insert_slide_image / insert_ppt_image（同族）；替换已有图片用 replace_ppt_image'],
+    aliases: ['插入图片', '加图片', '按页插图片'],
+    notFor: ['替换已有图片用 replace_ppt_image；删图用 delete_ppt_image'],
   },
   wps_ppt_replace_ppt_image: {
     aliases: ['替换图片', '换图'],
@@ -483,15 +483,12 @@ const CURATED: Record<
   wps_ppt_set_ppt_chart_data: {
     aliases: ['改图表数据'],
   },
-  // PPT：3 个 beautify
+  // PPT：美化族唯一入口（auto_beautify_slide/beautify_all_slides 已于 2026-11-04 op-merge 转别名）
   wps_ppt_beautify: {
-    aliases: ['美化', '美化单页'],
-    notFor: ['整篇美化用 beautify_all_slides / auto_beautify_slide'],
+    aliases: ['美化', '美化单页', '整篇美化', '深度优化', '风格统一'],
+    notFor: ['单页深度排版优化传 op:"auto"；全篇风格统一传 op:"style"（两个旧名已并入本工具）'],
   },
-  wps_ppt_beautify_all_slides: {
-    aliases: ['美化全部', '整篇美化'],
-  },
-  // PPT 表格
+ // PPT 表格
   wps_ppt_insert_table: {
     aliases: ['插入表格', '加表格'],
     notFor: ['这是【PPT 里的表格】；Word 用 wps_word_insert_table，Excel 本来就是表格'],

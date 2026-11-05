@@ -5,10 +5,10 @@
  * PPT高级美化Tools - 高级美化模块
  * 处理配色方案、自动美化、KPI卡片、装饰元素等高级美化操作
  *
- * 包含（7 个；set_background_gradient 已并入 set_background 的渐变分支并转别名，第 5 轮）：
+ * 包含（5 个；set_background_gradient 已并入 set_background 第 5 轮；auto_beautify_slide/beautify_all_slides 已于 2026-11-04 op-merge 进 wps_ppt_beautify 并转别名）：
  * - wps_ppt_apply_color_scheme: 应用配色方案
- * - wps_ppt_auto_beautify_slide: 自动美化单页幻灯片
- * - wps_ppt_beautify_all_slides: 批量美化所有幻灯片
+ * - wps_ppt_auto_beautify_slide: 已转别名指向 beautify（op:'auto'，2026-11-04 大项③）
+ * - wps_ppt_beautify_all_slides: 已转别名指向 beautify（op:'style'，2026-11-04 大项③）
  * - wps_ppt_create_kpi_cards: 创建KPI指标卡片
  * - wps_ppt_create_styled_table: 创建带样式的表格
  * - wps_ppt_add_title_decoration: 添加标题装饰元素
@@ -90,130 +90,10 @@ export const applyColorSchemeHandler: ToolHandler = async (
   );
 };
 
-/**
- * 自动美化单页幻灯片
- * 智能分析并优化单页幻灯片的排版、字体、间距和配色
- */
-export const autoBeautifySlideDefinition: ToolDefinition = {
-  name: 'wps_ppt_auto_beautify_slide',
-  description: `自动美化指定的单页幻灯片。
-
-智能分析幻灯片内容并自动执行以下优化：
-- 统一字体风格
-- 优化元素间距和对齐
-- 调整文本大小和行距
-- 应用协调的配色
-- 调整形状和图片布局
-
-使用场景：
-- "自动美化第3页"
-- "优化这页PPT的排版"
-- "一键美化当前幻灯片"`,
-  category: ToolCategory.PRESENTATION,
-  inputSchema: {
-    type: 'object',
-    properties: {
-      slideIndex: {
-        type: 'number',
-        description: '幻灯片页码（从1开始）',
-      },
-    },
-    required: ['slideIndex'],
-  },
-};
-
-export const autoBeautifySlideHandler: ToolHandler = async (
-  args: Record<string, unknown>
-): Promise<ToolCallResult> => {
-  const { slideIndex } = args as {
-    slideIndex: number;
-  };
-
-  const r = await call<{
-    operations?: Array<{ operation: string; count: number; details?: string }>;
-  }>('autoBeautifySlide', { slideIndex });
-  if (!r.ok || !r.data) return fail(errText('自动美化失败', r), r.error);
-  let output = `幻灯片自动美化完成！\n幻灯片: 第 ${slideIndex} 页\n\n优化详情：\n`;
-
-  const opNames: Record<string, string> = {
-    unify_font: '统一字体',
-    optimize_spacing: '优化间距',
-    align_elements: '对齐元素',
-    adjust_colors: '调整配色',
-    fix_layout: '修正布局',
-    adjust_text_size: '调整文字大小',
-  };
-
-  // PS 侧只回 {style,count}（老版本）时 operations 不存在，直接 .forEach 会把整个工具打崩
-  // —— 与 wps_ppt_beautify 同一个坑，那边已经兜过，这里漏了。
-  const ops = Array.isArray(r.data.operations) ? r.data.operations : [];
-  if (ops.length === 0) {
-    output += '- 没有可优化的文本（本页可能是空占位符，或元素都没有文字）\n';
-  }
-  ops.forEach((op) => {
-    output += `- ${opNames[op.operation] || op.operation}: 处理了 ${op.count} 个元素${op.details ? ` (${op.details})` : ''}\n`;
-  });
-
-  return ok(output, r.warnings);
-};
-
-/**
- * 批量美化所有幻灯片
- * 对演示文稿中所有幻灯片应用统一美化风格
- */
-export const beautifyAllSlidesDefinition: ToolDefinition = {
-  name: 'wps_ppt_beautify_all_slides',
-  description: `批量美化演示文稿中的所有幻灯片。
-
-支持的风格：
-- business: 商务风（稳重、专业）
-- tech: 科技风（现代、简约）
-- creative: 创意风（活泼、多彩）
-- minimal: 极简风（留白、克制）
-- academic: 学术风（严谨、规范）
-
-使用场景：
-- "把整个PPT都美化一下"
-- "用科技风格统一美化所有页面"
-- "一键优化整个演示文稿"`,
-  category: ToolCategory.PRESENTATION,
-  inputSchema: {
-    type: 'object',
-    properties: {
-      style: {
-        type: 'string',
-        description: '美化风格，不填则默认使用 business 风格',
-      },
-    },
-    required: [],
-  },
-};
-
-export const beautifyAllSlidesHandler: ToolHandler = async (
-  args: Record<string, unknown>
-): Promise<ToolCallResult> => {
-  const { style } = args as {
-    style?: string;
-  };
-
-  const r = await call<{ slideCount: number; style: string }>(
-    'beautifyAllSlides',
-    { style: style || 'business' }
-  );
-  if (!r.ok || !r.data) return fail(errText('批量美化失败', r), r.error);
-  const styleNames: Record<string, string> = {
-    business: '商务风',
-    tech: '科技风',
-    creative: '创意风',
-    minimal: '极简风',
-    academic: '学术风',
-  };
-
-  return ok(
-    `全部幻灯片美化完成！\n风格: ${styleNames[r.data.style] || r.data.style}\n处理页数: ${r.data.slideCount} 页`,
-    r.warnings
-  );
-};
+// wps_ppt_auto_beautify_slide / wps_ppt_beautify_all_slides 已于 2026-11-04（大项③ op-merge）
+// 转别名指向 wps_ppt_beautify（op:'auto' / op:'style'），旧定义删除——能力在 canonical 的
+// op 三分支里逐字保留（含 operations 数组兜底与风格名映射），mock 断言在 deckkit-test? 不，
+// 在 slide.ts 侧由 alias-verify 与旧调用逐项一致判据覆盖。
 
 /**
  * 创建KPI指标卡片
@@ -488,8 +368,6 @@ export const addPageIndicatorHandler: ToolHandler = async (
  */
 export const beautifyAdvancedTools: RegisteredTool[] = [
   { definition: applyColorSchemeDefinition, handler: applyColorSchemeHandler },
-  { definition: autoBeautifySlideDefinition, handler: autoBeautifySlideHandler },
-  { definition: beautifyAllSlidesDefinition, handler: beautifyAllSlidesHandler },
   { definition: createKpiCardsDefinition, handler: createKpiCardsHandler },
   { definition: createStyledTableDefinition, handler: createStyledTableHandler },
   { definition: addTitleDecorationDefinition, handler: addTitleDecorationHandler },

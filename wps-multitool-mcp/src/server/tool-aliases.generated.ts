@@ -4,7 +4,7 @@
  * Pos: 别名表【生成物】。一旦我被修改，请更新我的头部注释，以及所属目录的md。
  *
  * 别手改这个文件：真相源是 scripts/manual/tool-aliases.json，
- * 生成器是 scripts/manual/gen-tool-aliases.js，共 27 条。
+ * 生成器是 scripts/manual/gen-tool-aliases.js，共 32 条。
  *
  * 别名不注册成工具：它不出现在 tools/list、不计入工具总数，只在 registry 的入口被解析成规范名。
  * 为什么只做一跳解析：链式别名（a→b→c）会让"到底谁是真的"变成谜，一份表里就该一步到位。
@@ -25,8 +25,13 @@ export const TOOL_ALIASES: Readonly<Record<string, string>> = {
   "wps_ppt_add_animation_preset": "wps_ppt_set_animation",
   "wps_ppt_add_chart": "wps_ppt_insert_ppt_chart",
   "wps_ppt_add_emphasis_animation": "wps_ppt_set_animation",
+  "wps_ppt_align_objects": "wps_ppt_align_shapes",
   "wps_ppt_apply_transition_to_all": "wps_ppt_set_transition",
+  "wps_ppt_auto_beautify_slide": "wps_ppt_beautify",
+  "wps_ppt_beautify_all_slides": "wps_ppt_beautify",
   "wps_ppt_duplicate_slide": "wps_ppt_copy_slide",
+  "wps_ppt_insert_ppt_image": "wps_ppt_insert_image",
+  "wps_ppt_insert_slide_image": "wps_ppt_insert_image",
   "wps_ppt_remove_slide_transition": "wps_ppt_set_transition",
   "wps_ppt_set_animation_order": "wps_ppt_set_animation",
   "wps_ppt_set_background_color": "wps_ppt_set_background",
@@ -59,6 +64,10 @@ export const TOOL_ALIAS_PARAMS: Readonly<Record<string, ToolAliasParamMap>> = {
   "wps_ppt_add_animation_preset": { rename: {"preset":"effect"}, set: {"op":"add","category":"entrance"} },
   "wps_ppt_add_emphasis_animation": { set: {"op":"add","category":"emphasis"} },
   "wps_ppt_apply_transition_to_all": { set: {"target":"all"} },
+  "wps_ppt_auto_beautify_slide": { set: {"op":"auto"} },
+  "wps_ppt_beautify_all_slides": { set: {"op":"style"} },
+  "wps_ppt_insert_ppt_image": { rename: {"filePath":"path"} },
+  "wps_ppt_insert_slide_image": { rename: {"imagePath":"path"} },
   "wps_ppt_remove_slide_transition": { set: {"target":"slide","effect":"none"} },
   "wps_ppt_set_animation_order": { rename: {"newOrder":"order"}, set: {"op":"reorder"} },
   "wps_ppt_set_slide_transition": { set: {"target":"slide"} },

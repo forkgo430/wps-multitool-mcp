@@ -8,7 +8,7 @@
  */
 export type ToolVerification = 'live' | 'static';
 
-/** 每个注册工具的验证状态（覆盖 287/287） */
+/** 每个注册工具的验证状态（覆盖 283/283） */
 export const TOOL_VERIFICATION: Readonly<Record<string, ToolVerification>> = {
   "wps_cache_data": "live",
   "wps_check_connection": "live",
@@ -133,13 +133,10 @@ export const TOOL_VERIFICATION: Readonly<Record<string, ToolVerification>> = {
   "wps_ppt_add_speaker_notes": "live",
   "wps_ppt_add_textbox": "live",
   "wps_ppt_add_title_decoration": "live",
-  "wps_ppt_align_objects": "live",
   "wps_ppt_align_shapes": "live",
   "wps_ppt_apply_color_scheme": "live",
-  "wps_ppt_auto_beautify_slide": "live",
   "wps_ppt_auto_layout": "live",
   "wps_ppt_beautify": "live",
-  "wps_ppt_beautify_all_slides": "live",
   "wps_ppt_build_deck": "static",
   "wps_ppt_close_presentation": "live",
   "wps_ppt_copy_slide": "live",
@@ -177,8 +174,6 @@ export const TOOL_VERIFICATION: Readonly<Record<string, ToolVerification>> = {
   "wps_ppt_group_shapes": "live",
   "wps_ppt_insert_image": "live",
   "wps_ppt_insert_ppt_chart": "live",
-  "wps_ppt_insert_ppt_image": "live",
-  "wps_ppt_insert_slide_image": "live",
   "wps_ppt_insert_slides_from_file": "live",
   "wps_ppt_insert_table": "live",
   "wps_ppt_move_slide": "live",
@@ -211,7 +206,7 @@ export const TOOL_VERIFICATION: Readonly<Record<string, ToolVerification>> = {
   "wps_ppt_set_slide_content": "live",
   "wps_ppt_set_slide_layout": "live",
   "wps_ppt_set_slide_number": "live",
-  "wps_ppt_set_slide_size": "live",
+  "wps_ppt_set_slide_size": "static",
   "wps_ppt_set_slide_subtitle": "live",
   "wps_ppt_set_slide_theme": "static",
   "wps_ppt_set_slide_title": "live",
@@ -228,6 +223,7 @@ export const TOOL_VERIFICATION: Readonly<Record<string, ToolVerification>> = {
   "wps_ppt_switch_slide": "live",
   "wps_ppt_unify_font": "live",
   "wps_route_intent": "live",
+  "wps_run_task": "static",
   "wps_search_tools": "live",
   "wps_unload_tool_group": "live",
   "wps_word_add_caption": "live",
@@ -300,4 +296,4 @@ export const TOOL_VERIFICATION: Readonly<Record<string, ToolVerification>> = {
 };
 
 /** 生成时的总量，供自检/文档使用（别手写这些数字） */
-export const VERIFICATION_TOTALS = { live: 276, static: 11, total: 287 } as const;
+export const VERIFICATION_TOTALS = { live: 270, static: 13, total: 283 } as const;

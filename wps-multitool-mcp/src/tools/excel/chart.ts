@@ -119,19 +119,19 @@ export const createChartDefinition: ToolDefinition = {
         properties: {
           left: {
             type: 'number',
-            description: '左边距（像素）',
+            description: '左边距（磅）',
           },
           top: {
             type: 'number',
-            description: '上边距（像素）',
+            description: '上边距（磅）',
           },
           width: {
             type: 'number',
-            description: '图表宽度（像素），默认480',
+            description: '图表宽度（磅），默认480',
           },
           height: {
             type: 'number',
-            description: '图表高度（像素），默认300',
+            description: '图表高度（磅），默认300',
           },
         },
       },
@@ -553,6 +553,10 @@ export const exportChartAsImageDefinition: ToolDefinition = {
         enum: ['PNG', 'JPG', 'JPEG', 'GIF', 'BMP'],
         description: '图片格式，默认 PNG',
       },
+      inline: {
+        type: 'boolean',
+        description: '是否把导出的图内联进回包（体验修复轮 B 开关，默认 true；false 只回路径省带宽）',
+      },
       sheet: {
         type: 'string',
         description: '工作表名称，不填则使用当前活动工作表',
@@ -565,11 +569,12 @@ export const exportChartAsImageDefinition: ToolDefinition = {
 export const exportChartAsImageHandler: ToolHandler = async (
   args: Record<string, unknown>
 ): Promise<ToolCallResult> => {
-  const { chartName, outputPath, format, sheet } = args as {
+  const { chartName, outputPath, format, sheet, inline = true } = args as {
     chartName: string;
     outputPath: string;
     format?: string;
     sheet?: string;
+    inline?: boolean;
   };
 
   // 归一化 format：JPEG 在 WPS COM 滤镜表中按 JPG 处理（参考 PPT 同款工具）
@@ -604,9 +609,12 @@ export const exportChartAsImageHandler: ToolHandler = async (
         `输出路径: ${outputPath}` +
         (sheet ? `\n工作表: ${sheet}` : '');
 
-      // 图像内联（2026-10-26 对标）：AI 直接"看到"导出的图，自查效果
-      const image = await imageContentBlock(outputPath, filterName === 'PNG' ? 'image/png' : 'image/jpeg');
-      const content: ToolContent[] = image ? [{ type: 'text' as const, text }, image] : [{ type: 'text' as const, text }];
+      // 图像内联 + inline 开关（体验修复轮 B：默认 true 保持现状；1.5MB 上限逻辑在 utils 不变）
+      const content: ToolContent[] = [{ type: 'text' as const, text }];
+      if (inline !== false) {
+        const image = await imageContentBlock(outputPath, filterName === 'PNG' ? 'image/png' : 'image/jpeg');
+        if (image) content.push(image);
+      }
 
       return {
         id: uuidv4(),
@@ -689,6 +697,10 @@ export const exportRangeAsImageDefinition: ToolDefinition = {
         enum: ['PNG', 'JPG', 'JPEG', 'GIF', 'BMP'],
         description: '图片格式，默认 PNG',
       },
+      inline: {
+        type: 'boolean',
+        description: '是否把导出的图内联进回包（体验修复轮 B 开关，默认 true；false 只回路径省带宽）',
+      },
       sheet: {
         type: 'string',
         description: '工作表名称，不填则使用当前活动工作表',
@@ -701,11 +713,12 @@ export const exportRangeAsImageDefinition: ToolDefinition = {
 export const exportRangeAsImageHandler: ToolHandler = async (
   args: Record<string, unknown>
 ): Promise<ToolCallResult> => {
-  const { range, outputPath, format, sheet } = args as {
+  const { range, outputPath, format, sheet, inline = true } = args as {
     range: string;
     outputPath: string;
     format?: string;
     sheet?: string;
+    inline?: boolean;
   };
 
   // 校验 range 格式（与 createChart 保持一致）
@@ -755,9 +768,12 @@ export const exportRangeAsImageHandler: ToolHandler = async (
         `输出路径: ${outputPath}` +
         (sheet ? `\n工作表: ${sheet}` : '');
 
-      // 图像内联（2026-10-26 对标）：AI 直接"看到"导出的图，自查效果
-      const image = await imageContentBlock(outputPath, filterName === 'PNG' ? 'image/png' : 'image/jpeg');
-      const content: ToolContent[] = image ? [{ type: 'text' as const, text }, image] : [{ type: 'text' as const, text }];
+      // 图像内联 + inline 开关（体验修复轮 B：默认 true 保持现状；1.5MB 上限逻辑在 utils 不变）
+      const content: ToolContent[] = [{ type: 'text' as const, text }];
+      if (inline !== false) {
+        const image = await imageContentBlock(outputPath, filterName === 'PNG' ? 'image/png' : 'image/jpeg');
+        if (image) content.push(image);
+      }
 
       return {
         id: uuidv4(),

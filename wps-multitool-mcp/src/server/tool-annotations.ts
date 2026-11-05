@@ -69,6 +69,15 @@ const EXTRA_ANNOTATIONS: Record<string, ToolAnnotations> = {
     idempotentHint: false,
     openWorldHint: false,
   },
+  // 任务引擎（意图一期，2026-11-05）：与 build_deck 同类——服务端编排工具，无静态 action
+  //  （动作来自任务包 steps，运行时才知道），逐动作经 callTool 走真入口（各子动作各自的
+  //  注解/快照/协作护栏生效）。入口按最坏情况：非只读、非幂等；破坏性不标（子动作各自定）。
+  wps_run_task: {
+    readOnlyHint: false,
+    destructiveHint: false,
+    idempotentHint: false,
+    openWorldHint: false,
+  },
   wps_execute_method: {
     readOnlyHint: false,
     destructiveHint: true,

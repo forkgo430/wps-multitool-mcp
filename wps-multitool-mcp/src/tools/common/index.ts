@@ -18,6 +18,7 @@ import { intentTools } from './intent';
 import { repairTools } from './repair';
 import { batchTools } from './batch';
 import { snapshotTools } from './snapshot';
+import { taskrunnerTools } from './taskrunner';
 
 /**
  * 所有通用的Tools
@@ -30,6 +31,7 @@ import { snapshotTools } from './snapshot';
  * - 意图识别（core 组）: route_intent —— 一句话判断该开哪个组
  * - 批量执行: batch —— 一次 1~3 步，省掉逐个调用的往返，遇错不中断
  * - 快照: snapshot_create / snapshot_list / snapshot_restore —— COM 非事务的补偿层
+ * - 任务执行: run_task —— 服务端跑完整个任务包，中间结果不出服务端（2026-11-05 意图 v2 一期）
  *
  * 默认只列基础档里【真机验证过】的工具（WPS_TOOL_TIER=full 可关闭），其余靠 search + load 按需拉
  */
@@ -42,6 +44,7 @@ export const commonTools: RegisteredTool[] = [
   ...snapshotTools,
   ...toolGroupTools,
   ...intentTools,
+  ...taskrunnerTools,
 ];
 
 // 分别导出，方便按需使用

@@ -25,6 +25,10 @@ import {
   RegisteredTool,
 } from '../../types/tools';
 import { toolRegistry } from '../../server/tool-registry';
+import { recordMiss, topMisses, registerExitFlush } from '../../server/intent-miss-log';
+
+// 自适应回流（体验修复轮 A）：进程退出时把会话内未命中配对记录一次性落盘
+registerExitFlush();
 
 interface IntentRule {
   group: 'word' | 'excel' | 'ppt' | 'common';
@@ -205,6 +209,13 @@ import * as path from 'path';
 
 /** 短路口：一条话 → 一个工具（标准：一个工具能干完、参数可从话里提取、无歧义）。
  * 跨两个以上工具的（周报/论文…）不在此列——走任务包。 */
+interface DirectRouteSlot {
+  /** 提取出的值放进 params 的目标键（如 cell / font_size / color） */
+  name: string;
+  /** 槽类型，对应 SLOT_EXTRACTORS 的提取正则（体验修复轮 A 数据化） */
+  type: 'cell' | 'number' | 'path' | 'color' | 'date' | 'enum';
+}
+
 interface DirectRoute {
   /** 命中关键词（对 lower-case 后的话做 includes） */
   match: string[];
@@ -214,36 +225,97 @@ interface DirectRoute {
   params: Record<string, unknown>;
   /** 人话说明（写进 result.note） */
   note: string;
+  /** 可从话里提取的参数槽（数据化声明；缺省 = 无可提取参数） */
+  slots?: DirectRouteSlot[];
+  /** 一条示例话术（文档/测试用） */
+  example?: string;
 }
 
 const CELL_ADDR = /\b([a-z]{1,3}\d{1,7})\b/i;
 
-/** 短路口表。工具名全部经注册表核对真实存在（2026-10-27，见意图升级交付报告）。 */
-const DIRECT_ROUTES: DirectRoute[] = [
-  { match: ['保存一下', '保存文件', '保存文档', '保存表格', '保存这份'], tool: 'wps_common_save', app: 'common', params: {}, note: '保存当前文档' },
-  { match: ['另存为', '存成新文件', '另存一份'], tool: 'wps_common_save_as', app: 'common', params: {}, note: '另存为（需要目标路径）' },
-  { match: ['导出pdf', '转成pdf', '转pdf', '转成 pdf'], tool: 'wps_convert_to_pdf', app: 'common', params: {}, note: '原地转 PDF' },
-  { match: ['读取单元格', '读单元格', '取单元格内容', '看看单元格'], tool: 'wps_excel_get_cell_value', app: 'excel', params: {}, note: '读单元格（话里的地址会提取进 params.cell）' },
-  { match: ['写入单元格', '改单元格', '设置单元格', '填单元格'], tool: 'wps_excel_set_cell_value', app: 'excel', params: {}, note: '写单元格（地址提取进 params.cell，值需要补）' },
-  { match: ['加粗'], tool: 'wps_word_set_font', app: 'word', params: { bold: true }, note: '选区加粗' },
-  { match: ['斜体'], tool: 'wps_word_set_font', app: 'word', params: { italic: true }, note: '选区斜体' },
-  { match: ['改字号', '字号改成', '设置字号'], tool: 'wps_word_set_font', app: 'word', params: {}, note: '改字号（具体号数需补）' },
-  { match: ['字体颜色', '文字颜色'], tool: 'wps_word_set_text_color', app: 'word', params: {}, note: '改文字颜色（颜色值需补）' },
-  { match: ['插入一行', '加一行'], tool: 'wps_excel_insert_rows', app: 'excel', params: {}, note: '插一行（位置需补）' },
-  { match: ['插入一列', '加一列'], tool: 'wps_excel_insert_columns', app: 'excel', params: {}, note: '插一列（位置需补）' },
-  { match: ['删除一行', '删掉一行'], tool: 'wps_excel_delete_rows', app: 'excel', params: {}, note: '删一行（位置需补）' },
-  { match: ['删除一列', '删掉一列'], tool: 'wps_excel_delete_columns', app: 'excel', params: {}, note: '删一列（位置需补）' },
-  { match: ['冻结首行'], tool: 'wps_excel_freeze_panes', app: 'excel', params: { rows: 1 }, note: '冻结首行' },
-  { match: ['冻结首列'], tool: 'wps_excel_freeze_panes', app: 'excel', params: { columns: 1 }, note: '冻结首列' },
-  { match: ['冻结窗口', '冻结表头'], tool: 'wps_excel_freeze_panes', app: 'excel', params: {}, note: '冻结（位置需补）' },
-  { match: ['加页码', '插入页码'], tool: 'wps_word_page_number', app: 'word', params: {}, note: '插入页码' },
-  { match: ['新建工作簿', '建个工作簿', '新建表格文件'], tool: 'wps_excel_create_workbook', app: 'excel', params: {}, note: '新建工作簿' },
-  { match: ['新建文档', '建个文档', '新建空白文档'], tool: 'wps_word_create_document', app: 'word', params: {}, note: '新建文字文档' },
-  { match: ['新建演示文稿', '新建ppt', '建个ppt'], tool: 'wps_ppt_create_presentation', app: 'ppt', params: {}, note: '新建演示文稿' },
-  { match: ['加一页', '加页幻灯片', '插入幻灯片', '加一张幻灯片'], tool: 'wps_ppt_add_slide', app: 'ppt', params: {}, note: '加一页幻灯片' },
-  { match: ['字数统计', '统计字数', '多少字'], tool: 'wps_word_get_document_stats', app: 'word', params: {}, note: '文档统计（字数/段落等）' },
-  { match: ['连接测试', '测试连接', '检查连接'], tool: 'wps_check_connection', app: 'common', params: {}, note: '通道健康检查（合并后的规范名）' },
+/** 槽位提取正则表（体验修复轮 A · 数据化）：slots[].type → 从话里提取参数值的正则与整形。
+ *  新增可提取参数 = intent-routes.json 加一条 slot + 这里补一行正则，算法不动。 */
+const SLOT_EXTRACTORS: Record<string, (task: string) => unknown | undefined> = {
+  cell: (task) => {
+    const m = CELL_ADDR.exec(task);
+    return m ? m[1].toUpperCase() : undefined;
+  },
+  number: (task) => {
+    const m = /(\d+(?:\.\d+)?)/.exec(task);
+    const n = m ? Number(m[1]) : NaN;
+    return Number.isFinite(n) ? n : undefined;
+  },
+  path: (task) => {
+    const m = /([A-Za-z]:[\\/][^"”'\s]+)/.exec(task);
+    return m ? m[1] : undefined;
+  },
+  color: (task) => {
+    const hex = /#([0-9a-fA-F]{6})\b/.exec(task);
+    if (hex) return '#' + hex[1].toUpperCase();
+    const named = /(红色|蓝色|绿色|黑色|白色|红色|orange|red|blue|green|black|white)/i.exec(task);
+    return named ? named[1] : undefined;
+  },
+  date: (task) => {
+    const m = /(\d{4}[-/年]\d{1,2}[-/月]\d{1,2}日?)/.exec(task);
+    return m ? m[1] : undefined;
+  },
+};
+
+/** 兜底短路口表：intent-routes.json 加载失败时用（行为不断）。与 JSON 初版内容逐条一致。 */
+const FALLBACK_ROUTES: DirectRoute[] = [
+  { match: ['保存一下', '保存文件', '保存文档', '保存表格', '保存这份'], tool: 'wps_common_save', app: 'common', params: {}, note: '保存当前文档', slots: [], example: '保存一下' },
+  { match: ['另存为', '存成新文件', '另存一份'], tool: 'wps_common_save_as', app: 'common', params: {}, note: '另存为（需要目标路径）', slots: [{ name: 'path', type: 'path' }], example: '另存为 D:\\backup\\报告.docx' },
+  { match: ['导出pdf', '转成pdf', '转pdf', '转成 pdf'], tool: 'wps_convert_to_pdf', app: 'common', params: {}, note: '原地转 PDF', slots: [], example: '把这份文档转成pdf' },
+  { match: ['读取单元格', '读单元格', '取单元格内容', '看看单元格'], tool: 'wps_excel_get_cell_value', app: 'excel', params: {}, note: '读单元格（话里的地址会提取进 params.cell）', slots: [{ name: 'cell', type: 'cell' }], example: '读取 B3 单元格的内容' },
+  { match: ['写入单元格', '改单元格', '设置单元格', '填单元格'], tool: 'wps_excel_set_cell_value', app: 'excel', params: {}, note: '写单元格（地址提取进 params.cell，值需要补）', slots: [{ name: 'cell', type: 'cell' }], example: '把 B4 单元格改成 95' },
+  { match: ['加粗'], tool: 'wps_word_set_font', app: 'word', params: { bold: true }, note: '选区加粗', slots: [], example: '把这段加粗' },
+  { match: ['斜体'], tool: 'wps_word_set_font', app: 'word', params: { italic: true }, note: '选区斜体', slots: [], example: '设成斜体' },
+  { match: ['改字号', '字号改成', '设置字号'], tool: 'wps_word_set_font', app: 'word', params: {}, note: '改字号（具体号数会提取进 params.font_size）', slots: [{ name: 'font_size', type: 'number' }], example: '字号改成 16' },
+  { match: ['字体颜色', '文字颜色'], tool: 'wps_word_set_text_color', app: 'word', params: {}, note: '改文字颜色（颜色值会提取进 params.color）', slots: [{ name: 'color', type: 'color' }], example: '文字颜色改成 #FF0000' },
+  { match: ['插入一行', '加一行'], tool: 'wps_excel_insert_rows', app: 'excel', params: {}, note: '插一行（位置需补）', slots: [], example: '在第 3 行前插入一行' },
+  { match: ['插入一列', '加一列'], tool: 'wps_excel_insert_columns', app: 'excel', params: {}, note: '插一列（位置需补）', slots: [], example: '加一列' },
+  { match: ['删除一行', '删掉一行'], tool: 'wps_excel_delete_rows', app: 'excel', params: {}, note: '删一行（位置需补）', slots: [], example: '删掉第 5 行' },
+  { match: ['删除一列', '删掉一列'], tool: 'wps_excel_delete_columns', app: 'excel', params: {}, note: '删一列（位置需补）', slots: [], example: '删除一列' },
+  { match: ['冻结首行'], tool: 'wps_excel_freeze_panes', app: 'excel', params: { rows: 1 }, note: '冻结首行', slots: [], example: '冻结首行' },
+  { match: ['冻结首列'], tool: 'wps_excel_freeze_panes', app: 'excel', params: { columns: 1 }, note: '冻结首列', slots: [], example: '冻结首列' },
+  { match: ['冻结窗口', '冻结表头'], tool: 'wps_excel_freeze_panes', app: 'excel', params: {}, note: '冻结（位置需补）', slots: [], example: '冻结表头' },
+  { match: ['加页码', '插入页码'], tool: 'wps_word_page_number', app: 'word', params: {}, note: '插入页码', slots: [], example: '给文档加页码' },
+  { match: ['新建工作簿', '建个工作簿', '新建表格文件'], tool: 'wps_excel_create_workbook', app: 'excel', params: {}, note: '新建工作簿', slots: [], example: '新建一个工作簿' },
+  { match: ['新建文档', '建个文档', '新建空白文档'], tool: 'wps_word_create_document', app: 'word', params: {}, note: '新建文字文档', slots: [], example: '新建空白文档' },
+  { match: ['新建演示文稿', '新建ppt', '建个ppt'], tool: 'wps_ppt_create_presentation', app: 'ppt', params: {}, note: '新建演示文稿', slots: [], example: '建个ppt' },
+  { match: ['加一页', '加页幻灯片', '插入幻灯片', '加一张幻灯片'], tool: 'wps_ppt_add_slide', app: 'ppt', params: {}, note: '加一页幻灯片', slots: [], example: '加一页幻灯片' },
+  { match: ['字数统计', '统计字数', '多少字'], tool: 'wps_word_get_document_stats', app: 'word', params: {}, note: '文档统计（字数/段落等）', slots: [], example: '统计一下字数' },
+  { match: ['连接测试', '测试连接', '检查连接'], tool: 'wps_check_connection', app: 'common', params: {}, note: '通道健康检查（合并后的规范名）', slots: [], example: '测试连接' },
 ];
+
+/** 直答路由数据化（体验修复轮 A）：intent.ts 只带兜底表，正式路由从 intent-routes.json 加载。
+ *  加载多候选与 task-packages 同款（tsc 不复制 json，dist 态与仓库源码态各试一个）。 */
+let directRoutesCache: DirectRoute[] | null = null;
+function loadDirectRoutes(): DirectRoute[] {
+  if (directRoutesCache) return directRoutesCache;
+  const candidates = [
+    path.join(__dirname, '..', '..', 'server', 'intent-routes.json'), // dist/tools/common → dist/server
+    path.join(__dirname, '..', '..', '..', 'src', 'server', 'intent-routes.json'), // dist → 仓库 src
+  ];
+  for (const file of candidates) {
+    try {
+      const parsed = JSON.parse(fs.readFileSync(file, 'utf8')) as { routes?: DirectRoute[] };
+      if (Array.isArray(parsed.routes) && parsed.routes.length) {
+        directRoutesCache = parsed.routes;
+        break;
+      }
+    } catch {
+      /* 试下一个候选 */
+    }
+  }
+  if (!directRoutesCache) directRoutesCache = FALLBACK_ROUTES;
+  return directRoutesCache;
+}
+
+/** 现役直答路由（JSON 优先，兜底内置） */
+function directRoutes(): DirectRoute[] {
+  return loadDirectRoutes();
+}
 
 interface TaskPackage {
   task: string;
@@ -294,21 +366,53 @@ export interface TaskPackageMatch {
   not_for: string[];
 }
 
-/** 纯函数：短路口匹配（不含 IO，便于测试）。命中即返回，多条命中取关键词数最多的。 */
+/** 语料文档频率：从直答路由 + 任务包的 match[] 聚合（体验修复轮 A · IDF 语料）。
+ *  缓存一次；IDF = log((N+1)/(df+1)) + 1（平滑，df=0 的词也不会除零）。 */
+let idfCache: Map<string, number> | null = null;
+function idfOf(kw: string): number {
+  if (!idfCache) {
+    const entries: string[][] = [
+      ...directRoutes().map((r) => r.match),
+      ...loadTaskPackages().map((p) => p.match),
+    ];
+    const df = new Map<string, number>();
+    for (const arr of entries) {
+      for (const kw of arr) df.set(kw, (df.get(kw) || 0) + 1);
+    }
+    const N = entries.length || 1;
+    idfCache = new Map();
+    for (const [kw, d] of df) idfCache.set(kw, Math.log((N + 1) / (d + 1)) + 1);
+  }
+  return idfCache.get(kw) ?? Math.log(2) + 1;
+}
+
+/** 纯函数：短路口匹配（不含网络 IO，便于测试）。
+ *  计分升级（体验修复轮 A）：命中词 IDF 权重求和（罕见词权重高，"冻结首行"比"加粗"稀有），
+ *  平手退回现行口径（命中数 → 特异度）。命中的路由声明了 slots 时，按 SLOT_EXTRACTORS
+ *  从话里提取参数注入（提取失败不注入——缺了才补，与 params 固定值合并）。 */
 export function matchDirectRoute(task: string): DirectMatch | null {
   const text = (task || '').toLowerCase();
-  let best: { route: DirectRoute; hits: string[] } | null = null;
-  for (const route of DIRECT_ROUTES) {
+  let best: { route: DirectRoute; hits: string[]; score: number } | null = null;
+  for (const route of directRoutes()) {
     const hits = route.match.filter((kw) => text.includes(kw.toLowerCase()));
     if (!hits.length) continue;
-    if (!best || hits.length > best.hits.length) best = { route, hits };
+    const score = hits.reduce((sum, kw) => sum + idfOf(kw), 0);
+    if (
+      !best ||
+      score > best.score + 1e-9 ||
+      (Math.abs(score - best.score) <= 1e-9 && hits.length > best.hits.length)
+    ) {
+      best = { route, hits, score };
+    }
   }
   if (!best) return null;
   const params: Record<string, unknown> = { ...best.route.params };
-  // 参数提取：单元格地址（读/写单元格类话术里最常见的可提取参数）
-  if (best.route.tool.startsWith('wps_excel_get_cell_value') || best.route.tool === 'wps_excel_set_cell_value') {
-    const m = CELL_ADDR.exec(task);
-    if (m) params.cell = m[1].toUpperCase();
+  // 槽位提取（声明式）：路由声明了 slots 就按类型提正则，提取失败不注入
+  for (const slot of best.route.slots ?? []) {
+    const extract = SLOT_EXTRACTORS[slot.type];
+    if (!extract) continue;
+    const v = extract(task);
+    if (v !== undefined && params[slot.name] === undefined) params[slot.name] = v;
   }
   return { tool: best.route.tool, app: best.route.app, params, matched: best.hits, note: best.route.note };
 }
@@ -423,6 +527,19 @@ export const routeIntentHandler: ToolHandler = async (args) => {
   // 定组层的新包装：type/confidence/alternatives 与三层格式对齐（result 即原 IntentResult，
   // 老调用方读 result.matches / result.needLoad 的路径不变——回归不断）。
   const confidence = matches.length ? matches[0].confidence : 0;
+
+  // 自适应回流（体验修复轮 A）：未命中/低置信 → 记下这句，等本会话下一次实际工具调用配对落盘。
+  // 只记录与提示，不改任何路由表。
+  if (!direct && !pkg && (!matches.length || confidence < 0.5)) {
+    recordMiss(task);
+    const tops = topMisses(3);
+    if (tops.length) {
+      result.note =
+        (result.note ? result.note + ' ' : '') +
+        `高频未命中话术（可给 intent-routes.json 补词条）：${tops.map((t) => `「${t.task}」×${t.count}`).join('、')}`;
+    }
+  }
+
   let alternatives: Array<{ group: string; reason: string }> = matches
     .slice(1)
     .map((m) => ({ group: m.group, reason: `命中关键词：${m.matched.join('、')}` }));

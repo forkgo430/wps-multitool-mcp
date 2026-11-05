@@ -11,7 +11,7 @@
  * - wps_ppt_switch_presentation: 切换到指定演示文稿
  * - wps_ppt_set_slide_theme: 设置演示文稿主题
  * - wps_ppt_copy_slide: 复制幻灯片
- * - wps_ppt_insert_slide_image: 在幻灯片中插入图片
+ * - wps_ppt_insert_slide_image: 已转别名指向 insert_image（2026-11-03 大项②，见 tool-aliases.json）
  * - wps_ppt_insert_slides_from_file: 从其它演示文稿导入整页幻灯片
  * - wps_ppt_set_active_target: 锁定后续 PPT 操作的目标演示文稿
  */
@@ -332,63 +332,9 @@ export const copySlideHandler: ToolHandler = async (
   return ok(`幻灯片已复制！\n源页: 第${slideIndex}页\n新页位置: 第${r.data.newIndex}页`, r.warnings);
 };
 
-/**
- * 在幻灯片中插入图片
- */
-export const insertSlideImageDefinition: ToolDefinition = {
-  name: 'wps_ppt_insert_slide_image',
-  description: `在幻灯片中插入图片。
-
-使用场景：
-- "在第1页插入一张图片"
-- "添加图片到幻灯片"
-- "把这个图片放到PPT里"`,
-  category: ToolCategory.PRESENTATION,
-  inputSchema: {
-    type: 'object',
-    properties: {
-      slideIndex: {
-        type: 'number',
-        description: '幻灯片索引（从1开始）',
-      },
-      imagePath: {
-        type: 'string',
-        description: '图片文件的完整路径',
-      },
-      left: {
-        type: 'number',
-        description: '左边距（像素），默认100',
-      },
-      top: {
-        type: 'number',
-        description: '上边距（像素），默认100',
-      },
-    },
-    required: ['slideIndex', 'imagePath'],
-  },
-};
-
-export const insertSlideImageHandler: ToolHandler = async (
-  args: Record<string, unknown>
-): Promise<ToolCallResult> => {
-  const { slideIndex, imagePath, left, top } = args as {
-    slideIndex: number;
-    imagePath: string;
-    left?: number;
-    top?: number;
-  };
-
-  // 动作必须是 insertPptImage（PPT 段的），不能是 insertImage ——
-  // wps-com.ps1 里的 insertImage 是【Word】动作（Get-WpsWord + InlineShapes.AddPicture），
-  // PPT 工具调它必然拿不到 $doc，于是每调用一次就报一次"不能对 Null 值表达式调用方法"。
-  // 这个工具从上线起就没成功过一次。
-  const r = await call<{ name?: string }>(
-    'insertPptImage',
-    { slideIndex, path: imagePath, filePath: imagePath, left, top }
-  );
-  if (!r.ok || !r.data) return fail(errText('插入图片失败', r), r.error);
-  return ok(`图片已插入到第${slideIndex}页幻灯片！\n图片路径: ${imagePath}`, r.warnings);
-};
+// wps_ppt_insert_slide_image 已于 2026-11-03（大项②）转别名指向 wps_ppt_insert_image
+// （同 insertPptImage 动作，rename: imagePath→path），旧定义删除；历史教训保留：
+// 动作必须是 PPT 段的 insertPptImage，不能是 Word 段的 insertImage（后者拿不到 $doc 必炸）。
 
 /**
  * 从其它演示文稿导入整页幻灯片（跨PPT整合，保留来源格式）
@@ -530,7 +476,6 @@ export const presentationTools: RegisteredTool[] = [
   { definition: switchPresentationDefinition, handler: switchPresentationHandler },
   { definition: setSlideThemeDefinition, handler: setSlideThemeHandler },
   { definition: copySlideDefinition, handler: copySlideHandler },
-  { definition: insertSlideImageDefinition, handler: insertSlideImageHandler },
   { definition: insertSlidesFromFileDefinition, handler: insertSlidesFromFileHandler },
   { definition: setActiveTargetDefinition, handler: setActiveTargetHandler },
 ];

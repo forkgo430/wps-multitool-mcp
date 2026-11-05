@@ -35,6 +35,7 @@ import { resolveToolAlias, isToolAlias, applyAliasParams, TOOL_ALIASES } from '.
 import { withAutoSnapshot } from './auto-snapshot';
 import { runWithTarget } from './target-context';
 import { collabGuardCheckBefore, collabGuardNoteAfter, appOfToolName } from './collab-guard';
+import { noteToolUse } from './intent-miss-log';
 import { getToolAnnotations } from './tool-annotations';
 
 /**
@@ -608,10 +609,14 @@ export class ToolRegistry {
         const app = appOfToolName(name);
         const preWarnings = writeClassified ? await collabGuardCheckBefore(app) : [];
         const res = await withAutoSnapshot(name, () => tool.handler(callArgs));
+        // 意图自适应回流（体验修复轮 A）：若本会话刚有未命中的 route_intent，
+        // 把这次实际调用的工具名与那句未命中话术配对（一次配对即清，无未命中则零开销）
+        noteToolUse(name);
         if (writeClassified) await collabGuardNoteAfter(app);
         if (preWarnings.length) {
           res.warnings = [
-            ...preWarnings.map((message) => ({ step: '协作检测', message })),
+            // 协作提醒是 info 级（体验修复轮 B）：不影响本次操作结果，不该挂"部分成功"头
+            ...preWarnings.map((message) => ({ step: '协作检测', message, severity: 'info' as const })),
             ...(res.warnings ?? []),
           ];
         }

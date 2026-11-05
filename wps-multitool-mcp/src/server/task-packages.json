@@ -32,20 +32,27 @@
     "",
     "steps 里的 action 是【Windows 注册工具的语义名】（Linux 侧由动作层映射到 jsAsynCall method）；",
     "app 是会话路由（word/excel/ppt/common）；confirm_before 列破坏性动作（执行前应征询）；",
-    "snapshot 列写动作前建议自动快照（auto-snapshot 机制对齐）。"
+    "snapshot 列写动作前建议自动快照（auto-snapshot 机制对齐）。",
+    "",
+    "v2（2026-11-05，意图一期·服务端执行，决策者）：",
+    "  execute:'server' 的包由 wps_run_task 在服务端一次跑完，中间结果不出服务端（INTENT-DESIGN §4.2）；",
+    "  steps 新增必填 tool（注册工具名，消灭语义名→工具名断点）与可选 params（字面量 +",
+    "  {{args.x}}/{{steps.N.data.x}} 引用，引擎深解析）；execute 缺省 'model'＝v1 行为（模型按 steps 逐步执行）。",
+    "  weekly_report 为首个试点包；其余包维持 'model'，逐包迁移前须真机验证。"
   ],
   "packages": [
     {
       "task": "weekly_report",
       "title": "周报生成",
+      "execute": "server",
       "match": ["周报", "本周总结", "工作周报", "weekly report", "本周汇报", "周总结"],
       "steps": [
-        { "action": "getRangeData", "app": "excel", "note": "读本周数据" },
-        { "action": "createChart", "app": "excel", "note": "数据成图" },
-        { "action": "exportChartAsImage", "app": "excel", "inline": true, "note": "导出图表图片" },
-        { "action": "createDocument", "app": "word", "snapshot": true, "note": "建周报文档" },
-        { "action": "insertText", "app": "word", "note": "写入正文" },
-        { "action": "convertToPDF", "app": "common", "note": "转 PDF 归档" }
+        { "action": "getRangeData", "tool": "wps_excel_read_range", "app": "excel", "params": {}, "note": "读本周数据" },
+        { "action": "createChart", "tool": "wps_excel_create_chart", "app": "excel", "params": {}, "note": "数据成图" },
+        { "action": "exportChartAsImage", "tool": "wps_excel_export_chart_as_image", "app": "excel", "inline": true, "params": {}, "note": "导出图表图片" },
+        { "action": "createDocument", "tool": "wps_word_create_document", "app": "word", "snapshot": true, "params": {}, "note": "建周报文档" },
+        { "action": "insertText", "tool": "wps_word_insert_text", "app": "word", "params": { "text": "{{args.body}}" }, "note": "写入正文（正文来自运行参数 args.body）" },
+        { "action": "convertToPDF", "tool": "wps_convert_to_pdf", "app": "common", "params": {}, "note": "转 PDF 归档" }
       ],
       "confirm_before": ["createDocument"]
     },

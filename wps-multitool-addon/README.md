@@ -38,6 +38,11 @@ powershell -ExecutionPolicy Bypass -File ..\..\scripts\deploy-addon.ps1 -Check #
 - 任务窗格的 `CreateTaskPane` API 在本机 WPS 12.1 上按官方社区示例实现，**未经真机验证**。
 - 「工具组 基础 40」在面板里是写死的说明文字（桥拿不到 MCP server 的注册表）。
 
+## v3.4（2026-11-04 第七任 · 面板诚实化）
+
+- 桥为懒加载（无 MCP 工具调用时不运行），"未连接/连不上"文案改为说明"等待 MCP 调用拉起，几秒内自动连上"
+- 部署副本若仍显示"上游"字样 = 远古版本残留，重跑 `scripts/deploy-addon.ps1` 即更新
+
 ## v3.1（2026-10-28 决策者修复轮）
 
 - 修复状态闪跳：render 引用已移除的 target 区块元素 → 每 2 秒 TypeError 被 poll catch 误报"连不上桥"；死代码删除 + render 套 try/catch

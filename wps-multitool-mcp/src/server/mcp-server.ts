@@ -22,7 +22,7 @@ import {
 
 import { toolRegistry, ToolRegistry } from './tool-registry';
 import { wpsClient } from '../client/wps-client';
-import { ToolCallResult, ToolCategory, ToolContent } from '../types/tools';
+import { ToolCallResult, ToolCategory, ToolContent, ToolWarning } from '../types/tools';
 import { allTools } from '../tools';
 import { onToolGroupsChanged } from '../tools/common/toolgroups';
 import { createChildLogger } from '../utils/logger';
@@ -875,12 +875,29 @@ export default WpsMcpServer;
 export function prefixWithWarnings(result: ToolCallResult): ToolContent[] {
   const ws = result.warnings;
   if (!ws || !ws.length) return result.content;
-  const lines = ws.map((w) => (w.step ? `  - ${w.step}：${w.message}` : `  - ${w.message}`));
-  const head = `[部分成功|主操作已完成，${ws.length} 处未按预期]`;
+  const fmt = (w: ToolWarning) => (w.step ? `  - ${w.step}：${w.message}` : `  - ${w.message}`);
+  // 分级（体验修复轮 B）：severity='info' 是不影响本次结果的提醒（快照提示/协作提醒/
+  // 修订模式建议），不该被当成"未按预期"——真失败会被这种头淹没。缺省（未标）一律
+  // 按 warning 处理，老行为逐字保留。
+  const blocking = ws.filter((w) => w.severity !== 'info');
+  const infos = ws.filter((w) => w.severity === 'info');
+  const all = ws.map(fmt).join('\n');
+
+  if (!blocking.length) {
+    // 纯 info：轻头，文案不含"未按预期"
+    const head = `[备注|${infos.length} 条提醒，不影响本次操作结果]`;
+    return result.content.map((c, i) =>
+      i === 0 && c.type === 'text' && typeof c.text === 'string'
+        ? { ...c, text: `${head}\n${all}\n\n${c.text}` }
+        : c
+    );
+  }
+
+  const head = `[部分成功|主操作已完成，${blocking.length} 处未按预期${infos.length ? `，另有 ${infos.length} 条备注` : ''}]`;
   const hint = '以下是没成功的部分（不要当成全好，也不要重复执行整批）';
   return result.content.map((c, i) =>
     i === 0 && c.type === 'text' && typeof c.text === 'string'
-      ? { ...c, text: `${head} ${hint}\n${lines.join('\n')}\n\n${c.text}` }
+      ? { ...c, text: `${head} ${hint}\n${all}\n\n${c.text}` }
       : c
   );
 }

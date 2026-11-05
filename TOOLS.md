@@ -3,7 +3,7 @@
 > 本文件由 `wps-multitool-mcp/scripts/manual/gen-tools-doc.js` 从**运行时注册表**生成，请勿手改。
 > 改完工具跑一次 `node scripts/manual/gen-tools-doc.js`；CI 会重跑并 `git diff --exit-code`，对不上就红。
 
-**287 个工具**（7 内置 + 280 专业/组工具）· 默认列出 40 个 · 注解覆盖 287/287 · 真机验证 276/287
+**283 个工具**（7 内置 + 276 专业/组工具）· 默认列出 40 个 · 注解覆盖 283/283 · 真机验证 270/283
 
 | 标记 | 含义 |
 |---|---|
@@ -21,7 +21,7 @@
 | `wps_search_tools` | 是 | R | live | 在所有工具里搜索（包括未加载组的工具），返回名字 + 所属组 + 是否已列出 + 中文别名 + 验证状态。<br><sub>别名：找工具 / 搜工具 / 有没有什么工具</sub> |
 | `wps_unload_tool_group` | 是 | — | live | 卸载一个工具组，卸载后该组工具不再出现在工具列表里（仍可直接调用，但不推荐）。<br><sub>别名：卸载工具组合 / 工具 / 组合</sub> |
 
-## 通用（21）
+## 通用（22）
 
 | 工具 | 默认档 | 注解 | 验证 | 说明 |
 |---|---|---|---|---|
@@ -46,6 +46,7 @@
 | `wps_common_snapshot_restore` |  | DN | live | 把快照恢复回去。 |
 | `wps_get_cached_data` |  | R | live | 从MCP Server获取缓存的数据，用于跨应用数据传递。<br><sub>别名：取暂存数据 / 读缓存 / 取暂存结果</sub> |
 | `wps_list_cache` |  | R | live | 列出MCP Server中所有缓存的数据键名<br><sub>别名：看缓存列表 / 暂存了哪些 / 列出cache</sub> |
+| `wps_run_task` |  | N | static | 执行一个"服务端任务包"：一次调用跑完整个多步骤流程，只返回最终摘要。 |
 
 ## Word（67）
 
@@ -128,7 +129,7 @@
 | `wps_excel_get_open_workbooks` | 是 | R | live | 获取当前所有已打开的Excel工作簿列表。<br><sub>别名：获取打开工作簿 / 读取打开工作簿 / 查看打开工作簿</sub> |
 | `wps_excel_get_sheet_list` | 是 | R | live | 获取当前工作簿的所有工作表列表，包含名称、索引和是否为活动工作表。<br><sub>别名：获取工作表列出 / 读取工作表列出 / 查看工作表列出</sub> |
 | `wps_excel_open_workbook` | 是 | — | live | 打开指定路径的Excel工作簿文件。<br><sub>别名：打开工作簿 / 工作簿 / 表格文件</sub> |
-| `wps_excel_read_range` | 是 | R | live | 读取Excel指定范围的单元格数据，返回二维数组格式的数据。<br><sub>别名：读取区域 / 区域 / 范围</sub> |
+| `wps_excel_read_range` | 是 | R | live | 读取Excel指定范围的单元格数据，返回二维数组格式的数据。超过 maxRows（默认 200）行自动截断并提示剩余行数。<br><sub>别名：读取区域 / 区域 / 范围</sub> |
 | `wps_excel_set_cell_value` | 是 | — | live | 设置Excel指定单元格的值。<br><sub>别名：写单元格 / 填值 / 设置单元格内容</sub> |
 | `wps_excel_set_formula` | 是 | — | live | 在指定单元格设置Excel公式。公式必须以=开头，支持所有Excel内置函数。<br><sub>别名：写公式 / 设置公式 / 填公式</sub> |
 | `wps_excel_switch_workbook` | 是 | — | live | 切换到指定名称的Excel工作簿。<br><sub>别名：切换工作簿 / 工作簿 / 表格文件</sub> |
@@ -215,7 +216,7 @@
 | `wps_excel_update_pivot_table` |  | — | live | 更新已有透视表的配置，包括添加/移除字段、修改聚合方式等。<br><sub>别名：更新数据透视表表格 / 刷新数据透视表表格 / 数据透视表</sub> |
 | `wps_get_active_workbook` |  | R | live | 获取当前打开的WPS表格工作簿信息<br><sub>别名：当前工作簿 / 活动工作簿 / 打开的是哪个表格</sub> |
 
-## PPT（103）
+## PPT（98）
 
 | 工具 | 默认档 | 注解 | 验证 | 说明 |
 |---|---|---|---|---|
@@ -225,7 +226,7 @@
 | `wps_ppt_export_slide_as_image` | 是 | — | live | 将指定幻灯片导出为位图图片（PNG/JPG/JPEG/GIF/BMP）。<br><sub>别名：导出幻灯片as图片 / 输出幻灯片as图片 / 幻灯片</sub> |
 | `wps_ppt_get_open_presentations` | 是 | R | live | 获取当前所有已打开的演示文稿列表。<br><sub>别名：获取打开演示文稿 / 读取打开演示文稿 / 查看打开演示文稿</sub> |
 | `wps_ppt_get_slide_count` | 是 | R | live | 获取演示文稿中的幻灯片总数。<br><sub>别名：获取幻灯片count / 读取幻灯片count / 查看幻灯片count</sub> |
-| `wps_ppt_insert_image` | 是 | N | live | 在幻灯片中插入图片。<br><sub>别名：插入图片 / 加图片 / 新增图片</sub> |
+| `wps_ppt_insert_image` | 是 | N | live | 在幻灯片中插入图片。<br><sub>别名：插入图片 / 加图片 / 按页插图片</sub> |
 | `wps_ppt_set_slide_title` | 是 | — | live | 设置幻灯片的标题文本。<br><sub>别名：设置标题 / 改标题 / 设置幻灯片标题</sub> |
 | `wps_get_active_presentation` |  | R | live | 获取当前打开的WPS演示文稿信息<br><sub>别名：当前演示文稿 / 活动演示 / 打开的是哪个PPT</sub> |
 | `wps_ppt_add_master_element` |  | N | live | 向母版中添加新元素。<br><sub>别名：添加母版element / 新增母版element / 加母版element</sub> |
@@ -234,13 +235,10 @@
 | `wps_ppt_add_shape` |  | N | live | 在幻灯片中添加形状。<br><sub>别名：添加形状 / 新增形状 / 加形状</sub> |
 | `wps_ppt_add_textbox` |  | N | live | 在幻灯片中添加文本框。<br><sub>别名：加文本框 / 插入文本框 / 添加文本框</sub> |
 | `wps_ppt_add_title_decoration` |  | N | live | 为幻灯片标题添加装饰性元素。<br><sub>别名：添加标题装饰 / 新增标题装饰 / 加标题装饰</sub> |
-| `wps_ppt_align_objects` |  | — | live | [DEPRECATED·改用 wps_ppt_align_shapes] 对齐幻灯片中的对象。<br><sub>别名：对齐objects</sub> |
 | `wps_ppt_align_shapes` |  | — | live | 对齐幻灯片中的多个形状。<br><sub>别名：对齐形状 / 形状</sub> |
 | `wps_ppt_apply_color_scheme` |  | — | live | 为幻灯片应用统一配色方案。<br><sub>别名：应用颜色scheme / 套用颜色scheme / 颜色</sub> |
-| `wps_ppt_auto_beautify_slide` |  | — | live | 自动美化指定的单页幻灯片。<br><sub>别名：自动美化幻灯片 / 美化 / 幻灯片</sub> |
 | `wps_ppt_auto_layout` |  | — | live | 自动调整幻灯片中所有元素的布局。<br><sub>别名：自动版式 / 版式 / 布局</sub> |
-| `wps_ppt_beautify` |  | — | live | 一键美化幻灯片，优化排版、配色、字体和间距。<br><sub>别名：美化 / 美化单页</sub> |
-| `wps_ppt_beautify_all_slides` |  | — | live | 批量美化演示文稿中的所有幻灯片。<br><sub>别名：美化全部 / 整篇美化 / 美化all幻灯片</sub> |
+| `wps_ppt_beautify` |  | — | live | 美化幻灯片（合并轮后是美化族的唯一入口；op 三分支，覆盖原 beautify / auto_beautify_slide /…<br><sub>别名：美化 / 美化单页 / 整篇美化</sub> |
 | `wps_ppt_build_deck` |  | N | static | 按 JSON 页面描述一次性生成整套演示文稿（deckkit 引擎）。<br><sub>别名：生成整套PPT / 套模板生成 / 一键做PPT</sub> |
 | `wps_ppt_close_presentation` |  | DN | live | 关闭演示文稿。可指定文稿名称，不指定则关闭当前活动文稿。<br><sub>别名：关闭演示文稿 / 演示文稿 / PPT</sub> |
 | `wps_ppt_copy_slide` |  | N | live | 复制幻灯片到指定位置。<br><sub>别名：复制幻灯片 / 拷贝幻灯片 / 幻灯片</sub> |
@@ -270,11 +268,9 @@
 | `wps_ppt_get_slide_title` |  | R | live | 获取指定幻灯片的标题。<br><sub>别名：获取幻灯片标题 / 读取幻灯片标题 / 查看幻灯片标题</sub> |
 | `wps_ppt_get_table_cell` |  | R | live | 获取PPT表格中指定单元格的文本内容。<br><sub>别名：获取表格单元格 / 读取表格单元格 / 查看表格单元格</sub> |
 | `wps_ppt_get_textbox_metrics` |  | R | static | 获取指定页全部文本框的排版度量（结构化 JSON，只读）：每框 index/name/text/left/top/width/…<br><sub>别名：获取文本框metrics / 读取文本框metrics / 查看文本框metrics</sub> |
-| `wps_ppt_get_textboxes` |  | R | live | 获取幻灯片上所有文本框的列表。<br><sub>别名：获取文本框 / 读取文本框 / 查看文本框</sub> |
+| `wps_ppt_get_textboxes` |  | R | live | 获取幻灯片上所有文本框的列表。brief 模式（默认开，回包瘦身）只回 index/名称/几何摘要；全量传 brief:fal…<br><sub>别名：获取文本框 / 读取文本框 / 查看文本框</sub> |
 | `wps_ppt_group_shapes` |  | — | live | 将幻灯片中的多个形状组合为一个组。<br><sub>别名：组合形状 / 分组形状 / 形状</sub> |
 | `wps_ppt_insert_ppt_chart` |  | N | live | 在幻灯片中插入数据图表。<br><sub>别名：插入图表 / 新增图表 / 加入图表</sub> |
-| `wps_ppt_insert_ppt_image` |  | N | live | [DEPRECATED·改用 wps_ppt_insert_image] 插入图片到幻灯片中。<br><sub>别名：插入图片 / 新增图片 / 加入图片</sub> |
-| `wps_ppt_insert_slide_image` |  | N | live | 在幻灯片中插入图片。<br><sub>别名：插入幻灯片图片 / 新增幻灯片图片 / 加入幻灯片图片</sub> |
 | `wps_ppt_insert_slides_from_file` |  | N | live | 从另一个 PPT 文件把整页幻灯片插入到【当前活动演示文稿】，并保留来源幻灯片的原始格式（字体/配色/版式/图片）。用于把多个…<br><sub>别名：插入幻灯片fromfile / 新增幻灯片fromfile / 加入幻灯片fromfile</sub> |
 | `wps_ppt_insert_table` |  | N | live | 在幻灯片中插入表格。<br><sub>别名：插入表格 / 加表格 / 新增表格</sub> |
 | `wps_ppt_move_slide` |  | N | live | 移动幻灯片到指定位置。<br><sub>别名：移动幻灯片 / 幻灯片 / 页面</sub> |
@@ -307,7 +303,7 @@
 | `wps_ppt_set_slide_content` |  | — | live | 设置幻灯片的正文内容区域。<br><sub>别名：设置幻灯片内容 / 设定幻灯片内容 / 幻灯片</sub> |
 | `wps_ppt_set_slide_layout` |  | — | live | 设置幻灯片的版式布局。<br><sub>别名：设置幻灯片版式 / 设定幻灯片版式 / 幻灯片</sub> |
 | `wps_ppt_set_slide_number` |  | — | live | 设置幻灯片页码的显示状态和起始编号。<br><sub>别名：设置幻灯片数字 / 设定幻灯片数字 / 幻灯片</sub> |
-| `wps_ppt_set_slide_size` |  | — | live | 设置演示文稿的幻灯片尺寸（按像素给，内部换算成 WPS 的磅）。<br><sub>别名：设置幻灯片size / 设定幻灯片size / 幻灯片</sub> |
+| `wps_ppt_set_slide_size` |  | — | static | 设置演示文稿的幻灯片尺寸（单位：磅）。<br><sub>别名：设置幻灯片size / 设定幻灯片size / 幻灯片</sub> |
 | `wps_ppt_set_slide_subtitle` |  | — | live | 设置幻灯片的副标题。<br><sub>别名：设置幻灯片副标题 / 设定幻灯片副标题 / 幻灯片</sub> |
 | `wps_ppt_set_slide_theme` |  | — | static | 应用主题模板（换整套配色/字体/版式）。<br><sub>别名：设置幻灯片主题 / 设定幻灯片主题 / 幻灯片</sub> |
 | `wps_ppt_set_table_cell` |  | — | live | 设置PPT表格中指定单元格的文本内容。<br><sub>别名：设置表格单元格 / 设定表格单元格 / 表格</sub> |

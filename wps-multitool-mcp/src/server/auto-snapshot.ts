@@ -125,6 +125,8 @@ export async function withAutoSnapshot<T extends { warnings?: ToolWarning[] }>(
         snapWarnings = [
           {
             step: 'snapshot.dirty',
+            // info 级（体验修复轮 B）：回滚保险还在（磁盘版快照），这是"怎么保得更全"的提醒
+            severity: 'info' as const,
             message:
               '这次改动前已自动存快照，但快照取自磁盘、不含未保存改动；要连未保存内容一起保命，先 wps_common_save 再重做',
           },
@@ -134,6 +136,8 @@ export async function withAutoSnapshot<T extends { warnings?: ToolWarning[] }>(
       snapWarnings = [
         {
           step: 'snapshot',
+          // warning 级（缺省）：没有回滚保险=影响可回滚性，按分级原则留 warning
+          severity: 'warning' as const,
           message: `改动前没能自动建快照：${snap.error}。这次执行没有回滚保险。`,
         },
       ];

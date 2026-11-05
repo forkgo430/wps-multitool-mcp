@@ -45,7 +45,22 @@
     "更糟的是 set_animation_order 的 newOrder → order 这种改名，参数被静默忽略后工具会按默认值乱改。",
     "rename 在调用方没给新键时才搬（不覆盖规范名自己收的参数），set 是【缺了才补】（调用方显式给了就听调用方的）。",
     "合并时必须写 set 的场景：族里每个旧工具的\"默认值\"不同 —— preset 固定 category='entrance'、",
-    "emphasis 固定 category='emphasis'、order 固定 op='reorder'，少了这一步 3 个旧名会打同一个动作的不同分支。"
+    "emphasis 固定 category='emphasis'、order 固定 op='reorder'，少了这一步 3 个旧名会打同一个动作的不同分支。",
+    "",
+    "2026-11-03（PPT 大项② · 别名转正）：wps_ppt_insert_ppt_image / wps_ppt_insert_slide_image",
+    "转别名指向 wps_ppt_insert_image（同 insertPptImage 动作，canonical 参数最全：path+width/height）。",
+    "rename 按【真实 schema】写：insert_ppt_image 旧必填是 filePath（不是 C 类清单里早先写的",
+    "imagePath），insert_slide_image 是 imagePath——两映射都指向新必填 path。",
+    "wps_ppt_align_objects 本轮【未转】：真机+代码查证 ps1 alignShapes 的 alignMap 只有 6 个",
+    "对齐值，distribute_h/v 会静默回退成左对齐（align_objects 侧 schema 有这两值）——按卡停下报裁决",
+    "（砍值 or 扩 ps1），别让别名把静默错误行为合法化。",
+    "",
+    "2026-11-04（合并轮 = ②补 + 大项③）：",
+    "  wps_ppt_align_objects → wps_ppt_align_shapes（参数同名零映射）。裁决=砍值：align_objects",
+    "  schema 里的 distribute_h/v 从未正确工作（ps1 alignMap 6 值 + 兜底左对齐，真机 success 但坐标",
+    "  零变化），转别名后老调用传这两值会得到清晰的 enum 校验错误；分布需求用 distribute_shapes。",
+    "  wps_ppt_auto_beautify_slide / wps_ppt_beautify_all_slides → wps_ppt_beautify（op 三分支",
+    "  quick/auto/style），set 固定 op 分支；旧调用文本在对应分支里逐字保留。"
   ],
   "aliases": {
     "wps_common_ping": "wps_check_connection",
@@ -62,47 +77,96 @@
     "wps_word_generate_doc_toc": "wps_word_generate_toc",
     "wps_ppt_duplicate_slide": "wps_ppt_copy_slide",
     "wps_ppt_add_chart": "wps_ppt_insert_ppt_chart",
-
     "wps_ppt_set_slide_background": "wps_ppt_set_background",
     "wps_ppt_set_background_color": "wps_ppt_set_background",
     "wps_ppt_set_background_image": "wps_ppt_set_background",
     "wps_ppt_set_background_gradient": "wps_ppt_set_background",
-
     "wps_ppt_add_animation": {
       "to": "wps_ppt_set_animation",
-      "set": { "op": "add", "category": "entrance" }
+      "set": {
+        "op": "add",
+        "category": "entrance"
+      }
     },
     "wps_ppt_add_animation_preset": {
       "to": "wps_ppt_set_animation",
-      "rename": { "preset": "effect" },
-      "set": { "op": "add", "category": "entrance" }
+      "rename": {
+        "preset": "effect"
+      },
+      "set": {
+        "op": "add",
+        "category": "entrance"
+      }
     },
     "wps_ppt_add_emphasis_animation": {
       "to": "wps_ppt_set_animation",
-      "set": { "op": "add", "category": "emphasis" }
+      "set": {
+        "op": "add",
+        "category": "emphasis"
+      }
     },
     "wps_ppt_set_animation_order": {
       "to": "wps_ppt_set_animation",
-      "rename": { "newOrder": "order" },
-      "set": { "op": "reorder" }
+      "rename": {
+        "newOrder": "order"
+      },
+      "set": {
+        "op": "reorder"
+      }
     },
     "wps_ppt_set_slide_transition": {
       "to": "wps_ppt_set_transition",
-      "set": { "target": "slide" }
+      "set": {
+        "target": "slide"
+      }
     },
-
     "wps_word_set_font_style": {
       "to": "wps_word_set_font",
-      "rename": { "fontName": "font_name", "fontSize": "font_size" }
+      "rename": {
+        "fontName": "font_name",
+        "fontSize": "font_size"
+      }
     },
     "wps_word_get_active_document": "wps_word_get_document_stats",
     "wps_ppt_apply_transition_to_all": {
       "to": "wps_ppt_set_transition",
-      "set": { "target": "all" }
+      "set": {
+        "target": "all"
+      }
     },
     "wps_ppt_remove_slide_transition": {
       "to": "wps_ppt_set_transition",
-      "set": { "target": "slide", "effect": "none" }
+      "set": {
+        "target": "slide",
+        "effect": "none"
+      }
+    },
+    "wps_ppt_insert_ppt_image": {
+      "to": "wps_ppt_insert_image",
+      "rename": {
+        "filePath": "path"
+      }
+    },
+    "wps_ppt_insert_slide_image": {
+      "to": "wps_ppt_insert_image",
+      "rename": {
+        "imagePath": "path"
+      }
+    },
+    "wps_ppt_align_objects": {
+      "to": "wps_ppt_align_shapes"
+    },
+    "wps_ppt_auto_beautify_slide": {
+      "to": "wps_ppt_beautify",
+      "set": {
+        "op": "auto"
+      }
+    },
+    "wps_ppt_beautify_all_slides": {
+      "to": "wps_ppt_beautify",
+      "set": {
+        "op": "style"
+      }
     }
   }
 }
