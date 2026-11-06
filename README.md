@@ -3,7 +3,7 @@
 **简体中文** | [English](README.en.md)
 
 <!-- AUTO:badges:start -->
-[![CI](https://github.com/forkgo430/wps-multitool-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/forkgo430/wps-multitool-mcp/actions/workflows/ci.yml) [![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE) [![npm](https://img.shields.io/npm/v/wps-multitool-mcp)](https://www.npmjs.com/package/wps-multitool-mcp) [![release](https://img.shields.io/github/v/release/forkgo430/wps-multitool-mcp)](https://github.com/forkgo430/wps-multitool-mcp/releases) [![tools](https://img.shields.io/badge/tools-283-brightgreen.svg)](#能力一览) [![platform](https://img.shields.io/badge/platform-Windows%20only-lightgrey.svg)](#安装)
+[![CI](https://github.com/forkgo430/wps-multitool-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/forkgo430/wps-multitool-mcp/actions/workflows/ci.yml) [![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE) [![npm](https://img.shields.io/npm/v/wps-multitool-mcp)](https://www.npmjs.com/package/wps-multitool-mcp) [![release](https://img.shields.io/github/v/release/forkgo430/wps-multitool-mcp)](https://github.com/forkgo430/wps-multitool-mcp/releases) [![tools](https://img.shields.io/badge/tools-285-brightgreen.svg)](#能力一览) [![platform](https://img.shields.io/badge/platform-Windows%20only-lightgrey.svg)](#安装)
 <!-- AUTO:badges:end -->
 
 > 让 AI 直接操控你正开着的 WPS 文字、表格、演示。
@@ -80,8 +80,8 @@ irm https://cdn.jsdelivr.net/gh/forkgo430/wps-multitool-mcp@main/scripts/install
 | 应用 | 工具数 | 主要能力 |
 |------|--------|---------|
 | Excel | 91 | 公式/数据/图表/透视表/工作表/格式/工作簿/行列/批注保护/图片导出 |
-| Word | 67 | 格式/内容/文档管理/页眉页脚/批注/书签/表格/模板填写/学术排版/修订/索引/交叉引用 |
-| PPT | 98 | 幻灯片/形状/图片/表格/美化/动画/图表/3D/数据可视化/图片导出 |
+| Word | 68 | 格式/内容/文档管理/页眉页脚/批注/书签/表格/模板填写/学术排版/修订/索引/交叉引用 |
+| PPT | 99 | 幻灯片/形状/图片/表格/美化/动画/图表/3D/数据可视化/图片导出 |
 | 通用 | 27 | 保存/连接检测/文本选取/格式转换/工具组管理/意图路由/批量执行 |
 | 内置 | 7（已计入上方各组） | 连接检查/万能方法调用/数据缓存 |
 <!-- AUTO:tool-table:end -->
@@ -93,9 +93,9 @@ irm https://cdn.jsdelivr.net/gh/forkgo430/wps-multitool-mcp@main/scripts/install
 <summary><b>规模（由注册表实测生成）</b></summary>
 
 <!-- AUTO:tool-stats:start -->
-- **283 个工具**（7 个内置 + 276 个专业/组工具）；**默认只列 40 个**（基础档 ∩ 真机验证，按需加载 —— 口径与校验见 `scripts/manual/basic-tier-verify.js`）
-- 分布（按工具组，内置计入对应组）：通用 27（含 core）/ Word 67 / Excel 91 / PPT 98
-- 注解（实测）：只读 51 / 破坏性 36 / 非幂等 111，覆盖 283/283
+- **285 个工具**（7 个内置 + 278 个专业/组工具）；**默认只列 40 个**（基础档 ∩ 真机验证，按需加载 —— 口径与校验见 `scripts/manual/basic-tier-verify.js`）
+- 分布（按工具组，内置计入对应组）：通用 27（含 core）/ Word 68 / Excel 91 / PPT 99
+- 注解（实测）：只读 51 / 破坏性 36 / 非幂等 113，覆盖 285/285
 <!-- AUTO:tool-stats:end -->
 
 </details>
@@ -207,13 +207,18 @@ dsh plugin --profile <你的profile> add dsh-multitool
 
 完整威胁模型见 [SECURITY.md](SECURITY.md)。
 
-## 已知限制
+## 设计边界（每一条都是选择，也是承诺）
 
-- **仅 Windows**：WPS 的 COM 自动化只在 Windows 可用（Linux 版在建设中，见下方路线）
-- **需要 WPS 正开着**：它操控的是"活文档"，不是文件转换器
-- **COM 写入不是事务**：改错了没有 Ctrl+Z——这正是默认快照存在的原因
-- **默认 40 个工具**：其余按组加载，防止几百个工具塞满 AI 的上下文
-- 部分工具尚未在真机验证过（清单里标注 `static`），用后请如实告知用户
+- **Windows 原生深度集成**：直接驱动你正开着的 WPS——AI 操作的就是你眼前的活文档，所见即所得；文件没打开会明确提示你开，绝不在后台偷偷弹窗。Linux 支持在建（路线见下）。
+- **云端文档同样可操作**：在 WPS 里打开的云文档就是活文档——AI 操作的是 WPS 里打开的文档，与存在本地还是云端无关；纯云端的远程管理不在范围。
+- **多步骤任务一次跑完**：任务引擎在服务端顺序执行整个流程（带进度通知），AI 只看最终结果，不用盯着每一步。
+- **可撤销、可恢复**：逐步撤销（`wps_word_undo`，UndoRecord 级）+ 破坏性操作前自动建快照、一键恢复（`snapshot_restore`）——COM 写入不是事务，所以这层防护是标配而不是可选项。
+- **本机私有**：所有端点只绑 127.0.0.1 回环，文档数据不出你的电脑。
+- **低上下文**：默认 40 个工具按组按需加载，AI 的上下文留给你的任务。
+
+## 透明度承诺
+
+- 每个工具的验证状态公开标注：`live`=真机验证 / `static`=待真机验证——用到未验证的工具会如实告知用户。
 
 ## 故障排除
 
@@ -227,9 +232,11 @@ dsh plugin --profile <你的profile> add dsh-multitool
 
 ## 路线
 
-- **Linux / macOS**：平台自动识别与加载项通道骨架已落地，WPS JSAPI 全量覆盖率已实测
-  （296 动作：支持 199 / 可适配 45+），动作层已实现 **123/296**（B4+B5 三批，mock 全绿；
-  真机补测 B3.7 待环境）。
+- **Linux**：平台自动识别与加载项通道骨架已落地，WPS JSAPI 全量覆盖率已实测
+  （296 动作：支持 199 / 可适配 45+），动作层已实现 **123/296**（B4+B5 三批，mock 全绿）；
+  云端真机环境资格已认定（通道 2ms、三型会话、并发无串型），当前在攻最后一层：
+  原生 `jsAsynCall` 的 method 编码（复测已派云端）。
+- **文档质量体系**：PPT 生成引擎已上线（10 页型/三主题/溢出自检）；Word 引擎与模板层在路线图。
 - **多应用批量与自动化检查**持续加细；欢迎 [提 issue](https://github.com/forkgo430/wps-multitool-mcp/issues) 点名你最想要的场景。
 
 ## 许可

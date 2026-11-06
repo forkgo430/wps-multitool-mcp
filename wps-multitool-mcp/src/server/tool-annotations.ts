@@ -78,6 +78,24 @@ const EXTRA_ANNOTATIONS: Record<string, ToolAnnotations> = {
     idempotentHint: false,
     openWorldHint: false,
   },
+  // ⑤ 批量形状原语（主线一 A 段 2026-11-06）：有静态 ps1 动作（batchUpsertShapes，一次
+  //  COM 往返内循环 N 项），但名字推断读不出 upsert 的部分失败语义——入口按最坏情况给：
+  //  非只读、非幂等（不带键两次调用会建两份）；破坏性不标（更新项非破坏、新建项同 build_deck 口径）。
+  wps_ppt_batch_upsert_shapes: {
+    readOnlyHint: false,
+    destructiveHint: false,
+    idempotentHint: false,
+    openWorldHint: false,
+  },
+  // M2 wordkit 文档质量引擎（主线一 B 段 2026-11-06）：deckkit 同范式——无静态 ps1 action，
+  //  逐步 callTool 走真入口（各子动作各自的护栏生效）。入口按最坏情况：非只读、非幂等、
+  //  破坏性不标（新建文档语义，与 build_deck 一致）。
+  wps_word_build_document: {
+    readOnlyHint: false,
+    destructiveHint: false,
+    idempotentHint: false,
+    openWorldHint: false,
+  },
   wps_execute_method: {
     readOnlyHint: false,
     destructiveHint: true,

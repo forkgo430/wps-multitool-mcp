@@ -50,6 +50,7 @@ import { dataVizTools } from './data-viz';
 import { tableTools } from './table';
 import { beautifyAdvancedTools } from './beautify-advanced';
 import { deckTools } from './deckkit';
+import { batchShapesTools } from './batch-shapes';
 
 /**
  * 所有PPT相关的Tools
@@ -84,6 +85,7 @@ export const pptTools: RegisteredTool[] = [
   ...tableTools,
   ...beautifyAdvancedTools,
   ...deckTools,
+  ...batchShapesTools,
 ];
 
 // 分别导出，方便按需使用
@@ -102,6 +104,7 @@ export { dataVizTools } from './data-viz';
 export { tableTools } from './table';
 export { beautifyAdvancedTools } from './beautify-advanced';
 export { deckTools } from './deckkit';
+export { batchShapesTools } from './batch-shapes';
 
 // 导出单独的定义和处理器，方便测试
 export {

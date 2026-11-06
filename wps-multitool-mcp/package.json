@@ -11,7 +11,8 @@
     "dist",
     "scripts/wps-com.ps1",
     "scripts/wps-comd.ps1",
-    "skills"
+    "skills",
+    "src/server/*.json"
   ],
   "scripts": {
     "build": "tsc",

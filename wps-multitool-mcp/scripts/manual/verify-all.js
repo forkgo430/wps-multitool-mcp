@@ -46,6 +46,8 @@ const FAST = [
   ['param-shape-verify.js', '参数形状（TS 传了 PS 不读）'],
   ['auto-snapshot-verify.js', '单工具写入自动快照（mock COM）'],
   ['collab-guard-verify.js', '协作安全网：人工编辑检测与修订建议（mock COM）'],
+  ['batch-shapes-verify.js', '⑤ 批量形状原语（主线一 A 段）：upsert 两路/逐项失败聚合/上限 50（mock COM）'],
+  ['wordkit-verify.js', 'M2 wordkit 文档引擎（主线一 B 段）：8 kind 展开/生成后校验三路/降级两路（mock COM）'],
   ['readback-slim-verify.js', '回包瘦身（体验修复轮 B）：read_range maxRows/brief 摘要/inline 开关（mock COM）'],
   ['word-target-verify.js', 'word target 参数链路（mock COM）'],
   ['tool-groups-test.js', '工具组加载'],

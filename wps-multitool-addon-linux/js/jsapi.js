@@ -28,7 +28,10 @@
   'use strict';
 
   function timeoutMs() {
-    var v = parseInt(process && process.env ? process.env.WPS_JSAPI_TIMEOUT : '', 10);
+    // webview 里没有 Node 的 process——用 typeof 探测（直接写 process && 会抛 ReferenceError，
+    // B3.8 真机实证：云端脚手架注入 process 垫片前所有 jsAsynCall 在进 cefQuery 前就崩）
+    var env = typeof process !== 'undefined' && process.env ? process.env : {};
+    var v = parseInt(env.WPS_JSAPI_TIMEOUT || '', 10);
     return Number.isFinite(v) && v > 0 ? v : 30000;
   }
 

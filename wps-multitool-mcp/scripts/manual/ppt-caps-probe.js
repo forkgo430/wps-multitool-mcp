@@ -215,7 +215,7 @@ const B2_TOOLS = [
     // 页序不写死：新建文稿可能自带 1 页也可能 0 页，按当前页数推
     const slideCountNow = Number((txt(await call('wps_ppt_get_slide_count', {})).match(/(\d+)/) || [])[1] || 0);
     const SHAPE_SLIDE = slideCountNow || 2; // 基础档刚加的那一页
-    const baseShapes = parseShapes(txt(await call('wps_ppt_get_shapes', { slideIndex: SHAPE_SLIDE })));
+    const baseShapes = parseShapes(txt(await call('wps_ppt_get_shapes', { slideIndex: SHAPE_SLIDE, brief: false })));
     const n0 = baseShapes.length;
 
     const addOk = await call('wps_ppt_add_shape', {
@@ -228,7 +228,7 @@ const B2_TOOLS = [
     await call('wps_ppt_add_shape', {
       slideIndex: SHAPE_SLIDE, type: 'rectangle', left: 360, top: 260, width: 120, height: 60, text: '形状探测丙',
     });
-    const afterAdd = parseShapes(txt(await call('wps_ppt_get_shapes', { slideIndex: SHAPE_SLIDE })));
+    const afterAdd = parseShapes(txt(await call('wps_ppt_get_shapes', { slideIndex: SHAPE_SLIDE, brief: false })));
     check(
       'wps_ppt_add_shape',
       addOk.success && afterAdd.length === n0 + 3,
@@ -269,7 +269,7 @@ const B2_TOOLS = [
         alignment: 'left',
         shapeIndices: mine.map((s) => s.index),
       });
-      const afterAll = parseShapes(txt(await call('wps_ppt_get_shapes', { slideIndex: SHAPE_SLIDE })));
+      const afterAll = parseShapes(txt(await call('wps_ppt_get_shapes', { slideIndex: SHAPE_SLIDE, brief: false })));
       const afterMine = afterAll.filter((s) => s.top === 260).sort((a, b) => a.index - b.index).map((s) => s.left);
       // 顺带数一下"没被要求的形状"有没有被一起动 —— 这是 align 系列能不能指定子集的关键
       const collateral = afterAll.filter((s2) => {
@@ -286,11 +286,11 @@ const B2_TOOLS = [
         await call('wps_ppt_add_shape', {
           slideIndex: SHAPE_SLIDE, type: 'rectangle', left: 420, top: 340, width: 100, height: 50, text: '子集观测',
         });
-        const preSub = parseShapes(txt(await call('wps_ppt_get_shapes', { slideIndex: SHAPE_SLIDE })));
+        const preSub = parseShapes(txt(await call('wps_ppt_get_shapes', { slideIndex: SHAPE_SLIDE, brief: false })));
         const sub = await call('wps_ppt_align_shapes', {
           slideIndex: SHAPE_SLIDE, shapeIndices: [preSub[preSub.length - 1].index], alignment: 'left',
         });
-        const postSub = parseShapes(txt(await call('wps_ppt_get_shapes', { slideIndex: SHAPE_SLIDE })));
+        const postSub = parseShapes(txt(await call('wps_ppt_get_shapes', { slideIndex: SHAPE_SLIDE, brief: false })));
         const changedAll = postSub.filter((s2) => {
           const s1 = preSub.find((x) => x.index === s2.index);
           return s1 && s1.left !== s2.left;

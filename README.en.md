@@ -3,7 +3,7 @@
 [简体中文](README.md) | **English**
 
 <!-- AUTO:badges:start -->
-[![CI](https://github.com/forkgo430/wps-multitool-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/forkgo430/wps-multitool-mcp/actions/workflows/ci.yml) [![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE) [![npm](https://img.shields.io/npm/v/wps-multitool-mcp)](https://www.npmjs.com/package/wps-multitool-mcp) [![release](https://img.shields.io/github/v/release/forkgo430/wps-multitool-mcp)](https://github.com/forkgo430/wps-multitool-mcp/releases) [![tools](https://img.shields.io/badge/tools-283-brightgreen.svg)](#capabilities) [![platform](https://img.shields.io/badge/platform-Windows%20only-lightgrey.svg)](#requirements)
+[![CI](https://github.com/forkgo430/wps-multitool-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/forkgo430/wps-multitool-mcp/actions/workflows/ci.yml) [![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE) [![npm](https://img.shields.io/npm/v/wps-multitool-mcp)](https://www.npmjs.com/package/wps-multitool-mcp) [![release](https://img.shields.io/github/v/release/forkgo430/wps-multitool-mcp)](https://github.com/forkgo430/wps-multitool-mcp/releases) [![tools](https://img.shields.io/badge/tools-285-brightgreen.svg)](#capabilities) [![platform](https://img.shields.io/badge/platform-Windows%20only-lightgrey.svg)](#requirements)
 <!-- AUTO:badges:end -->
 
 > Let AI directly drive the WPS Office documents you have open right now — Writer, Spreadsheets, Presentation.
@@ -81,8 +81,8 @@ Four conveniences built in:
 | App | Tools | Highlights |
 |-----|-------|-----------|
 | Excel | 91 | formulas, data, charts, pivot tables, sheets, formatting, workbooks, rows/columns, comments & protection, image export |
-| Word | 67 | formatting, content, document management, headers/footers, comments, bookmarks, tables, templates, academic layout, revisions, index, cross-references |
-| PPT | 98 | slides, shapes, images, tables, beautify, animations, charts, 3D, data viz, image export |
+| Word | 68 | formatting, content, document management, headers/footers, comments, bookmarks, tables, templates, academic layout, revisions, index, cross-references |
+| PPT | 99 | slides, shapes, images, tables, beautify, animations, charts, 3D, data viz, image export |
 | Common | 27 | save, connection check, text selection, format conversion, tool groups, intent routing, batch |
 | Built-in | 7 (already counted above) | connection check, generic method, data cache |
 <!-- AUTO:tool-table:end -->
@@ -95,9 +95,9 @@ to the new tools with parameters migrated.
 <summary><b>Scale (measured from the registry)</b></summary>
 
 <!-- AUTO:tool-stats:start -->
-- **283 tools** (7 built-in + 276 specialized); **only 40 listed by default** (essential ∩ live-verified, load on demand — see `scripts/manual/basic-tier-verify.js`)
-- Distribution (by tool group, built-ins counted in their app group): Common 27 (incl. core) / Word 67 / Excel 91 / PPT 98
-- Annotations (measured): read-only 51 / destructive 36 / non-idempotent 111 — coverage 283/283
+- **285 tools** (7 built-in + 278 specialized); **only 40 listed by default** (essential ∩ live-verified, load on demand — see `scripts/manual/basic-tier-verify.js`)
+- Distribution (by tool group, built-ins counted in their app group): Common 27 (incl. core) / Word 68 / Excel 91 / PPT 99
+- Annotations (measured): read-only 51 / destructive 36 / non-idempotent 113 — coverage 285/285
 <!-- AUTO:tool-stats:end -->
 
 </details>
@@ -212,13 +212,18 @@ You get 40 WPS tools plus a skill teaching AI the correct order of use. Tool pre
 
 Full threat model in [SECURITY.md](SECURITY.md).
 
-## Known limitations
+## Design boundaries (each is a choice — and a promise)
 
-- **Windows only**: WPS COM automation doesn't exist elsewhere (Linux is under construction — see roadmap below)
-- **WPS must be open**: it drives live documents, not a file converter
-- **COM writes are not transactions**: no Ctrl+Z when something goes wrong — which is why snapshots are on by default
-- **40 tools by default**: the rest load by group, so hundreds of tools don't flood the AI's context
-- Some tools haven't been verified on a real machine yet (marked `static` in the list) — tell your user honestly after using them
+- **Native Windows integration**: drives the WPS you have open — the AI works on the live documents in front of you, WYSIWYG; if a file isn't open it will tell you to open it, never popping windows behind your back. Linux support is under construction (roadmap below).
+- **Cloud documents count**: a cloud doc opened in WPS is a live document — the AI reads and writes whatever WPS has open, regardless of where it's stored; remote-only cloud management is out of scope.
+- **Multi-step tasks in one shot**: the task engine runs a whole workflow server-side (with progress notifications) — the AI only sees the final result.
+- **Undo & recover**: step-by-step undo (`wps_word_undo`, UndoRecord-grade) + automatic snapshots before destructive operations with one-click restore (`snapshot_restore`) — COM writes aren't transactions, so this layer of protection is standard equipment, not an option.
+- **Local & private**: every endpoint binds to the 127.0.0.1 loopback — your document data never leaves your machine.
+- **Low context**: 40 tools by default, loaded by group on demand — the AI's context stays reserved for your task.
+
+## Transparency promise
+
+- Every tool's verification status is public: `live` = verified on a real machine, `static` = not yet — using an unverified tool is disclosed to your user honestly.
 
 ## Troubleshooting
 
@@ -232,9 +237,11 @@ Full threat model in [SECURITY.md](SECURITY.md).
 
 ## Roadmap
 
-- **Linux / macOS**: platform auto-detection and the add-in channel skeleton have landed; full WPS JSAPI
-  coverage has been measured (296 actions: 199 supported / 45 adaptable); the action layer is being implemented.
-  See `docs/agents/linux/`.
+- **Linux**: platform auto-detection and the add-in channel skeleton have landed; full WPS JSAPI
+  coverage has been measured (296 actions: 199 supported / 45 adaptable); the action layer implements
+  **123/296** (B4 + B5 batches, all mock-green). Cloud real-machine qualification is confirmed
+  (channel 2ms, three add-in types, zero cross-talk) — the last layer under attack is the native
+  `jsAsynCall` method encoding (cloud re-test dispatched).
 - More batch scenarios and checks are on the way — [tell us](https://github.com/forkgo430/wps-multitool-mcp/issues) which workflow you want.
 
 ## License

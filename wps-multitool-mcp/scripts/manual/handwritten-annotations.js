@@ -26,6 +26,8 @@ module.exports = {
   EXTRA_ANNOTATIONS_KEYS: [
     'wps_ppt_build_deck',
     'wps_run_task',
+    'wps_ppt_batch_upsert_shapes',
+    'wps_word_build_document',
     'wps_execute_method',
     'wps_common_batch',
     'wps_common_snapshot_create',

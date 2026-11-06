@@ -118,7 +118,9 @@
     "wps_ppt_switch_slide": "live",
     "wps_ppt_unify_font": "live",
     "wps_get_active_presentation": "live",
-    "wps_run_task": "static"
+    "wps_run_task": "static",
+    "wps_ppt_batch_upsert_shapes": "static",
+    "wps_word_build_document": "static"
   },
   "evidence": {
     "core": "verify-all 快测档（tool-groups-test / search-meta-verify）真跑注册表",

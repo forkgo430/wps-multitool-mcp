@@ -14,6 +14,7 @@ import { proofreadTools } from './proofread';
 import { academicTools } from './academic';
 import { p01Tools } from './professional';
 import { gapTools } from './gaps';
+import { wordkitTools } from './wordkit';
 
 /**
  * 所有Word相关的Tools
@@ -36,6 +37,7 @@ export const wordTools: RegisteredTool[] = [
   ...academicTools,
   ...p01Tools,
   ...gapTools,
+  ...wordkitTools,
 ];
 // 分别导出，方便按需使用
 export { formatTools } from './format';

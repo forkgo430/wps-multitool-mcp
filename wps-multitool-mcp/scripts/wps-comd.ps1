@@ -125,6 +125,10 @@ $env:WPS_COM_DAEMON = '1'
 # 第一个动作就落到用户的文档上 —— 而且不报错，极难发现。
 . (Join-Path $PSScriptRoot 'wps-com.ps1') -Instance $Instance -App $App
 
+# F1（环境病根治轮）：守护进程是 STA（powershell 5.1）——注册 COM 消息过滤器，
+# RetryRejectedCall 对 0x80010001 退避重试（250ms×8）。注册失败静默（call 层忙重试兜底）。
+Register-ComMessageFilter
+
 # 就绪握手：Node 侧据此确认守护进程起来了（而不是白等到超时）
 Output-Json @{ success = $true; data = @{ ready = $true; pid = $PID; daemon = 'wps-comd'; parent = $parentPid } }
 
@@ -146,7 +150,24 @@ while ($true) {
         # $req.params 为 $null 时给空表；动作内部统一按 $p.xxx 取值
         $par = if ($null -ne $req.params) { $req.params } else { @{} }
 
-        Invoke-WpsAction -Action $act -p $par
+        # F1 等价物 · call 层忙重试：0x80010001（被呼叫方拒绝）退避 250ms × 8——
+        # 拒绝发生在 COM 调用进入服务端之前，重放不会执行两次；过滤器吸收大部分瞬态，
+        # 这里兜住过滤器没接住的（含 MTA 场景）。非忙错误原样抛给分发层兜底。
+        $done = $false
+        for ($attempt = 1; $attempt -le 8 -and -not $done; $attempt++) {
+            try {
+                Invoke-WpsAction -Action $act -p $par
+                $done = $true
+            } catch {
+                $msg = $_.Exception.Message
+                if ($attempt -lt 8 -and ($msg -match '0x80010001' -or $msg -match 'RPC_E_CALL_REJECTED' -or $msg -match '被呼叫方拒绝')) {
+                    Mark-InstanceSuspect $App
+                    Start-Sleep -Milliseconds 250
+                    continue
+                }
+                throw
+            }
+        }
     } catch {
         # 分发层异常兜底：绝不能把异常抛给宿主，否则整个守护进程会随之下线
         $script:WpsReqId = $id

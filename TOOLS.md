@@ -3,7 +3,7 @@
 > 本文件由 `wps-multitool-mcp/scripts/manual/gen-tools-doc.js` 从**运行时注册表**生成，请勿手改。
 > 改完工具跑一次 `node scripts/manual/gen-tools-doc.js`；CI 会重跑并 `git diff --exit-code`，对不上就红。
 
-**283 个工具**（7 内置 + 276 专业/组工具）· 默认列出 40 个 · 注解覆盖 283/283 · 真机验证 270/283
+**285 个工具**（7 内置 + 278 专业/组工具）· 默认列出 40 个 · 注解覆盖 285/285 · 真机验证 270/285
 
 | 标记 | 含义 |
 |---|---|
@@ -48,7 +48,7 @@
 | `wps_list_cache` |  | R | live | 列出MCP Server中所有缓存的数据键名<br><sub>别名：看缓存列表 / 暂存了哪些 / 列出cache</sub> |
 | `wps_run_task` |  | N | static | 执行一个"服务端任务包"：一次调用跑完整个多步骤流程，只返回最终摘要。 |
 
-## Word（67）
+## Word（68）
 
 | 工具 | 默认档 | 注解 | 验证 | 说明 |
 |---|---|---|---|---|
@@ -67,6 +67,7 @@
 | `wps_word_add_list` |  | N | live | 在当前位置插入项目符号或编号列表（一次写多条）。<br><sub>别名：添加列出 / 新增列出 / 加列出</sub> |
 | `wps_word_add_style` |  | N | live | 新建一个样式（不直接应用到任何段落）。<br><sub>别名：添加样式 / 新增样式 / 加样式</sub> |
 | `wps_word_apply_style` |  | — | live | 应用Word样式到当前选中区域或指定范围。<br><sub>别名：套样式 / 应用样式 / 改成标题样式</sub> |
+| `wps_word_build_document` |  | N | static | 按 DocSpec 声明一次生成整篇 Word 文档（wordkit 引擎，deckkit 同构：声明 → 纯函数展开 → 生…<br><sub>别名：build文档 / 文档</sub> |
 | `wps_word_close_document` |  | DN | live | 关闭指定的 WPS 文字文档（不填关当前目标文档），可选是否保存。<br><sub>别名：关闭文档 / 关掉这个Word / 文档</sub> |
 | `wps_word_convert_table_to_text` |  | DN | live | 把文档里的表格转换成纯文本（按分隔符拼接），表格本身消失。<br><sub>别名：表格转文本 / 表格拆成文字 / 去表格线</sub> |
 | `wps_word_create_document` |  | N | live | 新建一个空白 WPS 文字文档，并把它设为后续 word 操作的目标。<br><sub>别名：新建文档 / 建个Word / 创建文档</sub> |
@@ -216,7 +217,7 @@
 | `wps_excel_update_pivot_table` |  | — | live | 更新已有透视表的配置，包括添加/移除字段、修改聚合方式等。<br><sub>别名：更新数据透视表表格 / 刷新数据透视表表格 / 数据透视表</sub> |
 | `wps_get_active_workbook` |  | R | live | 获取当前打开的WPS表格工作簿信息<br><sub>别名：当前工作簿 / 活动工作簿 / 打开的是哪个表格</sub> |
 
-## PPT（98）
+## PPT（99）
 
 | 工具 | 默认档 | 注解 | 验证 | 说明 |
 |---|---|---|---|---|
@@ -238,6 +239,7 @@
 | `wps_ppt_align_shapes` |  | — | live | 对齐幻灯片中的多个形状。<br><sub>别名：对齐形状 / 形状</sub> |
 | `wps_ppt_apply_color_scheme` |  | — | live | 为幻灯片应用统一配色方案。<br><sub>别名：应用颜色scheme / 套用颜色scheme / 颜色</sub> |
 | `wps_ppt_auto_layout` |  | — | live | 自动调整幻灯片中所有元素的布局。<br><sub>别名：自动版式 / 版式 / 布局</sub> |
+| `wps_ppt_batch_upsert_shapes` |  | N | static | 批量创建/更新幻灯片形状（upsert：带 shapeIndex/name 且存在即改，否则新建）。一次调用 = 一次 COM…<br><sub>别名：batchupsert形状 / 形状</sub> |
 | `wps_ppt_beautify` |  | — | live | 美化幻灯片（合并轮后是美化族的唯一入口；op 三分支，覆盖原 beautify / auto_beautify_slide /…<br><sub>别名：美化 / 美化单页 / 整篇美化</sub> |
 | `wps_ppt_build_deck` |  | N | static | 按 JSON 页面描述一次性生成整套演示文稿（deckkit 引擎）。<br><sub>别名：生成整套PPT / 套模板生成 / 一键做PPT</sub> |
 | `wps_ppt_close_presentation` |  | DN | live | 关闭演示文稿。可指定文稿名称，不指定则关闭当前活动文稿。<br><sub>别名：关闭演示文稿 / 演示文稿 / PPT</sub> |

@@ -30,6 +30,91 @@ $script:SandboxWordApp = $null
 $script:SandboxWordPids = @()
 $script:LastResolvedDoc = $null
 
+# ==================== F1 · COM 消息过滤器（体验修复轮 B/环境病根治轮 2026-11-06）====================
+# 0x80010001（被呼叫方拒绝）的经典成因是 WPS 忙碌（弹窗/首页/对话框阻塞消息循环）。
+# 标准解法 = STA 线程注册 IMessageFilter：RetryRejectedCall 对 SERVERCALL_RETRYLATER
+# 退避重试（250ms × 8 ≈ 2 秒），超时才让调用以明确错误失败。
+# 生效条件：STA 线程 + 消息泵。守护进程（wps-comd，powershell 5.1）是 STA——过滤器生效；
+# pwsh7/MTA 线程注册会被忽略（COM 限制）——那些场景由 call 层忙重试兜底（见 Invoke-WpsActionWithBusyRetry）。
+# 注册失败静默（过滤器是增益不是依赖）。
+$script:ComFilterRegistered = $false
+function Register-ComMessageFilter {
+    if ($script:ComFilterRegistered) { return }
+    try {
+        if (-not ('WpsCom.OleMessageFilter' -as [type])) {
+            Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+
+namespace WpsCom {
+    [ComImport, Guid("00000016-0000-0000-C000-000000000046"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    public interface IOleMessageFilter {
+        [PreserveSig] int HandleInComingCall(int dwCallType, IntPtr hTaskCaller, int dwTickCount, IntPtr lpInterfaceInfo);
+        [PreserveSig] int RetryRejectedCall(IntPtr hTaskCallee, int dwTickCount, int dwRejectType);
+        [PreserveSig] int MessagePending(IntPtr hTaskCallee, int dwTickCount, int dwPendingType);
+    }
+
+    [ComVisible(true)]
+    public class BusyRetryMessageFilter : IOleMessageFilter {
+        // SERVERCALL_RETRYLATER = 2；250ms 重试间隔，2 秒（≈8 次）后放弃
+        public int RetryRejectedCall(IntPtr hTaskCallee, int dwTickCount, int dwRejectType) {
+            if (dwRejectType == 2 && dwTickCount < 2000) { return 250; }
+            return -1;
+        }
+        public int HandleInComingCall(int dwCallType, IntPtr hTaskCaller, int dwTickCount, IntPtr lpInterfaceInfo) {
+            return 0; // SERVERCALL_ISHANDLED
+        }
+        public int MessagePending(IntPtr hTaskCallee, int dwTickCount, int dwPendingType) {
+            return 2; // PENDINGMSG_WAITDEFPROCESS
+        }
+    }
+
+    public static class MessageFilterRegistrar {
+        [DllImport("ole32.dll")]
+        public static extern int CoRegisterMessageFilter(IOleMessageFilter newFilter, out IOleMessageFilter oldFilter);
+
+        public static string Register() {
+            try {
+                var filter = new BusyRetryMessageFilter();
+                IOleMessageFilter old;
+                var hr = CoRegisterMessageFilter(filter, out old);
+                return hr == 0 ? "ok" : "hr=0x" + hr.ToString("X8");
+            } catch (Exception e) { return "exception: " + e.Message; }
+        }
+    }
+}
+"@ -ErrorAction Stop
+        }
+        $result = [WpsCom.MessageFilterRegistrar]::Register()
+        if ($result -eq 'ok') { $script:ComFilterRegistered = $true }
+    } catch {
+        # 过滤器注册失败静默——环境病的三层防御里它只是吸收瞬态的一层
+    }
+}
+
+# F1 等价物 · call 层忙重试（对 MTA 线程/直跑模式兜底）：0x80010001 退避 250ms × 8。
+# 只重试"被拒绝的调用"——拒绝发生在 COM 调用进入服务端之前，重放不会执行两次。
+# 2 秒后放弃并原样抛出（明确超时，不静默吞）。
+function Test-BusyReject([string]$message) {
+    return $message -match '0x80010001' -or $message -match 'RPC_E_CALL_REJECTED' -or $message -match '被呼叫方拒绝'
+}
+function Invoke-WpsActionWithBusyRetry {
+    param([string]$Action, $p)
+    $maxAttempts = 8
+    for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+        try {
+            return Invoke-WpsAction -Action $Action -p $p
+        } catch {
+            $msg = $_.Exception.Message
+            if ($attempt -lt $maxAttempts -and (Test-BusyReject $msg)) {
+                Start-Sleep -Milliseconds 250
+                continue
+            }
+            throw
+        }
+    }
+}
+
 <#
 .SYNOPSIS  当前进程是不是沙箱实例
 .DESCRIPTION
@@ -114,6 +199,12 @@ $script:UserWordApp = $null
 $script:UserExcelApp = $null
 $script:UserPptApp = $null
 $script:UserCreatedPids = @()
+# F3'（环境病根治轮 2026-11-06）：会话级"当前工作演示文稿"记账——Get-TargetPres 的
+# 第一优先解析源（存活校验通过才返回），createPresentation/openPresentation/解析成功即记账。
+$script:LastResolvedPres = $null
+# F5（环境病根治轮）：动作失败标记实例可疑——下次 Get-Wps* 跳过 ROT 附着（病态实例常从这里进来），
+# 直接走缓存探活→新建；任何 getter 返回健康实例即清标记。
+$script:InstanceSuspect = @{}
 
 # 新建一个 user 实例并记账（PID 差集 + 看门狗 Track）。返回 $null = 没建出来。
 function New-TrackedWpsInstance([string]$ProgId) {
@@ -186,16 +277,22 @@ function Get-WpsExcel {
     # 第 1 期第 2 章第 4 轮（A9）：Fresh 标记"这次取到的实例是不是【新建】的"。
     # 新建的实例一定是空的 —— 用它读列表会得到"0 份"，而文档其实还在（ROT 重注册窗口）。
     $script:WpsExcelFresh = $false
-    # ① 先附着已运行的实例（用户优先；pwsh7 兼容见 Get-RotObject）
+    $suspect = $script:InstanceSuspect['excel']
+    # ① 先附着已运行的实例（用户优先；pwsh7 兼容见 Get-RotObject）。
+    #    F5（环境病根治轮）：ROT 附着过轻量探活（病态实例常从这里进来）；
+    #    动作失败标记的可疑态 → 跳过 ROT 一轮（给缓存/新建让路）。
     $rot = Get-RotObject 'Ket.Application'
-    if ($null -ne $rot) { return $rot }
-    # ② 再看自己的缓存（ROT 重注册窗口期防反复新建）
+    if ($null -ne $rot -and -not $suspect) {
+        if (Test-AppAlive $rot 'excel') { Clear-InstanceSuspect 'excel'; return $rot }
+        # 病态 ROT 实例：弃用，落到缓存/新建（健康的逃生门）
+    }
+    # ② 再看自己的缓存（ROT 重注册窗口期防反复新建；已有探活）
     if ($null -ne $script:UserExcelApp) {
-        try { $null = $script:UserExcelApp.Workbooks.Count; return $script:UserExcelApp } catch { $script:UserExcelApp = $null }
+        try { $null = $script:UserExcelApp.Workbooks.Count; Clear-InstanceSuspect 'excel'; return $script:UserExcelApp } catch { $script:UserExcelApp = $null }
     }
     # ③ 都没有才新建，并记账
     $app = New-TrackedWpsInstance 'Ket.Application'
-    if ($app) { $script:WpsExcelFresh = $true; $script:UserExcelApp = $app; return $app }
+    if ($app) { $script:WpsExcelFresh = $true; $script:UserExcelApp = $app; Clear-InstanceSuspect 'excel'; return $app }
     return $null
 }
 
@@ -249,16 +346,19 @@ function Get-WpsWord {
     }
     # 第 1 期第 2 章第 4 轮（A9）：Fresh 标记"这次取到的实例是不是【新建】的"。
     $script:WpsWordFresh = $false
-    # ① 先附着已运行的实例（用户优先）
+    # ① 先附着已运行的实例（用户优先）。F5：ROT 附着过轻量探活 + 可疑跳过（与 excel/ppt 同款）
+    $suspect = $script:InstanceSuspect['word']
     $rot = Get-RotObject 'Kwps.Application'
-    if ($null -ne $rot) { return $rot }
-    # ② 自己的缓存（防 ROT 重注册窗口期反复新建）
+    if ($null -ne $rot -and -not $suspect) {
+        if (Test-AppAlive $rot 'word') { Clear-InstanceSuspect 'word'; return $rot }
+    }
+    # ② 自己的缓存（防 ROT 重注册窗口期反复新建；已有探活）
     if ($null -ne $script:UserWordApp) {
-        try { $null = $script:UserWordApp.Documents.Count; return $script:UserWordApp } catch { $script:UserWordApp = $null }
+        try { $null = $script:UserWordApp.Documents.Count; Clear-InstanceSuspect 'word'; return $script:UserWordApp } catch { $script:UserWordApp = $null }
     }
     # ③ 都没有才新建，并记账
     $app = New-TrackedWpsInstance 'Kwps.Application'
-    if ($app) { $script:WpsWordFresh = $true; $script:UserWordApp = $app; return $app }
+    if ($app) { $script:WpsWordFresh = $true; $script:UserWordApp = $app; Clear-InstanceSuspect 'word'; return $app }
     return $null
 }
 
@@ -276,13 +376,17 @@ function Get-WpsExcelFromRot {
     return Get-RotObject 'Ket.Application'
 }
 function Get-WpsPpt {
+    # F5（环境病根治轮）：与 Get-WpsExcel 同款三防——ROT 探活/可疑跳过/缓存探活
+    $suspect = $script:InstanceSuspect['ppt']
     $rot = Get-RotObject 'Kwpp.Application'
-    if ($null -ne $rot) { return $rot }
+    if ($null -ne $rot -and -not $suspect) {
+        if (Test-AppAlive $rot 'ppt') { Clear-InstanceSuspect 'ppt'; return $rot }
+    }
     if ($null -ne $script:UserPptApp) {
-        try { $null = $script:UserPptApp.Presentations.Count; return $script:UserPptApp } catch { $script:UserPptApp = $null }
+        try { $null = $script:UserPptApp.Presentations.Count; Clear-InstanceSuspect 'ppt'; return $script:UserPptApp } catch { $script:UserPptApp = $null }
     }
     $app = New-TrackedWpsInstance 'Kwpp.Application'
-    if ($app) { $script:UserPptApp = $app; return $app }
+    if ($app) { $script:UserPptApp = $app; Clear-InstanceSuspect 'ppt'; return $app }
     return $null
 }
 
@@ -339,6 +443,47 @@ function Test-PresHealthy($pres) {
     return $true
 }
 
+# F3'（环境病根治轮 2026-11-06）：记下"这次到底落到哪一份演示文稿"，由 Output-Json 带回（__pres）。
+# 镜像 word 侧 Set-LastResolvedDoc——在 Resolve-Pres 里记（全组 PPT 工具都走它，逐个加必漏）。
+function Set-LastResolvedPres($pres, [string]$by) {
+    if ($null -eq $pres) { return }
+    $nm = ''; $pth = ''
+    try { $nm = [string]$pres.Name } catch {}
+    try { $pth = [string]$pres.FullName } catch {}
+    $script:LastResolvedPres = @{ name = $nm; path = $pth; by = $by }
+}
+
+# F5（环境病根治轮）：轻量探活——对应应用的 Count 属性可读即认为句柄活着。
+# ROT 附着/缓存命中统一过这里：病态实例（0x80010001/空壳）在这里现形即弃。
+function Test-AppAlive($app, [string]$kind) {
+    if ($null -eq $app) { return $false }
+    try {
+        switch ($kind) {
+            'word'  { $null = $app.Documents.Count }
+            'excel' { $null = $app.Workbooks.Count }
+            'ppt'   { $null = $app.Presentations.Count }
+            default { $null = $app.Visible }
+        }
+        return $true
+    } catch { return $false }
+}
+
+# F5：动作失败（COM 拒绝/RPC）时标记实例可疑——下次 Get-Wps* 跳过 ROT 附着，
+# 直接走缓存探活 → 新建（病态实例常从 ROT 进来，跳过一次就是给健康实例让路）。
+# 成功 getter 清标记。app 为空时标全部（故障来自哪一路不确定时保守处理）。
+function Mark-InstanceSuspect([string]$app) {
+    if ($app -and $app.Trim()) { $script:InstanceSuspect[$app.Trim().ToLower()] = $true }
+    else {
+        $script:InstanceSuspect['word'] = $true
+        $script:InstanceSuspect['excel'] = $true
+        $script:InstanceSuspect['ppt'] = $true
+    }
+}
+function Clear-InstanceSuspect([string]$app) {
+    if ($app -and $app.Trim()) { $script:InstanceSuspect.Remove($app.Trim().ToLower()) }
+    else { $script:InstanceSuspect.Clear() }
+}
+
 # 按名字找演示文稿：先按 FullName 全等，再按 Name 全等，最后按"文件名（无扩展名）"全等。
 function Find-PresByName($ppt, [string]$want) {
     if ($null -eq $ppt -or [string]::IsNullOrWhiteSpace($want)) { return $null }
@@ -367,16 +512,28 @@ function Find-PresByName($ppt, [string]$want) {
 # 4) 全空返回 $null，由调用方报明确错误。
 function Resolve-Pres($ppt, $p) {
     if ($null -eq $ppt) { return $null }
+    # presentationName 显式给出 → 精确命中（找不到返回 $null 不静默回退——微轮语义保留，
+    # 显式指定永远赢过会话记账，否则"改 A 传 B 名"会变成改 A）
     if ($p -and $p.presentationName) {
         $d = Find-PresByName $ppt ([string]$p.presentationName)
-        if ($d) { return $d }
+        if ($d) { Set-LastResolvedPres $d 'presentationName'; return $d }
         return $null
     }
+    # F3'（环境病根治轮）：会话记账实例——上次解析/新建的那份，存活校验通过即复用。
+    # 会话连续性优先于 Active*：headless/首页态下 Active 恒 null/空壳，记账实例是唯一稳定锚。
+    $prev = $script:LastResolvedPres
+    if ($prev) {
+        $cand = $null
+        try { $cand = Find-PresByName $ppt ([string]$prev.name) } catch {}
+        if (Test-PresHealthy $cand) { Set-LastResolvedPres $cand '记账'; return $cand }
+        # 记账实例已不存在（被关/另存）→ 清记账，落到下面的 Active/遍历
+        $script:LastResolvedPres = $null
+    }
     try { $act = $ppt.ActivePresentation } catch { $act = $null }
-    if (Test-PresHealthy $act) { return $act }
+    if (Test-PresHealthy $act) { Set-LastResolvedPres $act 'active'; return $act }
     try {
         foreach ($c in @($ppt.Presentations)) {
-            if (Test-PresHealthy $c) { return $c }
+            if (Test-PresHealthy $c) { Set-LastResolvedPres $c 'firstHealthy'; return $c }
         }
     } catch {}
     return $null
@@ -386,6 +543,8 @@ function Resolve-Pres($ppt, $p) {
 # 未提供则回退到当前活动文稿；提供了但找不到则返回 $null（让调用方报明确错误，而不是误改其它文稿）。
 # 微轮（2026-11-05）：实现体收敛到 Resolve-Pres（Active 过健康检查 + 空壳遍历）——
 # 全组用 Get-TargetPres 的 PPT 工具自动获得去 Active 化后的解析。
+# F3'（环境病根治轮 2026-11-06）：解析链第一级加会话记账实例（存活校验）——
+# headless/首页态下 Active\* 恒 null/空壳，记账实例是唯一稳定锚。
 function Get-TargetPres($ppt, $p) {
     if ($null -eq $ppt) { return $null }
     return Resolve-Pres $ppt $p
@@ -779,6 +938,18 @@ function Output-Json($obj) {
     # 每条响应只带一次：不清掉的话，下一个请求（可能压根没解析文档）会继承上一份的名字，
     # 那比不带更坏 —— 它会让调用方确信自己改的是另一份。
     $script:LastResolvedDoc = $null
+
+    # F3'（环境病根治轮 2026-11-06）：PPT 同款溯源——__pres 带回"实际落到哪份演示文稿"。
+    # 与 __target 同款纪律：只在成功响应上带、每条响应只带一次。
+    if ($null -ne $script:LastResolvedPres -and ($obj -is [hashtable]) -and $obj['success'] -and -not $obj.ContainsKey('__pres')) {
+        $obj['__pres'] = @{
+            name     = [string]$script:LastResolvedPres.name
+            path     = [string]$script:LastResolvedPres.path
+            by       = [string]$script:LastResolvedPres.by
+            instance = [string]$script:WpsInstance
+        }
+    }
+    $script:LastResolvedPres = $null
 
     $obj | ConvertTo-Json -Depth 10 -Compress
 }
@@ -1924,6 +2095,8 @@ switch ($Action) {
         # Activate 物化窗口，从源头杀幽灵；Activate 失败进 warnings 不阻断。
         $actWarn = $null
         try { $pres.Activate() } catch { $actWarn = "新演示文稿窗口物化失败（Activate）：" + $_.Exception.Message }
+        # F3'（环境病根治轮）：新建即记账——后续无 presentationName 的调用解析到这份
+        Set-LastResolvedPres $pres 'created'
         # 必须回 data：Node 侧的 handler 判的是 success && data，
         # 只回 success 会被当成失败（"新建演示文稿失败: undefined" —— 实测踩过）
         $nm = ""
@@ -5056,6 +5229,8 @@ switch ($Action) {
         if ($null -eq $ppt) { Output-Json @{ success = $false; error = "WPS PPT not running" }; return }
         if (-not $p.path) { Output-Json @{ success = $false; error = "path required" }; return }
         $pres = $ppt.Presentations.Open($p.path)
+        # F3'（环境病根治轮）：打开即记账
+        Set-LastResolvedPres $pres 'opened'
         Output-Json @{ success = $true; data = @{ name = $pres.Name; path = $pres.FullName; slideCount = $pres.Slides.Count } }
     }
 
@@ -5554,6 +5729,76 @@ switch ($Action) {
         $shape = $slide.Shapes.Item($(if ($p.name) { $p.name } else { $p.shapeIndex }))
         $shape.Delete()
         Output-Json @{ success = $true; data = @{ deleted = $(if ($p.name) { $p.name } else { $p.shapeIndex }) } }
+    }
+
+    "batchUpsertShapes" {
+        # ⑤ 批量形状原语（2026-11-06 主线一 A 段）：单 ps1 case 内循环 N 个形状 = 一次 COM 往返，
+        # 与 batch.ts 的 3 步上限不冲突（那是多步执行器，这是单职责原语）。
+        # upsert 语义：带 shapeIndex/name 且存在 → 改（位置/大小/文字/填充）；否则建。
+        # 遇错不中断不重试：逐项成败记录，调用方按逐项结果决定是否补救。
+        # 上限 50；坐标口径=磅（与 1.0.5 全组磅裁定一致）。
+        $ppt = Get-WpsPpt
+        if ($null -eq $ppt) { Output-Json @{ success = $false; error = "WPS PPT not running" }; return }
+        $pres = Get-TargetPres $ppt $p
+        $slideIndex = if ($p.slideIndex) { $p.slideIndex } else { 1 }
+        $slide = $pres.Slides.Item($slideIndex)
+        $items = @($p.shapes)
+        if ($items.Count -eq 0) { Output-Json @{ success = $false; error = "[勿重试·先改参数] shapes 为空——至少给一项" }; return }
+        if ($items.Count -gt 50) { Output-Json @{ success = $false; error = "[勿重试·先改参数] shapes 上限 50（收到 $($items.Count)）——大批量请分批" }; return }
+        $shapeTypeMap = @{ rectangle = 1; oval = 9; triangle = 7; diamond = 4; pentagon = 51; hexagon = 52; arrow = 13; star = 12; heart = 21; cloud = 179 }
+        $results = @()
+        $okCount = 0
+        $failCount = 0
+        $i = 0
+        foreach ($item in $items) {
+            $i++
+            $ok = $true
+            $err = ""
+            $taken = ""
+            $shapeName = ""
+            try {
+                $existing = $null
+                if ($null -ne $item.shapeIndex) {
+                    try { $existing = $slide.Shapes.Item([int]$item.shapeIndex) } catch {}
+                } elseif (-not [string]::IsNullOrEmpty([string]$item.name)) {
+                    try { $existing = $slide.Shapes.Item([string]$item.name) } catch {}
+                }
+                if ($null -ne $existing) {
+                    if ($null -ne $item.left) { $existing.Left = [double]$item.left }
+                    if ($null -ne $item.top) { $existing.Top = [double]$item.top }
+                    if ($null -ne $item.width) { $existing.Width = [double]$item.width }
+                    if ($null -ne $item.height) { $existing.Height = [double]$item.height }
+                    if (-not [string]::IsNullOrEmpty([string]$item.text)) { $existing.TextFrame.TextRange.Text = [string]$item.text }
+                    if (-not [string]::IsNullOrEmpty([string]$item.fillColor)) {
+                        $fc = Convert-HexColorToRgbInt([string]$item.fillColor)
+                        if ($null -ne $fc) { $existing.Fill.ForeColor.RGB = $fc }
+                    }
+                    $taken = "updated"
+                    try { $shapeName = [string]$existing.Name } catch {}
+                } else {
+                    $shapeType = $shapeTypeMap[$item.type]
+                    if ($null -eq $shapeType) { $shapeType = if ($item.type) { $item.type } else { 1 } }
+                    $left = if ($null -ne $item.left) { [double]$item.left } else { 100 }
+                    $top = if ($null -ne $item.top) { [double]$item.top } else { 100 }
+                    $width = if ($null -ne $item.width) { [double]$item.width } else { 100 }
+                    $height = if ($null -ne $item.height) { [double]$item.height } else { 100 }
+                    $shape = $slide.Shapes.AddShape($shapeType, $left, $top, $width, $height)
+                    if (-not [string]::IsNullOrEmpty([string]$item.text)) { $shape.TextFrame.TextRange.Text = [string]$item.text }
+                    if (-not [string]::IsNullOrEmpty([string]$item.fillColor)) {
+                        $fc = Convert-HexColorToRgbInt([string]$item.fillColor)
+                        if ($null -ne $fc) { $shape.Fill.ForeColor.RGB = $fc }
+                    }
+                    $taken = "created"
+                    try { $shapeName = [string]$shape.Name } catch {}
+                }
+            } catch {
+                $ok = $false
+                $err = $_.Exception.Message
+            }
+            $results += @{ index = $i; action = $taken; name = $shapeName; ok = $ok; error = $err }
+            if ($ok) { $okCount++ } else { $failCount++ }
+        }
+        Output-Json @{ success = $true; data = @{ slideIndex = $slideIndex; total = $i; ok = $okCount; failed = $failCount; results = $results } }
     }
 
     "getShapes" {
@@ -9343,6 +9588,9 @@ switch ($Action) {
 #           此时只需拿到 Invoke-WpsAction 的定义，不执行任何动作。
 # 直跑模式（默认）：行为与改造前完全一致。
 if ($env:WPS_COM_DAEMON -ne '1') {
+    # F1（环境病根治轮）：直跑模式也是 STA（powershell.exe 默认 STA）——注册消息过滤器；
+    # 注册失败静默，忙态兜底由 Invoke-WpsActionWithBusyRetry 承担。
+    Register-ComMessageFilter
     try { $p = $Params | ConvertFrom-Json } catch { $p = @{} }
-    Invoke-WpsAction -Action $Action -p $p
+    Invoke-WpsActionWithBusyRetry -Action $Action -p $p
 }

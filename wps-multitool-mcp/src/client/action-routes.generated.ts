@@ -3,8 +3,8 @@
  * 源：scripts/wps-com.ps1 的【顶层】switch ($Action) 分支（嵌套 switch 的分支标签不算动作）。
  * 重新生成：node scripts/gen-action-routes.js
  *
- * 统计：common=20  word=75  ppt=112  excel=105  合计 312
- * 口径：可分发动作 312 个（含 __ 内部探针 12 个）→ 面向用户 300 个
+ * 统计：common=20  word=75  ppt=113  excel=105  合计 313
+ * 口径：可分发动作 313 个（含 __ 内部探针 12 个）→ 面向用户 301 个
  */
 
 import type { AppKey } from './action-routes';
@@ -56,6 +56,7 @@ export const ACTION_ROUTES: Record<string, AppKey> = {
   "autoFitColumn": 'excel',
   "autoFitRow": 'excel',
   "autoLayout": 'ppt',
+  "batchUpsertShapes": 'ppt',
   "beautifyAllSlides": 'ppt',
   "beautifySlide": 'ppt',
   "calculateSheet": 'excel',
