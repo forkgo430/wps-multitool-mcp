@@ -31,12 +31,12 @@ export function setToolCount(n: number): void {
 
 export function serverInstructions(): string {
   return [
-    `${MCP_NAME} v${MCP_VERSION} —— 操作本机 WPS Office（文字 / 表格 / 演示）的 MCP 工具集。`,
+    `${MCP_NAME} v${MCP_VERSION} —— 操作本机正开着的办公套件（WPS Office 与 Microsoft Office 365，host 自动探测选路）。`,
     `作者：${MCP_AUTHOR}。`,
     toolCount ? `共 ${toolCount} 个工具，默认只列出 40 个基础工具，其余按需加载。` : '',
     '',
     '使用要点：',
-    '1. 动手前先 wps_common_status 探活 —— 桥通不通、WPS 在不在、有没有活动文档，三态分开处理。',
+    '1. 动手前先 wps_common_status 探活 —— 桥通不通、套件在不在、有没有活动文档，三态分开处理。',
     '2. wps_route_intent 判断该用哪个组，wps_load_tool_group 把它加载出来。',
     '   "工具不存在"通常不是没这个能力，是组没加载。',
     '3. 拿不准用哪个工具时用 wps_search_tools（支持中文关键词），',
@@ -46,8 +46,9 @@ export function serverInstructions(): string {
     '5. 失败文本的方括号前缀写明能不能重试：',
     '   [可重试] 可以直接重发；[勿重试·可能已执行一半] 必须先读回来看结果，绝不重放。',
     '',
-    '写操作没有回滚：COM 写入不是事务。destructiveHint 为 true 的工具（删除、另存为、',
-    '格式转换、关闭文档等）执行前先跟用户确认。',
+    '写操作有退路：破坏性 / 非幂等动作执行前自动建快照（snapshot_restore 一键恢复，',
+    'wps_word_undo 逐步撤销）。destructiveHint 为 true 的工具（删除、另存为、格式转换、',
+    '关闭文档等）动手前先跟用户确认。',
   ]
     .filter(Boolean)
     .join('\n');

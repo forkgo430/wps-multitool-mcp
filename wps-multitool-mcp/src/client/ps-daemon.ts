@@ -414,7 +414,10 @@ export class PsDaemon {
     try {
       const child = spawn(process.execPath, [BRIDGE_ENTRY], {
         detached: true,
-        stdio: 'ignore',
+        // stdin 保留管道（EPHEMERAL 父亡监测的主信号源）：父持写端，父亡内核立刻关——
+        // 子端 'end'/'close' 即父亡，PID 复用免疫。stdout/stderr 维持 ignore（桥日志走文件）。
+        // 非 EPHEMERAL 桥同样携带：监测逻辑只在桥侧 EPHEMERAL 分支启用，默认桥行为不变。
+        stdio: ['pipe', 'ignore', 'ignore'],
         windowsHide: true,
         env: process.env,
       });

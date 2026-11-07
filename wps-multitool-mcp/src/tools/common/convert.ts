@@ -137,12 +137,18 @@ export const convertToPdfDefinition: ToolDefinition = {
 
 特点：
 - 自动检测当前打开的文档类型
+- 多应用并存时可用 app 参数指定导出目标（excel/word/ppt/auto，缺省 auto 保持自动检测顺序）
 - 可以指定输出路径，不指定则使用原文件名.pdf
 - 保持原文档格式和排版`,
   category: ToolCategory.COMMON,
   inputSchema: {
     type: 'object',
     properties: {
+      app: {
+        type: 'string',
+        enum: ['excel', 'word', 'ppt', 'auto'],
+        description: '指定导出目标的应用（多应用同时打开时用）。auto=按 excel→word→ppt 顺序自动检测（缺省）',
+      },
       outputPath: {
         type: 'string',
         description: 'PDF输出路径（包含文件名），如不指定则使用原文件路径，把扩展名改为.pdf',
@@ -159,9 +165,10 @@ export const convertToPdfDefinition: ToolDefinition = {
 export const convertToPdfHandler: ToolHandler = async (
   args: Record<string, unknown>
 ): Promise<ToolCallResult> => {
-  const { outputPath, openAfterExport } = args as {
+  const { outputPath, openAfterExport, app } = args as {
     outputPath?: string;
     openAfterExport?: boolean;
+    app?: string;
   };
 
   try {
@@ -181,6 +188,8 @@ export const convertToPdfHandler: ToolHandler = async (
         path: outputPath || '',
         filePath: outputPath || '',
         openAfterExport: openAfterExport || false,
+        // Office 支持二期：app 参数短路（excel/word/ppt/auto），缺省 auto 保持自动检测
+        app: app || 'auto',
       }
       // 不指定appType，让WPS加载项自动检测当前活动的应用
     );

@@ -17,6 +17,13 @@
 const path = require('path');
 const ROOT = path.resolve(__dirname, '..', '..');
 
+// 独立管道（判定阶段修正 2026-11-07 决策者）：本探针是全仓最后一个用默认管道的真机探针——
+// 默认管道是共享资源，本机任何无 WPS_OFFICE 环境的 stdio server（面板/DSH 探活）都能在它上面
+// 拉起 auto→office 的桥，把 off 态回归劫持成 office 守卫拦截（11-07 二期与收口两轮判定各撞一次）。
+// 对齐 ppt-caps-probe.js 同款：全新管道名 + EPHEMERAL，跑完即收。
+process.env.WPS_BRIDGE_PIPE = '\\\\.\\pipe\\wps-multitool-mcp-wordcaps-' + Date.now();
+process.env.WPS_BRIDGE_EPHEMERAL = '1';
+
 const { toolRegistry } = require(path.join(ROOT, 'dist', 'server', 'tool-registry.js'));
 const { allTools } = require(path.join(ROOT, 'dist', 'tools', 'index.js'));
 const { WpsMcpServer } = require(path.join(ROOT, 'dist', 'server', 'mcp-server.js'));

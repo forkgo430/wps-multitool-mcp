@@ -6,7 +6,8 @@
 [![CI](https://github.com/forkgo430/wps-multitool-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/forkgo430/wps-multitool-mcp/actions/workflows/ci.yml) [![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE) [![npm](https://img.shields.io/npm/v/wps-multitool-mcp)](https://www.npmjs.com/package/wps-multitool-mcp) [![release](https://img.shields.io/github/v/release/forkgo430/wps-multitool-mcp)](https://github.com/forkgo430/wps-multitool-mcp/releases) [![tools](https://img.shields.io/badge/tools-285-brightgreen.svg)](#capabilities) [![platform](https://img.shields.io/badge/platform-Windows%20only-lightgrey.svg)](#requirements)
 <!-- AUTO:badges:end -->
 
-> Let AI directly drive the WPS Office documents you have open right now — Writer, Spreadsheets, Presentation.
+> Let AI directly drive the office suite you have open right now — WPS Writer, Spreadsheets, Presentation, and Microsoft Office 365.
+> One tool surface, automatic host routing; on a dual-install machine it drives whichever suite owns the open document.
 >
 > It doesn't just edit: it creates from scratch. A blank page becomes a report with a table of contents and charts;
 > spreadsheet numbers become charts and pivot tables, then land in a slide deck; fonts and themes swap across the
@@ -17,6 +18,9 @@
 | WPS Writer | ✓ | ✓ | ✓ | ✓ | ✓ |
 | WPS Spreadsheets | ✓ | ✓ | ✓ | ✓ | ✓ |
 | WPS Presentation | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Microsoft Office 365 | ✓ | ✓ | ✓ | ✓ | ✓ |
+
+<sub>Microsoft Office 365 shares the exact same tools and parameters as WPS; the host is auto-detected (pin it with `WPS_OFFICE`).</sub>
 
 <sub>Author / maintainer: **Yingrong** · [npm](https://www.npmjs.com/package/wps-multitool-mcp) · [Releases](https://github.com/forkgo430/wps-multitool-mcp/releases)</sub>
 
@@ -109,8 +113,8 @@ to the new tools with parameters migrated.
 
 | Requirement | Notes |
 |------|------|
-| Windows 10 / 11 | WPS COM automation is Windows-only |
-| WPS Office 2019+ (tested on 12.1) | Any install drive |
+| Windows 10 / 11 | The platform with native COM access |
+| WPS Office 2019+ (tested on 12.1) and/or Microsoft Office 365 | Either suite works; dual installs auto-route |
 | Node.js ≥ 18 | Build & run the MCP server |
 | An MCP client | Claude Code / Cursor / Codex CLI / CodeBuddy / WorkBuddy / DeepSeek Harness (dsh) etc. |
 
@@ -162,7 +166,7 @@ flowchart TB
     B["Resident bridge (Node)<br/>one subprocess per app"]
     P["Resident PowerShell<br/>excel / word / ppt / common"]
     C["COM actions"]
-    W["Ket / Kwps / Kwpp.Application"]
+    W["Dual-suite object model<br/>Ket / Kwps / Kwpp or Word / Excel / PowerPoint (host-routed)"]
 
     S -->|MCP protocol| M
     M --> B --> P --> C --> W
@@ -187,8 +191,8 @@ AI makes mistakes, so every layer assumes it will:
 ## Side panel
 
 `wps-multitool-addon/` is a task pane installed into WPS: a sidebar showing live bridge status plus
-**Save / Undo / Export PDF / Snapshot / Unstick** action buttons — note it really changes documents;
-only the status endpoint is read-only. Installing or not installing it doesn't affect MCP; both share
+**Save / Undo / Export PDF / Snapshot / Unstick** action buttons — the buttons share the same source
+and permissions as the MCP tools, so they take real effect; the status area stays read-only. Installing or not installing it doesn't affect MCP; both share
 the same bridge.
 
 ## Using it in DeepSeek Harness (dsh)
@@ -201,8 +205,8 @@ dsh plugin --profile <your-profile> add dsh-multitool
 
 You get 40 WPS tools plus a skill teaching AI the correct order of use. Tool prefix: `mcp__wpslocal__*`.
 
-> ⚠️ Don't confuse packages: npm also has `dsh-wps`, a Kingsoft **cloud-document** integration. This
-> package drives the WPS windows open on your computer — no network, no OAuth. Both can coexist.
+> Alongside `dsh-wps` (a Kingsoft **cloud-document** integration) the two cover different grounds and
+> can coexist: this package drives the WPS windows open on your computer — fully local, zero OAuth.
 
 ## Privacy
 
@@ -214,10 +218,10 @@ Full threat model in [SECURITY.md](SECURITY.md).
 
 ## Design boundaries (each is a choice — and a promise)
 
-- **Native Windows integration**: drives the WPS you have open — the AI works on the live documents in front of you, WYSIWYG; if a file isn't open it will tell you to open it, never popping windows behind your back. Linux support is under construction (roadmap below).
-- **Cloud documents count**: a cloud doc opened in WPS is a live document — the AI reads and writes whatever WPS has open, regardless of where it's stored; remote-only cloud management is out of scope.
+- **Native Windows integration**: drives the office suite you have open — the AI works on the live documents in front of you, WYSIWYG; if a file isn't open it will tell you to open it, never popping windows behind your back. Both WPS Office and Microsoft Office 365 are supported through the same tool surface with automatic host detection (Office drives when installed; pin it explicitly via `WPS_OFFICE`); verified capability coverage is published in the compatibility matrix. Linux support is under construction (roadmap below).
+- **Cloud documents count**: a cloud doc opened in WPS is a live document — the AI reads and writes whatever WPS has open, regardless of where it's stored; the focus stays on the document open in front of you.
 - **Multi-step tasks in one shot**: the task engine runs a whole workflow server-side (with progress notifications) — the AI only sees the final result.
-- **Undo & recover**: step-by-step undo (`wps_word_undo`, UndoRecord-grade) + automatic snapshots before destructive operations with one-click restore (`snapshot_restore`) — COM writes aren't transactions, so this layer of protection is standard equipment, not an option.
+- **Undo & recover**: step-by-step undo (`wps_word_undo`, UndoRecord-grade) + automatic snapshots before destructive operations with one-click restore (`snapshot_restore`) — every change has a clear way back.
 - **Local & private**: every endpoint binds to the 127.0.0.1 loopback — your document data never leaves your machine.
 - **Low context**: 40 tools by default, loaded by group on demand — the AI's context stays reserved for your task.
 

@@ -35,6 +35,13 @@ jobs:
         working-directory: wps-multitool-mcp
         run: npm run build
 
+      - name: 包内容对账（npm pack 干跑断言 + 版本五处一致）
+        working-directory: wps-multitool-mcp
+        run: node scripts/manual/package-content-verify.js
+        # "打包漏文件"同族第三次复发后的根治门禁（2026-11-06 所有者批准）：1.0.5 files 缺
+        # src/server/*.json，装机后任务包层空、wps_run_task 空引擎，而 CI 与发布对账全绿。
+        # 本步把"包里缺运行时关键文件 / 版本派生物漂移"变成硬失败（--selftest 自证能红）。
+
       - name: 动作路由表与 wps-com.ps1 一致
         working-directory: wps-multitool-mcp
         run: |

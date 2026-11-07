@@ -6,7 +6,8 @@
 [![CI](https://github.com/forkgo430/wps-multitool-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/forkgo430/wps-multitool-mcp/actions/workflows/ci.yml) [![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE) [![npm](https://img.shields.io/npm/v/wps-multitool-mcp)](https://www.npmjs.com/package/wps-multitool-mcp) [![release](https://img.shields.io/github/v/release/forkgo430/wps-multitool-mcp)](https://github.com/forkgo430/wps-multitool-mcp/releases) [![tools](https://img.shields.io/badge/tools-285-brightgreen.svg)](#能力一览) [![platform](https://img.shields.io/badge/platform-Windows%20only-lightgrey.svg)](#安装)
 <!-- AUTO:badges:end -->
 
-> 让 AI 直接操控你正开着的 WPS 文字、表格、演示。
+> 让 AI 直接操控你正开着的办公套件——WPS 文字、表格、演示，以及 Microsoft Office 365。
+> 同一套工具面，host 自动探测选路，双装机器上开哪套驱动哪套。
 >
 > 它不只会改，也能从零生成。空白页起一份带目录和图表的文稿；把表格里的数字变成图表与透视表，
 > 再贴进演示；整篇换字体、套主题；导出成图片和 PDF。
@@ -16,6 +17,9 @@
 | WPS 文字 | ✓ | ✓ | ✓ | ✓ | ✓ |
 | WPS 表格 | ✓ | ✓ | ✓ | ✓ | ✓ |
 | WPS 演示 | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Microsoft Office 365 | ✓ | ✓ | ✓ | ✓ | ✓ |
+
+<sub>Microsoft Office 365 与 WPS 共用上面同一套工具、同一批参数；驱动哪套由 host 自动探测（可用 `WPS_OFFICE` 显式指定）。</sub>
 
 <sub>作者 / 维护者：**赢容** · [npm](https://www.npmjs.com/package/wps-multitool-mcp) · [Release](https://github.com/forkgo430/wps-multitool-mcp/releases)</sub>
 
@@ -107,8 +111,8 @@ irm https://cdn.jsdelivr.net/gh/forkgo430/wps-multitool-mcp@main/scripts/install
 
 | 要求 | 说明 |
 |------|------|
-| Windows 10 / 11 | WPS 的 COM 自动化只在 Windows 可用 |
-| WPS Office 2019+（实测 12.1） | 装哪个盘都行 |
+| Windows 10 / 11 | 原生 COM 通道所在平台 |
+| WPS Office 2019+（实测 12.1）与/或 Microsoft Office 365 | 任一套件即可开工，双装自动探测选路 |
 | Node.js ≥ 18 | 构建与运行 MCP Server |
 | 一个 MCP 客户端 | Claude Code / Cursor / Codex CLI / CodeBuddy / WorkBuddy / DeepSeek Harness（dsh）等 |
 
@@ -159,7 +163,7 @@ flowchart TB
     B["常驻桥（Node）<br/>按应用拆子进程"]
     P["常驻 PowerShell<br/>excel / word / ppt / common"]
     C["COM 动作"]
-    W["Ket / Kwps / Kwpp.Application"]
+    W["双套件对象模型<br/>Ket / Kwps / Kwpp 或 Word / Excel / PowerPoint（host 自动选路）"]
 
     S -->|MCP 协议| M
     M --> B --> P --> C --> W
@@ -183,8 +187,8 @@ AI 会犯错，所以每一层都按"它一定会犯错"来设计：
 ## 侧边面板
 
 `wps-multitool-addon/` 是一个装进 WPS 的任务窗格：侧边栏实时显示桥的状态，
-外加 **保存 / 撤销 / 导出 PDF / 建快照 / 解除卡死** 五个动作按钮——注意它会真的改文档，
-只读的只有状态查询接口。装不装面板都不影响 MCP，两者共用同一个桥。
+外加 **保存 / 撤销 / 导出 PDF / 建快照 / 解除卡死** 五个动作按钮——按钮与 MCP 工具同源同权限，
+按下去就真实生效；状态栏保持只读。装不装面板都不影响 MCP，两者共用同一个桥。
 
 ## 在 DeepSeek Harness（dsh）里用
 
@@ -196,8 +200,8 @@ dsh plugin --profile <你的profile> add dsh-multitool
 
 装上同时得到 40 个 WPS 工具和一份教 AI 正确使用顺序的技能，工具名前缀 `mcp__wpslocal__*`。
 
-> ⚠️ 别装错包：npm 上另有一个 `dsh-wps`，那是金山文档**云文档**集成。本包操作的是
-> 你电脑上正开着的 WPS 窗口，不联网、不需要 OAuth。两者可同时装。
+> 与 npm 上的 `dsh-wps`（金山文档**云文档**集成）各管一摊、可同时装：本包操作的是
+> 你电脑上正开着的 WPS 窗口，全程本机直连、零 OAuth 配置。
 
 ## 隐私
 
@@ -209,10 +213,10 @@ dsh plugin --profile <你的profile> add dsh-multitool
 
 ## 设计边界（每一条都是选择，也是承诺）
 
-- **Windows 原生深度集成**：直接驱动你正开着的 WPS——AI 操作的就是你眼前的活文档，所见即所得；文件没打开会明确提示你开，绝不在后台偷偷弹窗。Linux 支持在建（路线见下）。
-- **云端文档同样可操作**：在 WPS 里打开的云文档就是活文档——AI 操作的是 WPS 里打开的文档，与存在本地还是云端无关；纯云端的远程管理不在范围。
+- **Windows 原生深度集成**：直接驱动你正开着的办公套件——AI 操作的就是你眼前的活文档，所见即所得；文件没打开会明确提示你开，绝不在后台偷偷弹窗。同时支持 WPS Office 与 Microsoft Office 365 双套件：同一套工具面，host 自动探测（装了 Office 就驱动 Office，也可用 `WPS_OFFICE` 显式指定）；已验证的能力覆盖见对账表。Linux 支持在建（路线见下）。
+- **云端文档同样可操作**：在 WPS 里打开的云文档就是活文档——AI 操作的是 WPS 里打开的文档，与存在本地还是云端无关；专注点始终是你眼前开着的这份。
 - **多步骤任务一次跑完**：任务引擎在服务端顺序执行整个流程（带进度通知），AI 只看最终结果，不用盯着每一步。
-- **可撤销、可恢复**：逐步撤销（`wps_word_undo`，UndoRecord 级）+ 破坏性操作前自动建快照、一键恢复（`snapshot_restore`）——COM 写入不是事务，所以这层防护是标配而不是可选项。
+- **可撤销、可恢复**：逐步撤销（`wps_word_undo`，UndoRecord 级）+ 破坏性操作前自动建快照、一键恢复（`snapshot_restore`）——每一笔改动都有明确的退路。
 - **本机私有**：所有端点只绑 127.0.0.1 回环，文档数据不出你的电脑。
 - **低上下文**：默认 40 个工具按组按需加载，AI 的上下文留给你的任务。
 

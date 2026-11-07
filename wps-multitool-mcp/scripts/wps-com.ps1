@@ -1,9 +1,16 @@
 ﻿# Input: Action 名称与 JSON 参数
 # Output: WPS COM 调用结果 JSON
-# Pos: Windows COM 桥接脚本。一旦我被修改，请更新我的头部注释（Updated: 2026-05-26 15:30:00 CST），以及所属文件夹的md。
+# Pos: Windows COM 桥接脚本。一旦我被修改，请更新我的头部注释（Updated: 2026-11-07 12:00:00 CST），以及所属文件夹的md。
 # WPS COM Bridge - PowerShell script for WPS COM operations
 # Full implementation for Excel, Word, PPT, and common conversions
 # Usage: powershell -File wps-com.ps1 -Action <action> -Params <json>
+#
+# Host 维度（Office 支持一期 2026-11-07）：本脚本按 host 驱动 WPS 或 MS Office——
+#   $env:WPS_OFFICE = on | off | auto（缺省 auto）
+#   auto = 解析 Word.Application 链到实际服务器二进制再归类（LocalServer32 指向
+#   wps.exe → wps；WINWORD.EXE → office）。ProgID 存在性/CoCreate 成败/Name 自报
+#   都不可信（WPS 独装机会顶名应答 Office ProgID），唯一可靠判据是二进制真身。
+#   解析不出 → 保守按 wps。详见下方"Host 维度"函数块与 docs/agents/office-compat-matrix.md。
 
 param(
     [string]$Action,
@@ -131,7 +138,8 @@ function Test-SandboxInstance {
 # 注意：一个实例实测是 2 个进程（主进程 + 辅助），所以 3 个进程的预算 = 最多 1 个实例 + 1 个余量；
 #       要同时开沙箱，必须先把上限显式调高（但硬顶仍是 3，不允许绕过）。
 function Get-WpsProcessCount {
-    try { return @(Get-Process -Name wps, et, wpp -ErrorAction SilentlyContinue).Count } catch { return 0 }
+    # Host 维度：预算按 host 家族数（wps: wps/et/wpp；office: WINWORD/EXCEL/POWERPNT）
+    try { return @(Get-Process -Name (Get-HostProcNames 'all') -ErrorAction SilentlyContinue).Count } catch { return 0 }
 }
 
 function Get-WpsProcBudget {
@@ -207,15 +215,23 @@ $script:LastResolvedPres = $null
 $script:InstanceSuspect = @{}
 
 # 新建一个 user 实例并记账（PID 差集 + 看门狗 Track）。返回 $null = 没建出来。
-function New-TrackedWpsInstance([string]$ProgId) {
+# Kind（Office 支持一期）：word/excel/ppt——PID 差集按 host 家族进程名记账
+# （wps: wps/et/wpp；office: WINWORD/EXCEL/POWERPNT），quit/收摊按 PID 精确回收。
+function New-TrackedWpsInstance([string]$ProgId, [string]$Kind = 'word') {
+    $procNames = Get-HostProcNames $Kind
     $before = @()
-    try { $before = @(Get-Process -Name wps -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Id) } catch {}
+    try { $before = @(Get-Process -Name $procNames -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Id) } catch {}
     $app = $null
     try { $app = New-Object -ComObject $ProgId } catch { $app = $null }
     if ($null -eq $app) {
         # 旧路径兜底：个别环境 New-Object 失败但注册表能拿到 CLSID
+        # （HKCU 优先、HKLM 兜底——Office C2R 的 CLSID 注册在 HKLM）
         try {
-            $clsid = (Get-ItemProperty -Path ("HKCU:\Software\Classes\" + $ProgId + "\CLSID") -ErrorAction Stop).'(default)'
+            $clsid = $null
+            foreach ($rk in @('HKCU:\Software\Classes', 'HKLM:\Software\Classes')) {
+                $v = (Get-ItemProperty -Path ($rk + '\' + $ProgId + '\CLSID') -ErrorAction SilentlyContinue).'(default)'
+                if ($v) { $clsid = [string]$v; break }
+            }
             if ($clsid) {
                 $type = [Type]::GetTypeFromCLSID($clsid)
                 if ($type) { $app = [Activator]::CreateInstance($type) }
@@ -225,7 +241,7 @@ function New-TrackedWpsInstance([string]$ProgId) {
     if ($null -eq $app) { return $null }
     try { $app.Visible = $true } catch {}
     $after = @()
-    try { $after = @(Get-Process -Name wps -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Id) } catch {}
+    try { $after = @(Get-Process -Name $procNames -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Id) } catch {}
     $new = @($after | Where-Object { $before -notcontains $_ })
     if ($new.Count -gt 0) {
         $script:UserCreatedPids = @($script:UserCreatedPids + $new | Select-Object -Unique)
@@ -248,6 +264,107 @@ function Remove-OwnCreatedProcs {
     $script:UserPptApp = $null
     if ($n -gt 0) { Start-Sleep -Milliseconds 300 }
     return $n
+}
+
+# ==================== Host 维度（Office 支持一期 2026-11-07）====================
+# WPS 与 MS Office 双装机器上，本脚本按 host 驱动对应套件：
+#   host=wps    → Kwps/Ket/Kwpp.Application（现任主通道，行为不变）
+#   host=office → Word/Excel/PowerPoint.Application（Office 对象模型与 WPS 同构）
+# host 解析（进程级缓存一次）：
+#   $env:WPS_OFFICE = on | off | auto（缺省 auto）
+#   auto = 解析 Word.Application 链到【实际服务器二进制】再归类。
+#   实测（2026-11-07 卡面"判定阶段情报"）：WPS 独装机会顶名应答 Office ProgID——
+#   CoCreate 成功、Name 自报 'Microsoft Word'，ProgID 存在性/CoCreate/Name 全不可信；
+#   唯一可靠判据 = CLSID → LocalServer32 指向的 exe 真身（wps.exe→wps；WINWORD.EXE→office）。
+#   解析不出/断链 → 保守按 wps（现任主通道），不猜、不静默假装 office 可用。
+$script:HostKind = $null
+$script:HostProgids = @{
+    wps    = @{ word = 'Kwps.Application'; excel = 'Ket.Application'; ppt = 'Kwpp.Application' }
+    office = @{ word = 'Word.Application'; excel = 'Excel.Application'; ppt = 'PowerPoint.Application' }
+}
+$script:HostProcNames = @{
+    wps    = @{ word = @('wps'); excel = @('et'); ppt = @('wpp'); all = @('wps', 'et', 'wpp') }
+    office = @{ word = @('WINWORD'); excel = @('EXCEL'); ppt = @('POWERPNT'); all = @('WINWORD', 'EXCEL', 'POWERPNT') }
+}
+
+# LocalServer32 注册表值 → exe 真身归类（office / wps / ''=认不出）。
+# 与 TS 侧 parseLocalServerBinary 同口径：兼容带引号与不带引号两种注册形态。
+function Test-ServerBinaryHost([string]$serverValue) {
+    if (-not $serverValue) { return '' }
+    $exe = $serverValue.Trim()
+    if ($exe.StartsWith('"')) {
+        $parts = $exe.Split('"')
+        if ($parts.Count -lt 2) { return '' }
+        $exe = $parts[1]
+    } else {
+        $m = [regex]::Match($exe, '^(.*?)\s+/')
+        if ($m.Success) { $exe = $m.Groups[1].Value }
+    }
+    $name = ''
+    try { $name = (Split-Path $exe.Trim() -Leaf).ToLower() } catch { return '' }
+    if (@('winword.exe', 'excel.exe', 'powerpnt.exe') -contains $name) { return 'office' }
+    if (@('wps.exe', 'et.exe', 'wpp.exe', 'kwps.exe', 'ket.exe', 'kwpp.exe') -contains $name) { return 'wps' }
+    return ''
+}
+
+# ProgID → CLSID（HKCU 优先于 HKLM，模拟合并视图）→ LocalServer32
+# （64 位视图 HKCU→HKLM，再扫 WOW6432Node——WPS 32 位劫持的历史注册位）。
+# 返回 'office' / 'wps' / ''（断链或认不出，不猜）。
+function Resolve-ProgidHost([string]$progId) {
+    $clsid = $null
+    foreach ($root in @('HKCU:\SOFTWARE\Classes', 'HKLM:\SOFTWARE\Classes')) {
+        $v = (Get-ItemProperty -Path ($root + '\' + $progId + '\CLSID') -ErrorAction SilentlyContinue).'(default)'
+        if ($v) { $clsid = [string]$v; break }
+    }
+    if (-not $clsid) { return '' }
+    foreach ($root in @('HKCU:\SOFTWARE\Classes\CLSID', 'HKLM:\SOFTWARE\Classes\CLSID',
+                        'HKLM:\SOFTWARE\Classes\WOW6432Node\CLSID', 'HKCU:\SOFTWARE\Classes\WOW6432Node\CLSID')) {
+        $v = (Get-ItemProperty -Path ($root + '\' + $clsid + '\LocalServer32') -ErrorAction SilentlyContinue).'(default)'
+        if ($v) { return (Test-ServerBinaryHost [string]$v) }
+    }
+    return ''
+}
+
+# host 解析入口（缓存）。判定结果进程级不变——COM 服务器注册不会在会话中途换。
+function Get-HostKind {
+    if ($script:HostKind) { return $script:HostKind }
+    $envKind = if ($env:WPS_OFFICE) { $env:WPS_OFFICE.Trim().ToLower() } else { '' }
+    if ($envKind -eq 'on') { $script:HostKind = 'office' }
+    elseif ($envKind -eq 'off') { $script:HostKind = 'wps' }
+    else {
+        # 未设 / auto（缺省）→ 二进制解析探测；探测不可用 → 保守 wps（现任主通道）
+        $k = Resolve-ProgidHost 'Word.Application'
+        $script:HostKind = if ($k) { $k } else { 'wps' }
+    }
+    return $script:HostKind
+}
+
+# 按 app 取本 host 的 ProgID（kind: word / excel / ppt）
+function Get-ProgidForApp([string]$kind) {
+    return $script:HostProgids[(Get-HostKind)][$kind]
+}
+
+# 按 app 取本 host 的进程名数组（kind: word / excel / ppt / all）
+function Get-HostProcNames([string]$kind) {
+    return $script:HostProcNames[(Get-HostKind)][$kind]
+}
+
+# host=office 的 ROT 附着身份校验：实例 .Path 必须指向 Microsoft Office 安装。
+# 双装机器上 WPS 的动态类工厂可能顶着 Office ProgID 出现（顶名劫持的另一面）——
+# 附着到 WPS 实例还按 Office 语义操作 = 静默错乱，必须在这里现形并弃用。
+# host=wps 维持现状（现任行为不新增校验）。
+# 【试点教训 2026-11-07】.Path 读不动（实例瞬态忙，0x80010001 类）≠ 身份错 ——
+#   第一版把"读不动"也当 wrong host，结果忙态瞬间误判 → 回落到全新空实例 → 丢掉用户
+#   实例上刚建的文档（convertToPDF 报 No active document 的真因）。修正：
+#   只有【读到了 Path 且明确不匹配】才判假；读不动/读不到 = 不定态放行，交给探活与
+#   后续调用去失败——身份校验只拦"确定的错"，不拦"暂时答不上来"。
+function Test-AppIdentity($app) {
+    if ((Get-HostKind) -ne 'office') { return $true }
+    if ($null -eq $app) { return $false }
+    $pth = $null
+    try { $pth = [string]$app.Path } catch { return $true }   # 瞬态忙：不定态，放行
+    if (-not $pth) { return $true }                            # 读不到值：不定态，放行
+    return ($pth -match 'Microsoft Office')                    # 读到了且不匹配 = 确定的 wrong host
 }
 
 # ==================== AI 撤销分组（逐步撤销，对标 per-action undo） ====================
@@ -278,20 +395,22 @@ function Get-WpsExcel {
     # 新建的实例一定是空的 —— 用它读列表会得到"0 份"，而文档其实还在（ROT 重注册窗口）。
     $script:WpsExcelFresh = $false
     $suspect = $script:InstanceSuspect['excel']
-    # ① 先附着已运行的实例（用户优先；pwsh7 兼容见 Get-RotObject）。
-    #    F5（环境病根治轮）：ROT 附着过轻量探活（病态实例常从这里进来）；
-    #    动作失败标记的可疑态 → 跳过 ROT 一轮（给缓存/新建让路）。
-    $rot = Get-RotObject 'Ket.Application'
-    if ($null -ne $rot -and -not $suspect) {
-        if (Test-AppAlive $rot 'excel') { Clear-InstanceSuspect 'excel'; return $rot }
-        # 病态 ROT 实例：弃用，落到缓存/新建（健康的逃生门）
-    }
-    # ② 再看自己的缓存（ROT 重注册窗口期防反复新建；已有探活）
-    if ($null -ne $script:UserExcelApp) {
+    # ① 会话缓存探活通过即优先复用（Office 收口合并卡 A 段：同会话同 app 绑定一致性——
+    #    ROT 多实例抽签可能让每次调用绑不同实例；缓存优先 = 会话内稳定绑定）。
+    #    F5 探活语义不变：缓存句柄死了才清缓存，落到 ROT/新建。
+    if ($null -ne $script:UserExcelApp -and -not $suspect) {
         try { $null = $script:UserExcelApp.Workbooks.Count; Clear-InstanceSuspect 'excel'; return $script:UserExcelApp } catch { $script:UserExcelApp = $null }
     }
+    # ② ROT 附着（缓存空/失效时——首个调用或缓存实例死亡）：用户优先 + F5 探活 + 身份校验
+    #    （防双装机器上 WPS 动态类工厂顶着 Office ProgID 出现在 ROT——Test-AppIdentity 一行不动）。
+    #    F5 可疑态 → 跳过 ROT 一轮（给新建让路）。
+    $rot = Get-RotObject (Get-ProgidForApp 'excel')
+    if ($null -ne $rot -and -not $suspect -and (Test-AppIdentity $rot)) {
+        if (Test-AppAlive $rot 'excel') { $script:UserExcelApp = $rot; Clear-InstanceSuspect 'excel'; return $rot }
+        # 病态 ROT 实例：弃用，落到新建（健康的逃生门）
+    }
     # ③ 都没有才新建，并记账
-    $app = New-TrackedWpsInstance 'Ket.Application'
+    $app = New-TrackedWpsInstance (Get-ProgidForApp 'excel') 'excel'
     if ($app) { $script:WpsExcelFresh = $true; $script:UserExcelApp = $app; Clear-InstanceSuspect 'excel'; return $app }
     return $null
 }
@@ -324,10 +443,11 @@ function Get-WpsWord {
                    "请先关掉多余的 WPS（含无窗口残留）；上限本身不允许超过 3。")
         }
         $before = @()
-        try { $before = @(Get-Process -Name wps -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Id) } catch {}
+        try { $before = @(Get-Process -Name (Get-HostProcNames 'word') -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Id) } catch {}
         $app = $null
         try {
-            $app = New-Object -ComObject 'Kwps.Application'
+            # Host 维度（Office 支持一期）：ProgID 按 host 取
+            $app = New-Object -ComObject (Get-ProgidForApp 'word')
         } catch {
             $app = $null
         }
@@ -335,7 +455,7 @@ function Get-WpsWord {
         # 沙箱默认不可见：它不该在用户桌面上弹窗口（DECISION §2 实测 Visible=false 生效）
         try { $app.Visible = $false } catch {}
         $after = @()
-        try { $after = @(Get-Process -Name wps -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Id) } catch {}
+        try { $after = @(Get-Process -Name (Get-HostProcNames 'word') -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Id) } catch {}
         # 记下"创建前后新增的 PID" —— quitWps 只回收这批，绝不 taskkill /IM 全杀
         $script:SandboxWordPids = @($after | Where-Object { $before -notcontains $_ })
         foreach ($procId in $script:SandboxWordPids) {
@@ -346,18 +466,21 @@ function Get-WpsWord {
     }
     # 第 1 期第 2 章第 4 轮（A9）：Fresh 标记"这次取到的实例是不是【新建】的"。
     $script:WpsWordFresh = $false
-    # ① 先附着已运行的实例（用户优先）。F5：ROT 附着过轻量探活 + 可疑跳过（与 excel/ppt 同款）
+    # ① 会话缓存探活通过即优先复用（Office 收口合并卡 A 段：同会话同 app 绑定一致性）。
+    # F5 可疑态保真（判定阶段修正 2026-11-07）：可疑时连缓存一起跳过（病态实例可能已被缓存），
+    # 直接走 ③ 新建——「跳过一次给健康实例让路」的语义在缓存优先取序下依然成立。
     $suspect = $script:InstanceSuspect['word']
-    $rot = Get-RotObject 'Kwps.Application'
-    if ($null -ne $rot -and -not $suspect) {
-        if (Test-AppAlive $rot 'word') { Clear-InstanceSuspect 'word'; return $rot }
-    }
-    # ② 自己的缓存（防 ROT 重注册窗口期反复新建；已有探活）
-    if ($null -ne $script:UserWordApp) {
+    if ($null -ne $script:UserWordApp -and -not $suspect) {
         try { $null = $script:UserWordApp.Documents.Count; Clear-InstanceSuspect 'word'; return $script:UserWordApp } catch { $script:UserWordApp = $null }
     }
+    # ② ROT 附着（缓存空/失效时）：用户优先 + F5 探活 + 身份校验（防 WPS 顶名实例混入——
+    #    Test-AppIdentity 一行不动）。F5 可疑态 → 跳过 ROT 一轮。
+    $rot = Get-RotObject (Get-ProgidForApp 'word')
+    if ($null -ne $rot -and -not $suspect -and (Test-AppIdentity $rot)) {
+        if (Test-AppAlive $rot 'word') { $script:UserWordApp = $rot; Clear-InstanceSuspect 'word'; return $rot }
+    }
     # ③ 都没有才新建，并记账
-    $app = New-TrackedWpsInstance 'Kwps.Application'
+    $app = New-TrackedWpsInstance (Get-ProgidForApp 'word') 'word'
     if ($app) { $script:WpsWordFresh = $true; $script:UserWordApp = $app; Clear-InstanceSuspect 'word'; return $app }
     return $null
 }
@@ -370,31 +493,45 @@ function Get-WpsWord {
 # 于是"暂时看不见文档"被说成了"没有文档"。
 # 列表读回必须能区分这两件事，所以给它一条"只取不建"的路。
 function Get-WpsWordFromRot {
-    return Get-RotObject 'Kwps.Application'
+    # 会话绑定优先（判定阶段修正 2026-11-07）：列表读回与 Get-WpsWord 同视图——
+    # 缓存健康即返回缓存，否则 ROT。否则 create 后 getOpenDocuments 会绕过会话绑定
+    # 重新抽签（11-07 判定实证：create 后 getOpen 附着 0 文档实例）。
+    if ($null -ne $script:UserWordApp) {
+        try { $null = $script:UserWordApp.Documents.Count; return $script:UserWordApp } catch { $script:UserWordApp = $null }
+    }
+    return Get-RotObject (Get-ProgidForApp 'word')
 }
 function Get-WpsExcelFromRot {
-    return Get-RotObject 'Ket.Application'
+    # 会话绑定优先（判定阶段修正 2026-11-07）：同 WordFromRot。
+    if ($null -ne $script:UserExcelApp) {
+        try { $null = $script:UserExcelApp.Workbooks.Count; return $script:UserExcelApp } catch { $script:UserExcelApp = $null }
+    }
+    return Get-RotObject (Get-ProgidForApp 'excel')
 }
 function Get-WpsPpt {
-    # F5（环境病根治轮）：与 Get-WpsExcel 同款三防——ROT 探活/可疑跳过/缓存探活
-    $suspect = $script:InstanceSuspect['ppt']
-    $rot = Get-RotObject 'Kwpp.Application'
-    if ($null -ne $rot -and -not $suspect) {
-        if (Test-AppAlive $rot 'ppt') { Clear-InstanceSuspect 'ppt'; return $rot }
-    }
-    if ($null -ne $script:UserPptApp) {
+    # ① 会话缓存探活通过即优先复用（Office 收口合并卡 A 段：同会话同 app 绑定一致性）。
+    if ($null -ne $script:UserPptApp -and -not $suspect) {
         try { $null = $script:UserPptApp.Presentations.Count; Clear-InstanceSuspect 'ppt'; return $script:UserPptApp } catch { $script:UserPptApp = $null }
     }
-    $app = New-TrackedWpsInstance 'Kwpp.Application'
+    # ② ROT 附着（缓存空/失效时）：用户优先 + F5 探活 + 身份校验（Test-AppIdentity 一行不动）。
+    $suspect = $script:InstanceSuspect['ppt']
+    $rot = Get-RotObject (Get-ProgidForApp 'ppt')
+    if ($null -ne $rot -and -not $suspect -and (Test-AppIdentity $rot)) {
+        if (Test-AppAlive $rot 'ppt') { $script:UserPptApp = $rot; Clear-InstanceSuspect 'ppt'; return $rot }
+    }
+    $app = New-TrackedWpsInstance (Get-ProgidForApp 'ppt') 'ppt'
     if ($app) { $script:UserPptApp = $app; Clear-InstanceSuspect 'ppt'; return $app }
     return $null
 }
 
 # ==================== 窗口置前 / 进程退出 辅助 ====================
 
-# 仅获取【已运行】的 WPS 实例（不创建新实例），供 showWps / quitWps 这类不应产生副作用的操作使用
+# 仅获取【已运行】的 WPS 实例（不创建新实例），供 showWps / quitWps 这类不应产生副作用的操作使用。
+# Host 维度：office host 加身份校验——附着到 WPS 顶名实例还按 Office 语义操作 = 静默错乱，宁可取不到。
 function Get-ActiveWpsApp([string]$ProgId) {
-    return Get-RotObject $ProgId
+    $app = Get-RotObject $ProgId
+    if ($null -ne $app -and -not (Test-AppIdentity $app)) { return $null }
+    return $app
 }
 
 # 将已运行的 WPS 主窗口置于前台（按进程主窗口句柄激活）
@@ -664,6 +801,17 @@ function Resolve-Doc($app, $p) {
         # 具体报错在 Invoke-WpsAction 的入口前置检查里（那里能一次列出所有打开的文档名）。
         return $null
     }
+    # Office 支持二期（2026-11-07）：记账对称化——记账此前只写不读（Set-LastResolvedDoc 在
+    # 各解析点都在记，但本函数从不消费），补上消费层（卡面第 5 项，只补接线不动原有语义）。
+    # 顺序：显式名（上面）> 记账（存活校验）> Active > 遍历——与 Resolve-Pres/Resolve-Book 同范式。
+    $prev = $script:LastResolvedDoc
+    if ($prev) {
+        $cand = $null
+        if ($prev.path) { try { $cand = Find-DocByName $app ([string]$prev.path) } catch {} }
+        if (-not (Test-DocHealthy $cand) -and $prev.name) { try { $cand = Find-DocByName $app ([string]$prev.name) } catch {} }
+        if (Test-DocHealthy $cand) { Set-LastResolvedDoc $cand '记账'; return $cand }
+        $script:LastResolvedDoc = $null
+    }
     try { $act = $app.ActiveDocument } catch { $act = $null }
     if (Test-DocHealthy $act) { Set-LastResolvedDoc $act 'active'; return $act }
     # 空壳 → 遍历找一个健康的
@@ -675,19 +823,43 @@ function Resolve-Doc($app, $p) {
     return $null
 }
 
-# 目标工作簿（Excel）
+# Office 试点轮（2026-11-07）：会话级"当前工作簿"记账——镜像 ppt 侧 F3' 范式
+# （Resolve-Pres 的记账层）。Resolve-Book 原先裸奔（名字→ActiveWorkbook→遍历），
+# 双簿场景（用户自己的簿 + 我们新建的簿并存）目标会漂移：试点 E8 实测
+# 图表 SetSourceData 跨簿引用抛 "Index was outside the bounds of the array"。
+$script:LastResolvedBook = $null
+function Set-LastResolvedBook($book, [string]$by) {
+    if ($null -eq $book) { return }
+    $nm = ''; $pth = ''
+    try { $nm = [string]$book.Name } catch {}
+    try { $pth = [string]$book.FullName } catch {}
+    $script:LastResolvedBook = @{ name = $nm; path = $pth; by = $by }
+}
+
+# 目标工作簿（Excel）。解析链：显式 workbookName → 会话记账（存活校验）→ ActiveWorkbook
+# （健康检查）→ 遍历第一个健康。显式名永远赢过记账（"改 A 传 B 名"不许变成改 A）。
 function Resolve-Book($app, $p) {
     if ($null -eq $app) { return $null }
     if ($p -and $p.workbookName) {
         $b = Find-BookByName $app ([string]$p.workbookName)
-        if ($b) { return $b }
+        if ($b) { Set-LastResolvedBook $b 'workbookName'; return $b }
         return $null
     }
+    # 会话记账工作簿——按记账的 path/name 重新找到并过健康检查；
+    # 记账实例已不存在（被关/另存）→ 清记账，落到 Active/遍历。
+    $prev = $script:LastResolvedBook
+    if ($prev) {
+        $cand = $null
+        if ($prev.path) { try { $cand = Find-BookByName $app ([string]$prev.path) } catch {} }
+        if (-not (Test-BookHealthy $cand) -and $prev.name) { try { $cand = Find-BookByName $app ([string]$prev.name) } catch {} }
+        if (Test-BookHealthy $cand) { Set-LastResolvedBook $cand '记账'; return $cand }
+        $script:LastResolvedBook = $null
+    }
     try { $act = $app.ActiveWorkbook } catch { $act = $null }
-    if (Test-BookHealthy $act) { return $act }
+    if (Test-BookHealthy $act) { Set-LastResolvedBook $act 'active'; return $act }
     try {
         foreach ($b in @($app.Workbooks)) {
-            if (Test-BookHealthy $b) { return $b }
+            if (Test-BookHealthy $b) { Set-LastResolvedBook $b 'firstHealthy'; return $b }
         }
     } catch {}
     return $null
@@ -780,7 +952,7 @@ public class WpsModalProbe {
 
 function Get-WpsModalDialogs {
     $pids = @()
-    try { $pids = @(Get-Process -Name wps, et, wpp -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Id) } catch {}
+    try { $pids = @(Get-Process -Name (Get-HostProcNames 'all') -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Id) } catch {}
     if ($pids.Count -eq 0) { return @() }
     try { return [WpsModalProbe]::Find([int[]]$pids) } catch { return @() }
 }
@@ -1064,6 +1236,17 @@ function Get-PptSaveFormat([string]$format) {
 function Invoke-WpsAction {
     param([string]$Action, $p)
 
+    # Office 支持二期（2026-11-07）：WPS 专用能力的 office host 失败语义收口——
+    # 对账表"WPS 专用(Office 不做)"的 11 个 case（showWps + 10 个能力探针），在
+    # office host 下明确报错（错误文案带 "WPS 专用，Office host 不支持" 字样），
+    # 不许静默降级、也不许裸 COM 异常直出。
+    $wpsOnlyActions = @('showWps', '__probeCaps', '__probeCaptionSeq', '__probeClose', '__probeDoc',
+        '__probeStyleAdd', '__probeWordCaps', '__probeExcelCaps', '__probeDialogs', '__probeParams', '__probeDeckkit')
+    if ($Action -in $wpsOnlyActions -and (Get-HostKind) -eq 'office') {
+        Output-Json @{ success = $false; error = "[WPS 专用，Office host 不支持] '$Action' 属于 WPS 窗口管理/能力探针能力，Office host 下不可用。请切回 WPS host（WPS_OFFICE=off）使用" }
+        return
+    }
+
 # 注意：这里【绝不能】再写 `$p = $Params | ConvertFrom-Json`。
 # ①A 常驻化时把原来裸 switch 包成函数，那句解析被一起带了进来，于是每次调用都用
 # 脚本级 $Params（守护进程模式下就是默认值 "{}"）把传进来的 $p 覆盖成空对象 ——
@@ -1285,7 +1468,7 @@ switch ($Action) {
         $cand = @()
 
         if (-not $want -or $want -eq 'excel') {
-            $excel = Get-ActiveWpsApp 'Ket.Application'
+            $excel = Get-ActiveWpsApp (Get-ProgidForApp 'excel')
             if ($null -ne $excel) {
                 try {
                     $book = $excel.ActiveWorkbook
@@ -1308,7 +1491,7 @@ switch ($Action) {
         }
 
         if (-not $want -or $want -eq 'word') {
-            $word = Get-ActiveWpsApp 'Kwps.Application'
+            $word = Get-ActiveWpsApp (Get-ProgidForApp 'word')
             if ($null -ne $word) {
                 try {
                     $doc = $word.ActiveDocument
@@ -1328,7 +1511,7 @@ switch ($Action) {
         }
 
         if (-not $want -or $want -eq 'ppt') {
-            $ppt = Get-ActiveWpsApp 'Kwpp.Application'
+            $ppt = Get-ActiveWpsApp (Get-ProgidForApp 'ppt')
             if ($null -ne $ppt) {
                 try {
                     $pres = $ppt.ActivePresentation
@@ -1471,9 +1654,9 @@ switch ($Action) {
         try { $report.dialogs = @(Get-WpsModalDialogs) } catch {}
 
         foreach ($a in @(
-            @{ key = "excel"; progId = "Ket.Application";  coll = "Workbooks";     app = $null },
-            @{ key = "word";  progId = "Kwps.Application"; coll = "Documents";     app = $null },
-            @{ key = "ppt";   progId = "Kwpp.Application"; coll = "Presentations"; app = $null }
+            @{ key = "excel"; progId = (Get-ProgidForApp 'excel');  coll = "Workbooks";     app = $null },
+            @{ key = "word";  progId = (Get-ProgidForApp 'word');   coll = "Documents";     app = $null },
+            @{ key = "ppt";   progId = (Get-ProgidForApp 'ppt');    coll = "Presentations"; app = $null }
         )) {
             $inst = Get-ActiveWpsApp $a.progId
             $entry = @{ running = ($null -ne $inst); documents = @() }
@@ -1533,9 +1716,9 @@ switch ($Action) {
         foreach ($k in ($unnamed | Select-Object -Unique)) {
             $app = $null
             $coll = 'Documents'
-            if ($k -eq 'word') { $app = Get-ActiveWpsApp 'Kwps.Application' }
-            elseif ($k -eq 'excel') { $app = Get-ActiveWpsApp 'Ket.Application'; $coll = 'Workbooks' }
-            elseif ($k -eq 'ppt') { $app = Get-ActiveWpsApp 'Kwpp.Application'; $coll = 'Presentations' }
+            if ($k -eq 'word') { $app = Get-ActiveWpsApp (Get-ProgidForApp 'word') }
+            elseif ($k -eq 'excel') { $app = Get-ActiveWpsApp (Get-ProgidForApp 'excel'); $coll = 'Workbooks' }
+            elseif ($k -eq 'ppt') { $app = Get-ActiveWpsApp (Get-ProgidForApp 'ppt'); $coll = 'Presentations' }
             if ($null -eq $app) { continue }
             try {
                 $app.$coll.Close($false)
@@ -1560,10 +1743,14 @@ switch ($Action) {
         # —— 所以它是 WPS 表格本人，不是真 Excel。
         # 因此身份以【我们请求的 ProgID】+【Application.Path 落在哪个产品目录】为准，
         # 自报名单独放在 reportedName，只作参考，不作判据。
+        # Host 维度（Office 支持一期）：ProgID 按 host 取，产品显示名随 host
+        # （wps 侧保持"WPS 表格/文字/演示"；office 侧报 Microsoft 应用名——
+        #  身份判据仍是 Path 反推产品，下面代码不变）。
+        $isOfficeHost = (Get-HostKind) -eq 'office'
         $apps = @(
-            @{ key = "excel"; progId = "Ket.Application";  app = "WPS 表格" },
-            @{ key = "word";  progId = "Kwps.Application"; app = "WPS 文字" },
-            @{ key = "ppt";   progId = "Kwpp.Application"; app = "WPS 演示" }
+            @{ key = "excel"; progId = (Get-ProgidForApp 'excel');  app = if ($isOfficeHost) { "Microsoft Excel" } else { "WPS 表格" } },
+            @{ key = "word";  progId = (Get-ProgidForApp 'word');   app = if ($isOfficeHost) { "Microsoft Word" } else { "WPS 文字" } },
+            @{ key = "ppt";   progId = (Get-ProgidForApp 'ppt');    app = if ($isOfficeHost) { "Microsoft PowerPoint" } else { "WPS 演示" } }
         )
         $states = @{}
         foreach ($a in $apps) {
@@ -1729,13 +1916,16 @@ switch ($Action) {
         }
 
         # 先数未保存的文档：直接 Quit 会因 DisplayAlerts=0 把未保存改动静默丢掉，
-        # 而这里退出影响的是用户开着的全部 WPS —— 所以未保存时默认拒绝，confirm=true 才放行。
+        # 而这里退出影响的是用户开着的全部实例 —— 所以未保存时默认拒绝，confirm=true 才放行。
+        # Host 维度：ProgID 按 host 取（office host 退的是 WINWORD/EXCEL/POWERPNT）。
         $unsaved = @()
         $guardSkipped = @()
-        foreach ($progId in @('Kwps.Application','Ket.Application','Kwpp.Application')) {
+        $hostLabel = if ((Get-HostKind) -eq 'office') { 'Office' } else { 'WPS' }
+        foreach ($kindKey in @('word','excel','ppt')) {
+            $progId = Get-ProgidForApp $kindKey
             $app = Get-ActiveWpsApp $progId
             if ($null -eq $app) { continue }
-            $kind = switch ($progId) { 'Kwps.Application' { '文档' } 'Ket.Application' { '工作簿' } default { '演示文稿' } }
+            $kind = switch ($kindKey) { 'word' { '文档' } 'excel' { '工作簿' } default { '演示文稿' } }
             $coll = $null
             try { $coll = $app.Documents } catch { $guardSkipped += "$kind 枚举失败：$($_.Exception.Message)" }
             if (-not $coll) { try { $coll = $app.Workbooks } catch { $guardSkipped += "$kind 枚举失败：$($_.Exception.Message)" } }
@@ -1758,7 +1948,8 @@ switch ($Action) {
         }
 
         $quit = @()
-        foreach ($progId in @('Kwps.Application','Ket.Application','Kwpp.Application')) {
+        foreach ($kindKey in @('word','excel','ppt')) {
+            $progId = Get-ProgidForApp $kindKey
             $app = Get-ActiveWpsApp $progId
             if ($null -ne $app) {
                 try { $app.DisplayAlerts = 0 } catch { $guardSkipped += "$progId 抑制弹窗失败：$($_.Exception.Message)" }
@@ -1770,19 +1961,19 @@ switch ($Action) {
         # 本进程自己创建过的实例（user 记账 + 沙箱）按 PID 直接收掉 —— 这些是我们的，
         # 不受未保存护栏约束（护栏只保护 ROT 附着的用户实例）。任务结束/异常都能杀。
         $ownKilled = (Remove-OwnCreatedProcs) + (Remove-OwnSandboxProcs)
-        # 不做全量 taskkill：Quit 之后的残留多半是用户自己开的其它 WPS 实例
+        # 不做全量 taskkill：Quit 之后的残留多半是用户自己开的其它实例
         # （ROT 每个 ProgID 只能激活一个，COM 够不着的那几个 /IM 一杀就误杀）。
         # 列出剩余进程交给用户决定，wpscloudsvr 是 WPS 自己的云服务，从来不该杀。
-        $leftovers = @(Get-Process -Name wps -ErrorAction SilentlyContinue)
-        # remaining 只数"有窗口的实例"：用户关心的是"还有没有 WPS 窗口没关"，
-        # wpscloudsvr / 无窗口组件是 WPS 的服务进程，算进去会让"明明退干净了"报成残留。
+        $leftovers = @(Get-Process -Name (Get-HostProcNames 'all') -ErrorAction SilentlyContinue)
+        # remaining 只数"有窗口的实例"：用户关心的是"还有没有窗口没关"，
+        # wpscloudsvr / 无窗口组件是套件自管的服务进程，算进去会让"明明退干净了"报成残留。
         $leftVisible = @($leftovers | Where-Object { $_.MainWindowHandle -ne 0 })
         $leftBackground = @($leftovers | Where-Object { $_.MainWindowHandle -eq 0 })
         $left = $leftVisible.Count
         $msg = if ($left -eq 0) {
-            "WPS 已退出" + $(if ($leftBackground.Count) { "（另有 $($leftBackground.Count) 个无窗口服务进程由 WPS 自管，不影响使用）" } else { '' })
+            "$hostLabel 已退出" + $(if ($leftBackground.Count) { "（另有 $($leftBackground.Count) 个无窗口服务进程由 $hostLabel 自管，不影响使用）" } else { '' })
         } else {
-            "本会话连接的 WPS 已退出；另有 $left 个有窗口的 WPS 实例在运行（多为用户自己打开的，未强行关闭）"
+            "本会话连接的 $hostLabel 已退出；另有 $left 个有窗口的 $hostLabel 实例在运行（多为用户自己打开的，未强行关闭）"
         }
         Output-Json @{ success = $true; data = @{ quit = $quit; forced = $false; ownKilled = $ownKilled; remaining = $left; remainingBackground = $leftBackground.Count; leftovers = @($leftovers | ForEach-Object { @{ pid = $_.Id; title = $_.MainWindowTitle } }); message = $msg } }
     }
@@ -1988,8 +2179,16 @@ switch ($Action) {
             $wb = $(Resolve-Book $excel $p)
             if ($null -eq $excel -or $null -eq $wb) { Output-Json @{ success = $false; error = "No active workbook" }; return }
             $format = Get-ExcelFileFormat $p.format
-            if ($null -ne $format) { $wb.SaveAs($path, $format) }
-            else { $wb.SaveAs($path) }
+            # Office 二期 quirk 修正（2026-11-07）：同名覆盖会弹确认框——daemon 的 COM 会话
+            # 没设 DisplayAlerts，弹框把通道卡死 30s 超时（抽验 E-14 实测）。保存前关、保存后恢复。
+            $da0 = $null
+            try { $da0 = $excel.DisplayAlerts } catch {}
+            try { $excel.DisplayAlerts = $false } catch {}
+            try {
+                if ($null -ne $format) { $wb.SaveAs($path, $format) } else { $wb.SaveAs($path) }
+            } finally {
+                try { if ($null -ne $da0) { $excel.DisplayAlerts = $da0 } } catch {}
+            }
             $r = & $resolveSavedPath $wb $path
             Output-Json @{ success = $true; data = @{ path = $r.path; requestedPath = $r.requestedPath; verified = $r.verified; note = $r.note; appType = "excel" } }
             return
@@ -1999,8 +2198,14 @@ switch ($Action) {
             $docItem = $(Resolve-Doc $word $p)
             if ($null -eq $word -or $null -eq $docItem) { Output-Json @{ success = $false; error = "No active document" }; return }
             $format = Get-WordSaveFormat $p.format
-            if ($null -ne $format) { $docItem.SaveAs($path, $format) }
-            else { $docItem.SaveAs($path) }
+            $da0 = $null
+            try { $da0 = $word.DisplayAlerts } catch {}
+            try { $word.DisplayAlerts = $false } catch {}
+            try {
+                if ($null -ne $format) { $docItem.SaveAs($path, $format) } else { $docItem.SaveAs($path) }
+            } finally {
+                try { if ($null -ne $da0) { $word.DisplayAlerts = $da0 } } catch {}
+            }
             $r = & $resolveSavedPath $docItem $path
             Output-Json @{ success = $true; data = @{ path = $r.path; requestedPath = $r.requestedPath; verified = $r.verified; note = $r.note; appType = "word" } }
             return
@@ -2010,8 +2215,14 @@ switch ($Action) {
             if ($null -eq $ppt -or $null -eq $ppt.ActivePresentation) { Output-Json @{ success = $false; error = "No active presentation" }; return }
             $pres = $ppt.ActivePresentation
             $format = Get-PptSaveFormat $p.format
-            if ($null -ne $format) { $pres.SaveAs($path, $format) }
-            else { $pres.SaveAs($path) }
+            $da0 = $null
+            try { $da0 = $ppt.DisplayAlerts } catch {}
+            try { $ppt.DisplayAlerts = $false } catch {}
+            try {
+                if ($null -ne $format) { $pres.SaveAs($path, $format) } else { $pres.SaveAs($path) }
+            } finally {
+                try { if ($null -ne $da0) { $ppt.DisplayAlerts = $da0 } } catch {}
+            }
             $r = & $resolveSavedPath $pres $path
             Output-Json @{ success = $true; data = @{ path = $r.path; requestedPath = $r.requestedPath; verified = $r.verified; note = $r.note; appType = "ppt" } }
             return
@@ -2081,6 +2292,15 @@ switch ($Action) {
         }
         $name = ""
         try { $name = [string]$word.Documents.Item($word.Documents.Count).Name } catch {}
+        # Office 支持二期（2026-11-07）：记账对称化——新建即记账（镜像 createPresentation 的
+        # Set-LastResolvedPres 'created' / createWorkbook 的 'create'）。
+        # A3（Office 收口合并卡）：create 路径记账的探活薄弱点——6 秒等待窗口未就绪时
+        # 记的是空壳，Resolve-Doc 记账层每次都会清账重解析（浪费 + 日志噪声）。
+        # 健康 → 记账；未就绪 → 清账（落 Active/遍历，等下一次健康解析记账）。
+        $curDoc = $null
+        try { $curDoc = $word.Documents.Item($word.Documents.Count) } catch {}
+        if ($null -ne $curDoc -and (Test-DocHealthy $curDoc)) { Set-LastResolvedDoc $curDoc 'created' }
+        else { $script:LastResolvedDoc = $null }
         $data = @{ count = [int]$word.Documents.Count; name = $name }
         if ($warn) { $data.warning = $warn }
         Output-Json @{ success = $true; data = $data }
@@ -2109,8 +2329,17 @@ switch ($Action) {
     }
 
     "convertToPDF" {
+        # Office 支持二期（2026-11-07）：app 参数短路——两轮独立复现的设计缺口
+        # （多应用并存时按 excel→word→ppt 顺序抢目标，PDF 落错应用）。
+        # app=excel/word/ppt 只走对应分支（目标缺失=明确报错，不静默换目标）；
+        # 缺省 auto 保持原解析顺序。
+        $want = if ($p.app) { ([string]$p.app).Trim().ToLower() } else { 'auto' }
+        if ($want -notin @('excel', 'word', 'ppt', 'auto')) {
+            Output-Json @{ success = $false; error = "app 只能是 excel/word/ppt/auto，得到 '$want'" }
+            return
+        }
         $excel = Get-WpsExcel
-        if ($null -ne $excel -and $null -ne $(Resolve-Book $excel $p)) {
+        if (($want -eq 'auto' -or $want -eq 'excel') -and $null -ne $excel -and $null -ne $(Resolve-Book $excel $p)) {
             $wb = $(Resolve-Book $excel $p)
             $sourcePath = $wb.FullName
             $outputPath = if ($p.outputPath) { $p.outputPath } else { [System.IO.Path]::ChangeExtension($sourcePath, 'pdf') }
@@ -2120,7 +2349,7 @@ switch ($Action) {
             return
         }
         $word = Get-WpsWord
-        if ($null -ne $word -and $null -ne $(Resolve-Doc $word $p)) {
+        if (($want -eq 'auto' -or $want -eq 'word') -and $null -ne $word -and $null -ne $(Resolve-Doc $word $p)) {
             $doc = $(Resolve-Doc $word $p)
             $sourcePath = $doc.FullName
             $outputPath = if ($p.outputPath) { $p.outputPath } else { [System.IO.Path]::ChangeExtension($sourcePath, 'pdf') }
@@ -2130,7 +2359,7 @@ switch ($Action) {
             return
         }
         $ppt = Get-WpsPpt
-        if ($null -ne $ppt -and $null -ne $ppt.ActivePresentation) {
+        if (($want -eq 'auto' -or $want -eq 'ppt') -and $null -ne $ppt -and $null -ne $ppt.ActivePresentation) {
             $pres = Get-TargetPres $ppt $p
             $sourcePath = $pres.FullName
             $outputPath = if ($p.outputPath) { $p.outputPath } else { [System.IO.Path]::ChangeExtension($sourcePath, 'pdf') }
@@ -2139,7 +2368,7 @@ switch ($Action) {
             Output-Json @{ success = $true; data = @{ sourcePath = $sourcePath; outputPath = $outputPath; appType = "ppt"; opened = [bool]$p.openAfterExport } }
             return
         }
-        Output-Json @{ success = $false; error = "No active document" }
+        Output-Json @{ success = $false; error = $(if ($want -eq 'auto') { "No active document" } else { "No active document（app=$want 短路：对应应用没有可导出的文档）" }) }
     }
 
     "convertFormat" {
@@ -2194,28 +2423,34 @@ switch ($Action) {
         if ($null -eq $excel) { Output-Json @{ success = $false; error = "WPS Excel not running" }; return }
         $wb = $(Resolve-Book $excel $p)
         if ($null -eq $wb) { Output-Json @{ success = $false; error = "No active workbook" }; return }
-        $sheet = if ($p.sheet -is [int]) { $wb.Sheets.Item($p.sheet) } else { $wb.Sheets.Item($p.sheet) }
-        $cell = $sheet.Cells.Item($p.row, $p.col)
+        # Office 试点 quirk（2026-11-07）：同 setCellValue —— 手写 Sheets.Item(null) 在
+        # Office 抛无效索引，改走 Resolve-Sheet。
+        $sheet = $(Resolve-Sheet $excel $p)
+        if ($null -eq $sheet) { Output-Json @{ success = $false; error = "No active sheet" }; return }
+        $cell = $sheet.Cells.Item([int]$p.row, [int]$p.col)
         Output-Json @{ success = $true; data = @{ value = $cell.Value2; text = $cell.Text; formula = $cell.Formula } }
     }
 
     "setCellValue" {
         $excel = Get-WpsExcel
         if ($null -eq $excel) { Output-Json @{ success = $false; error = "WPS Excel not running" }; return }
-        $wb = $(Resolve-Book $excel $p)
-        $sheet = if ($p.sheet -is [int]) { $wb.Sheets.Item($p.sheet) } else { $wb.Sheets.Item($p.sheet) }
+        # Office 试点 quirk（2026-11-07）：原来手写 `$wb.Sheets.Item($p.sheet)`，sheet 缺省
+        # 时喂 null —— WPS 宽容、Office 抛 DISP_E_BADINDEX（无效索引）。
+        # 改走 Resolve-Sheet（int/名字/缺省 ActiveSheet 全兜住），与 setRangeData 同口径。
+        $sheet = $(Resolve-Sheet $excel $p)
+        if ($null -eq $sheet) { Output-Json @{ success = $false; error = "No active sheet" }; return }
         # 第 1 期第 2 章第 4 轮（B1）：与 setRangeData 同一个雷 —— 原样 `.Value2 = $p.value`
         # 在 daemon 里会抛 "无法将类型为 System.Int32 的对象强制转换为类型 System.String"。
         # 同一个分派：数字写数字、文本按文本格式写（保住 "007" 这类形状）、布尔写布尔、null 清空。
-        $cell = $sheet.Cells.Item($p.row, $p.col)
+        $cell = $sheet.Cells.Item([int]$p.row, [int]$p.col)
         $v = $p.value
         if ($null -eq $v) {
             $cell.ClearContents()
         } elseif ($v -is [bool]) {
-            $cell.NumberFormat = 'General'
+            if ((Get-HostKind) -ne 'office') { $cell.NumberFormat = 'General' }
             $cell.Value2 = [bool]$v
         } elseif ($v -is [int] -or $v -is [long] -or $v -is [double] -or $v -is [decimal]) {
-            $cell.NumberFormat = 'General'
+            if ((Get-HostKind) -ne 'office') { $cell.NumberFormat = 'General' }
             $cell.Value2 = [double]$v
         } else {
             $cell.NumberFormat = '@'
@@ -2227,8 +2462,10 @@ switch ($Action) {
     "getRangeData" {
         $excel = Get-WpsExcel
         if ($null -eq $excel) { Output-Json @{ success = $false; error = "WPS Excel not running" }; return }
-        $wb = $(Resolve-Book $excel $p)
-        $sheet = if ($p.sheet -is [int]) { $wb.Sheets.Item($p.sheet) } else { $wb.Sheets.Item($p.sheet) }
+        # Office 试点 quirk（2026-11-07）：同 setCellValue —— 手写 Sheets.Item(null) 在
+        # Office 抛无效索引，改走 Resolve-Sheet。
+        $sheet = $(Resolve-Sheet $excel $p)
+        if ($null -eq $sheet) { Output-Json @{ success = $false; error = "No active sheet" }; return }
         $range = $sheet.Range($p.range)
         $data = @()
         for ($r = 1; $r -le $range.Rows.Count; $r++) {
@@ -2266,10 +2503,13 @@ switch ($Action) {
                 #   null → 清空
                 if ($null -eq $v) { $cell.ClearContents(); continue }
                 if ($v -is [bool]) {
-                    $cell.NumberFormat = 'General'
+                    # Office 试点 quirk（2026-11-07）：Office 上 NumberFormat='General' 抛
+                    # "不能设置类 Range 的 NumberFormat 属性"（'@'/'0.00' 等真格式码正常）。
+                    # 单元格默认即 General，office host 跳过这次重置——数据写入不受影响，非静默降级。
+                    if ((Get-HostKind) -ne 'office') { $cell.NumberFormat = 'General' }
                     $cell.Value2 = [bool]$v
                 } elseif ($v -is [int] -or $v -is [long] -or $v -is [double] -or $v -is [decimal]) {
-                    $cell.NumberFormat = 'General'
+                    if ((Get-HostKind) -ne 'office') { $cell.NumberFormat = 'General' }
                     $cell.Value2 = [double]$v
                 } else {
                     $cell.NumberFormat = '@'
@@ -2320,7 +2560,11 @@ switch ($Action) {
         if ($null -eq $excel) { Output-Json @{ success = $false; error = "WPS Excel not running" }; return }
         $wb = $(Resolve-Book $excel $p)
         if ($null -eq $wb) { Output-Json @{ success = $false; error = "No active workbook" }; return }
-        $sheet = if ($p.sheet -is [int]) { $wb.Sheets.Item($p.sheet) } else { $wb.Sheets.Item($p.sheet) }
+        # Office 二期 quirk 落地（2026-11-07）：Sheets.Item($p.sheet) 手写解析——sheet 缺省
+        # 喂 null（Office 抛无效索引）、数字 sheet 在 pwsh7 下是 Int64（Office 拒收 VT_I8）。
+        # 统一 Resolve-Sheet 化（与 setCellValue 同款）。
+        $sheet = $(Resolve-Sheet $excel $p)
+        if ($null -eq $sheet) { Output-Json @{ success = $false; error = "No active sheet" }; return }
         $range = $sheet.Range($p.range)
         $opsResult = @()
         foreach ($op in $p.operations) {
@@ -2501,7 +2745,7 @@ switch ($Action) {
             Output-Json @{ success = $false; error = "[勿重试·先改参数] 要给 formula（如 =SUM(A1:A10)）" }
             return
         }
-        $range = if ($p.range) { $sheet.Range([string]$p.range) } elseif ($p.row -and $p.col) { $sheet.Cells.Item($p.row, $p.col) } else { $null }
+        $range = if ($p.range) { $sheet.Range([string]$p.range) } elseif ($p.row -and $p.col) { $sheet.Cells.Item([int]$p.row, [int]$p.col) } else { $null }
         if ($null -eq $range) {
             Output-Json @{ success = $false; error = "[勿重试·先改参数] 要给 range（如 A11）或 row+col" }
             return
@@ -2939,9 +3183,16 @@ switch ($Action) {
         $sheet = $(Resolve-Sheet $excel $p)
         $range = $sheet.Range($p.dataRange)
         $chartType = $p.chartType
+        $chartTypes = @{ column = 51; column_clustered = 51; column_stacked = 52; bar = 57; bar_clustered = 57; line = 4; line_markers = 65; pie = 5; doughnut = -4120; area = 1; scatter = -4169; radar = -4151 }
         if ($null -eq $chartType) {
-            $chartTypes = @{ column = 51; column_clustered = 51; column_stacked = 52; bar = 57; bar_clustered = 57; line = 4; line_markers = 65; pie = 5; doughnut = -4120; area = 1; scatter = -4169; radar = -4151 }
             $chartType = $chartTypes[$p.chartTypeName]
+        }
+        # Office 试点 quirk（2026-11-07）：字符串形态的 chartType（'column_clustered' 等）
+        # 必须过枚举表转数字。原逻辑只在 chartType 缺省时才查表，字符串直穿——
+        # WPS 的 COM 绑定器宽容（字符串也能吞），Office 严格：直接把字符串塞给
+        # ChartType 属性抛 "Index was outside the bounds of the array"（试点 E8 实测）。
+        if ($chartType -is [string]) {
+            $chartType = $chartTypes[$chartType]
         }
         if ($null -eq $chartType) { $chartType = 51 }
         $chartTypeName = if ($p.chartTypeName) { $p.chartTypeName } else { $null }
@@ -2961,7 +3212,11 @@ switch ($Action) {
     "updateChart" {
         $excel = Get-WpsExcel
         if ($null -eq $excel) { Output-Json @{ success = $false; error = "WPS Excel not running" }; return }
-        $sheet = if ($p.sheet) { $(Resolve-Book $excel $p).Sheets.Item($p.sheet) } else { $excel.ActiveSheet }
+        # Office 二期 quirk 落地（2026-11-07）：Sheets.Item($p.sheet) 手写解析——sheet 缺省
+        # 喂 null（Office 抛无效索引）、数字 sheet 在 pwsh7 下是 Int64（Office 拒收 VT_I8）。
+        # 统一 Resolve-Sheet 化（与 setCellValue 同款）。
+        $sheet = $(Resolve-Sheet $excel $p)
+        if ($null -eq $sheet) { Output-Json @{ success = $false; error = "No active sheet" }; return }
         $chartObj = $null
         if ($p.chartName) {
             try { $chartObj = $sheet.ChartObjects($p.chartName) } catch {}
@@ -3020,7 +3275,11 @@ switch ($Action) {
     "exportChartAsImage" {
         $excel = Get-WpsExcel
         if ($null -eq $excel) { Output-Json @{ success = $false; error = "WPS Excel not running" }; return }
-        $sheet = if ($p.sheet) { $(Resolve-Book $excel $p).Sheets.Item($p.sheet) } else { $excel.ActiveSheet }
+        # Office 二期 quirk 落地（2026-11-07）：Sheets.Item($p.sheet) 手写解析——sheet 缺省
+        # 喂 null（Office 抛无效索引）、数字 sheet 在 pwsh7 下是 Int64（Office 拒收 VT_I8）。
+        # 统一 Resolve-Sheet 化（与 setCellValue 同款）。
+        $sheet = $(Resolve-Sheet $excel $p)
+        if ($null -eq $sheet) { Output-Json @{ success = $false; error = "No active sheet" }; return }
         $outputPath = if ($p.outputPath) { $p.outputPath } else { $p.path }
         if ([string]::IsNullOrEmpty($outputPath)) { Output-Json @{ success = $false; error = "Missing outputPath" }; return }
         $chartName = $p.chartName
@@ -3046,7 +3305,11 @@ switch ($Action) {
     "exportRangeAsImage" {
         $excel = Get-WpsExcel
         if ($null -eq $excel) { Output-Json @{ success = $false; error = "WPS Excel not running" }; return }
-        $sheet = if ($p.sheet) { $(Resolve-Book $excel $p).Sheets.Item($p.sheet) } else { $excel.ActiveSheet }
+        # Office 二期 quirk 落地（2026-11-07）：Sheets.Item($p.sheet) 手写解析——sheet 缺省
+        # 喂 null（Office 抛无效索引）、数字 sheet 在 pwsh7 下是 Int64（Office 拒收 VT_I8）。
+        # 统一 Resolve-Sheet 化（与 setCellValue 同款）。
+        $sheet = $(Resolve-Sheet $excel $p)
+        if ($null -eq $sheet) { Output-Json @{ success = $false; error = "No active sheet" }; return }
         $outputPath = if ($p.outputPath) { $p.outputPath } else { $p.path }
         if ([string]::IsNullOrEmpty($outputPath)) { Output-Json @{ success = $false; error = "Missing outputPath" }; return }
         if ([string]::IsNullOrEmpty($p.range)) { Output-Json @{ success = $false; error = "Missing range" }; return }
@@ -3120,7 +3383,11 @@ switch ($Action) {
         if ($null -eq $excel) { Output-Json @{ success = $false; error = "WPS Excel not running" }; return }
         $wb = $(Resolve-Book $excel $p)
         if ($null -eq $wb) { Output-Json @{ success = $false; error = "No active workbook" }; return }
-        $sheet = if ($p.sheet) { $wb.Sheets.Item($p.sheet) } else { $excel.ActiveSheet }
+        # Office 二期 quirk 落地（2026-11-07）：Sheets.Item($p.sheet) 手写解析——sheet 缺省
+        # 喂 null（Office 抛无效索引）、数字 sheet 在 pwsh7 下是 Int64（Office 拒收 VT_I8）。
+        # 统一 Resolve-Sheet 化（与 setCellValue 同款）。
+        $sheet = $(Resolve-Sheet $excel $p)
+        if ($null -eq $sheet) { Output-Json @{ success = $false; error = "No active sheet" }; return }
         $name = $sheet.Name
         $excel.DisplayAlerts = $false
         $sheet.Delete()
@@ -3133,7 +3400,11 @@ switch ($Action) {
         if ($null -eq $excel) { Output-Json @{ success = $false; error = "WPS Excel not running" }; return }
         $wb = $(Resolve-Book $excel $p)
         if ($null -eq $wb) { Output-Json @{ success = $false; error = "No active workbook" }; return }
-        $sheet = if ($p.sheet) { $wb.Sheets.Item($p.sheet) } else { $excel.ActiveSheet }
+        # Office 二期 quirk 落地（2026-11-07）：Sheets.Item($p.sheet) 手写解析——sheet 缺省
+        # 喂 null（Office 抛无效索引）、数字 sheet 在 pwsh7 下是 Int64（Office 拒收 VT_I8）。
+        # 统一 Resolve-Sheet 化（与 setCellValue 同款）。
+        $sheet = $(Resolve-Sheet $excel $p)
+        if ($null -eq $sheet) { Output-Json @{ success = $false; error = "No active sheet" }; return }
         $oldName = $sheet.Name
         $sheet.Name = $p.newName
         Output-Json @{ success = $true; data = @{ oldName = $oldName; newName = $p.newName } }
@@ -3144,13 +3415,20 @@ switch ($Action) {
         if ($null -eq $excel) { Output-Json @{ success = $false; error = "WPS Excel not running" }; return }
         $wb = $(Resolve-Book $excel $p)
         if ($null -eq $wb) { Output-Json @{ success = $false; error = "No active workbook" }; return }
-        $sheet = if ($p.sheet) { $wb.Sheets.Item($p.sheet) } else { $excel.ActiveSheet }
+        # Office 二期 quirk 落地（2026-11-07）：Sheets.Item($p.sheet) 手写解析——sheet 缺省
+        # 喂 null（Office 抛无效索引）、数字 sheet 在 pwsh7 下是 Int64（Office 拒收 VT_I8）。
+        # 统一 Resolve-Sheet 化（与 setCellValue 同款）。
+        $sheet = $(Resolve-Sheet $excel $p)
+        if ($null -eq $sheet) { Output-Json @{ success = $false; error = "No active sheet" }; return }
         if ($p.before) {
             $sheet.Copy($wb.Sheets.Item($p.before))
         } elseif ($p.after) {
-            $sheet.Copy($null, $wb.Sheets.Item($p.after))
+            # Office 二期 quirk 修正（2026-11-07）：Office 的 Copy(Before, After) 拒收 $null 参数
+            # （VT_NULL → "不能取得类 Worksheet 的 Copy 属性"），WPS 绑定器宽容。
+            # [Type]::Missing = 标准的"参数缺省"占位，双 host 通吃。
+            $sheet.Copy([Type]::Missing, $wb.Sheets.Item($p.after))
         } else {
-            $sheet.Copy($null, $wb.Sheets.Item($wb.Sheets.Count))
+            $sheet.Copy([Type]::Missing, $wb.Sheets.Item($wb.Sheets.Count))
         }
         Output-Json @{ success = $true; data = @{ copiedFrom = $sheet.Name } }
     }
@@ -3262,6 +3540,35 @@ switch ($Action) {
         $scope = if ($p.range) { $sheet.Range([string]$p.range) } else { $sheet.UsedRange }
         $matchCase = if ($null -eq $p.matchCase) { $false } else { [bool]$p.matchCase }
         $wholeCell = if ($null -eq $p.wholeCell) { $false } else { [bool]$p.wholeCell }
+        # Office 收口合并卡 B1（2026-11-07）：office host 的查找交由 PowerShell 5.1 子进程
+        # （scripts/wps-find51.ps1，附着 ROT Excel + Value2 归一内存循环）——pwsh7 daemon 的
+        # COM binder 对循环/带参调用会话态敏感（二期抽验四轮四错在案），5.1 binder 干净
+        # （四轮探针实证）。子进程开销 ~1s，查找非高频动作，可靠性优先。
+        if ((Get-HostKind) -eq 'office') {
+            try {
+                $fp = @{
+                    what = $what
+                    matchCase = $matchCase
+                    wholeCell = $wholeCell
+                    sheet = if ($p.sheet) { [string]$p.sheet } else { $null }
+                    range = if ($p.range) { [string]$p.range } else { $null }
+                    maxResults = if ($p.maxResults) { [int]$p.maxResults } else { 0 }
+                }
+                $json = $fp | ConvertTo-Json -Compress
+                $out = & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'wps-find51.ps1') -Params $json 2>$null
+                $r51 = $null
+                try { $r51 = ($out -join "`n") | ConvertFrom-Json } catch {}
+                if ($null -ne $r51 -and $r51.success) {
+                    Output-Json @{ success = $true; data = $r51.data }
+                    return
+                }
+                # 5.1 子进程失败：如实回错误（不静默降级到会炸的 pwsh7 循环）
+                Output-Json @{ success = $false; error = $(if ($r51 -and $r51.error) { $r51.error } else { "find51 子进程无有效输出" }) }
+                return
+            } catch {
+                Output-Json @{ success = $false; error = "查找出错: $(Get-CallError $_)" }; return
+            }
+        }
         $found = @()
         # 逐单元格扫，不用 Range.Find —— WPS 的 Find 参数签名与 Excel 有出入，
         # 而 FindNext 在空结果时会抛异常，边界比逐格扫难处理。
@@ -3615,7 +3922,11 @@ switch ($Action) {
         if ($null -eq $excel) { Output-Json @{ success = $false; error = "WPS Excel not running" }; return }
         $wb = $(Resolve-Book $excel $p)
         if ($null -eq $wb) { Output-Json @{ success = $false; error = "No active workbook" }; return }
-        $sheet = $wb.Sheets.Item($p.sheet)
+        # Office 二期 quirk 落地（2026-11-07）：Sheets.Item($p.sheet) 手写解析——sheet 缺省
+        # 喂 null（Office 抛无效索引）、数字 sheet 在 pwsh7 下是 Int64（Office 拒收 VT_I8）。
+        # 统一 Resolve-Sheet 化（与 setCellValue 同款）。
+        $sheet = $(Resolve-Sheet $excel $p)
+        if ($null -eq $sheet) { Output-Json @{ success = $false; error = "No active sheet" }; return }
         $sheet.Activate()
         Output-Json @{ success = $true; data = @{ activeSheet = $sheet.Name } }
     }
@@ -3625,7 +3936,11 @@ switch ($Action) {
         if ($null -eq $excel) { Output-Json @{ success = $false; error = "WPS Excel not running" }; return }
         $wb = $(Resolve-Book $excel $p)
         if ($null -eq $wb) { Output-Json @{ success = $false; error = "No active workbook" }; return }
-        $sheet = if ($p.sheet) { $wb.Sheets.Item($p.sheet) } else { $excel.ActiveSheet }
+        # Office 二期 quirk 落地（2026-11-07）：Sheets.Item($p.sheet) 手写解析——sheet 缺省
+        # 喂 null（Office 抛无效索引）、数字 sheet 在 pwsh7 下是 Int64（Office 拒收 VT_I8）。
+        # 统一 Resolve-Sheet 化（与 setCellValue 同款）。
+        $sheet = $(Resolve-Sheet $excel $p)
+        if ($null -eq $sheet) { Output-Json @{ success = $false; error = "No active sheet" }; return }
         # 第 4 轮修：TS 传的是 position（0 基目标位置），PS 只认 before/after ——
         # 两个都没给时【什么都不做还返回 success】，用户以为移动了。
         # 现在三条路都走通：position 优先，其次 before/after。
@@ -3908,8 +4223,20 @@ switch ($Action) {
         #   ② 只给 row 或只给 column 时以前啥都不选（$p.row -and $p.column 才动），冻的还是上次的位置；
         #   ③ 三个都没给时 $sheet.Range($null) 直接抛 COM 错。
         $want = if ($null -ne $p.freeze) { [bool]$p.freeze } else { $true }
+        # Office 二期 quirk 修正（2026-11-07）：headless（CoCreate 无窗）实例的 ActiveWindow
+        # 为 null——冻结窗格必须挂在活动窗口上（抽验 E-10 实测"在此对象上找不到属性
+        # FreezePanes"）。等效实现：先给实例补可见窗口再取；仍取不到 = 明确报错（不静默）。
+        $win = $null
+        try { $win = $excel.ActiveWindow } catch {}
+        if ($null -eq $win) {
+            try { $excel.Visible = $true; Start-Sleep -Milliseconds 300; $win = $excel.ActiveWindow } catch {}
+        }
+        if ($null -eq $win) {
+            Output-Json @{ success = $false; error = "Excel 无活动窗口（headless 实例），冻结窗格需要活动窗口；请让 Excel 显示窗口后重试" }
+            return
+        }
         if (-not $want) {
-            $excel.ActiveWindow.FreezePanes = $false
+            $win.FreezePanes = $false
             Output-Json @{ success = $true; data = @{ frozen = $false; message = "窗格冻结已取消" } }
             return
         }
@@ -3923,7 +4250,7 @@ switch ($Action) {
             $sheet.Range("$colLetter$rowIdx").Select()
         }
         # 三个都没给：不移动选区，就地冻结当前活动单元格的上方/左侧（Excel 的默认行为）
-        $excel.ActiveWindow.FreezePanes = $true
+        $win.FreezePanes = $true
         Output-Json @{ success = $true; data = @{ frozen = $true; message = "窗格已冻结" } }
     }
 
@@ -4110,16 +4437,28 @@ switch ($Action) {
     "protectSheet" {
         $excel = Get-WpsExcel
         if ($null -eq $excel) { Output-Json @{ success = $false; error = "WPS Excel not running" }; return }
-        $sheet = if ($p.sheet) { $(Resolve-Book $excel $p).Sheets.Item($p.sheet) } else { $excel.ActiveSheet }
+        # Office 二期 quirk 落地（2026-11-07）：Sheets.Item($p.sheet) 手写解析——sheet 缺省
+        # 喂 null（Office 抛无效索引）、数字 sheet 在 pwsh7 下是 Int64（Office 拒收 VT_I8）。
+        # 统一 Resolve-Sheet 化（与 setCellValue 同款）。
+        $sheet = $(Resolve-Sheet $excel $p)
+        if ($null -eq $sheet) { Output-Json @{ success = $false; error = "No active sheet" }; return }
         $password = if ($p.password) { $p.password } else { "" }
-        $sheet.Protect($password, $p.drawingObjects, $p.contents, $p.scenarios)
+        # Office 二期 quirk 修正（2026-11-07）：Protect 带未传参数（VT_NULL）在 Office 上
+        # 等于"该维度不保护"——Protect('',null,null,null) 实测 ProtectContents=False（假保护，
+        # success=true 但表根本没锁）。contents 缺省必须给真值（保护动作的语义本意）。
+        $protContents = if ($null -ne $p.contents) { [bool]$p.contents } else { $true }
+        $sheet.Protect($password, $p.drawingObjects, $protContents, $p.scenarios)
         Output-Json @{ success = $true; data = @{ sheet = $sheet.Name; protected = $true } }
     }
 
     "unprotectSheet" {
         $excel = Get-WpsExcel
         if ($null -eq $excel) { Output-Json @{ success = $false; error = "WPS Excel not running" }; return }
-        $sheet = if ($p.sheet) { $(Resolve-Book $excel $p).Sheets.Item($p.sheet) } else { $excel.ActiveSheet }
+        # Office 二期 quirk 落地（2026-11-07）：Sheets.Item($p.sheet) 手写解析——sheet 缺省
+        # 喂 null（Office 抛无效索引）、数字 sheet 在 pwsh7 下是 Int64（Office 拒收 VT_I8）。
+        # 统一 Resolve-Sheet 化（与 setCellValue 同款）。
+        $sheet = $(Resolve-Sheet $excel $p)
+        if ($null -eq $sheet) { Output-Json @{ success = $false; error = "No active sheet" }; return }
         $password = if ($p.password) { $p.password } else { "" }
         $sheet.Unprotect($password)
         Output-Json @{ success = $true; data = @{ sheet = $sheet.Name; protected = $false } }
@@ -4175,6 +4514,7 @@ switch ($Action) {
         $excel = Get-WpsExcel
         if ($null -eq $excel) { Output-Json @{ success = $false; error = "WPS Excel not running" }; return }
         $wb = $excel.Workbooks.Open($p.path, $p.updateLinks, $p.readOnly)
+        Set-LastResolvedBook $wb 'open'   # Office 试点轮：记账，防双簿场景目标漂移
         Output-Json @{ success = $true; data = @{ name = $wb.Name; path = $wb.FullName; sheets = $wb.Sheets.Count } }
     }
 
@@ -4234,6 +4574,7 @@ switch ($Action) {
         if ($null -eq $excel) { Output-Json @{ success = $false; error = "WPS Excel not running" }; return }
         $wb = $excel.Workbooks.Item($(if ($p.name) { $p.name } else { $p.index }))
         $wb.Activate()
+        Set-LastResolvedBook $wb 'switch'   # Office 试点轮：记账，防双簿场景目标漂移
         Output-Json @{ success = $true; data = @{ name = $wb.Name; path = $wb.FullName } }
     }
 
@@ -4257,6 +4598,8 @@ switch ($Action) {
             }
         }
         $wb.Close($saveChanges)
+        # Office 试点轮：关的是记账簿本身 → 清记账（否则下次解析按死名字找、必然落空）
+        if ($script:LastResolvedBook -and $script:LastResolvedBook.name -eq $name) { $script:LastResolvedBook = $null }
         Output-Json @{ success = $true; data = @{ closed = $name } }
     }
 
@@ -4265,6 +4608,7 @@ switch ($Action) {
         if ($null -eq $excel) { Output-Json @{ success = $false; error = "WPS Excel not running" }; return }
         $wb = $excel.Workbooks.Add()
         if ($p.name) { $wb.SaveAs($p.name) }
+        Set-LastResolvedBook $wb 'create'   # Office 试点轮：记账，防双簿场景目标漂移
         Output-Json @{ success = $true; data = @{ name = $wb.Name; path = $wb.FullName; sheets = $wb.Sheets.Count } }
     }
 
@@ -4367,6 +4711,7 @@ switch ($Action) {
         if ($null -eq $word) { Output-Json @{ success = $false; error = "WPS Word not running" }; return }
         if (-not $p.path) { Output-Json @{ success = $false; error = "path required" }; return }
         $docItem = $word.Documents.Open($p.path)
+        Set-LastResolvedDoc $docItem 'open'   # Office 支持二期：记账对称化
         Output-Json @{ success = $true; data = @{ name = $docItem.Name; path = $docItem.FullName; paragraphs = $docItem.Paragraphs.Count } }
     }
 
@@ -4834,10 +5179,14 @@ switch ($Action) {
         $doc = $(Resolve-Doc $word $p)
         if ($null -eq $doc) { Output-Json @{ success = $false; error = "No active document" }; return }
         $ps = $doc.PageSetup
-        if ($null -ne $p.topMargin) { $ps.TopMargin = [double]$p.topMargin * 28.35 }
-        if ($null -ne $p.bottomMargin) { $ps.BottomMargin = [double]$p.bottomMargin * 28.35 }
-        if ($null -ne $p.leftMargin) { $ps.LeftMargin = [double]$p.leftMargin * 28.35 }
-        if ($null -ne $p.rightMargin) { $ps.RightMargin = [double]$p.rightMargin * 28.35 }
+        # Office 二期 quirk 修正（2026-11-07）：×28.35 是 WPS 的边距单位语义（厘米→磅换算）——
+        # Office 的 PageSetup.*Margin 本来就是磅，再乘 28.35 会超界（72→2041 磅，Office 拒
+        # "度量值必须介于 -1584 磅 和 1584 磅 之间"）。office host 直接用磅。
+        $marginScale = if ((Get-HostKind) -eq 'office') { 1.0 } else { 28.35 }
+        if ($null -ne $p.topMargin) { $ps.TopMargin = [double]$p.topMargin * $marginScale }
+        if ($null -ne $p.bottomMargin) { $ps.BottomMargin = [double]$p.bottomMargin * $marginScale }
+        if ($null -ne $p.leftMargin) { $ps.LeftMargin = [double]$p.leftMargin * $marginScale }
+        if ($null -ne $p.rightMargin) { $ps.RightMargin = [double]$p.rightMargin * $marginScale }
         if ($null -ne $p.orientation) {
             $ps.Orientation = if ($p.orientation -eq "landscape") { 1 } else { 0 }
         }
@@ -5211,7 +5560,7 @@ switch ($Action) {
         if ($null -eq $pres) { Output-Json @{ success = $false; error = "No active presentation" }; return }
         $slides = @()
         for ($i = 1; $i -le $pres.Slides.Count; $i++) {
-            $slide = $pres.Slides.Item($i)
+            $slide = $pres.Slides.Item([int]$i)
             $shapes = @()
             for ($j = 1; $j -le $slide.Shapes.Count; $j++) {
                 $shape = $slide.Shapes.Item($j)
@@ -5302,7 +5651,7 @@ switch ($Action) {
         $pres = Get-TargetPres $ppt $p
         if ($null -eq $pres) { Output-Json @{ success = $false; error = "No active presentation" }; return }
         $index = if ($p.index) { $p.index } else { $p.slideIndex }
-        $pres.Slides.Item($index).Delete()
+        $pres.Slides.Item([int]$index).Delete()
         Output-Json @{ success = $true; data = @{ deleted = $index } }
     }
 
@@ -5313,7 +5662,7 @@ switch ($Action) {
         if ($null -eq $pres) { Output-Json @{ success = $false; error = "No active presentation" }; return }
         $index = if ($p.index) { $p.index } else { $p.slideIndex }
         if (-not $index) { $index = 1 }
-        $slide = $pres.Slides.Item($index)
+        $slide = $pres.Slides.Item([int]$index)
         $newSlide = $slide.Duplicate()
         $newIndex = $newSlide.Item(1).SlideIndex
         Output-Json @{ success = $true; data = @{ sourceIndex = $index; newIndex = $newIndex } }
@@ -5350,7 +5699,7 @@ switch ($Action) {
         if ($null -eq $pres) { Output-Json @{ success = $false; error = "No active presentation" }; return }
         $fromIndex = if ($p.from) { $p.from } else { $p.fromIndex }
         $toIndex = if ($p.to) { $p.to } else { $p.toIndex }
-        $pres.Slides.Item($fromIndex).MoveTo($toIndex)
+        $pres.Slides.Item([int]$fromIndex).MoveTo($toIndex)
         Output-Json @{ success = $true; data = @{ from = $fromIndex; to = $toIndex } }
     }
 
@@ -5369,7 +5718,7 @@ switch ($Action) {
         if ($null -eq $pres) { Output-Json @{ success = $false; error = "No active presentation" }; return }
         $index = if ($p.index) { $p.index } else { $p.slideIndex }
         if (-not $index) { $index = 1 }
-        $slide = $pres.Slides.Item($index)
+        $slide = $pres.Slides.Item([int]$index)
         $shapes = @()
         for ($i = 1; $i -le $slide.Shapes.Count; $i++) {
             $shape = $slide.Shapes.Item($i)
@@ -5425,7 +5774,7 @@ switch ($Action) {
         $layoutMap = @{ title = 1; titleContent = 2; blank = 12; twoColumn = 4; comparison = 5; titleOnly = 11 }
         $layout = $layoutMap[$p.layout]
         if ($null -eq $layout) { $layout = if ($p.layout) { $p.layout } else { 2 } }
-        $pres.Slides.Item($index).Layout = $layout
+        $pres.Slides.Item([int]$index).Layout = $layout
         Output-Json @{ success = $true; data = @{ slideIndex = $index; layout = $layout } }
     }
 
@@ -5478,7 +5827,7 @@ switch ($Action) {
         if ($null -eq $pres) { Output-Json @{ success = $false; error = "No active presentation" }; return }
         $index = if ($p.index) { $p.index } else { $p.slideIndex }
         if (-not $index) { $index = 1 }
-        $slide = $pres.Slides.Item($index)
+        $slide = $pres.Slides.Item([int]$index)
         $notes = ""
         try { $notes = $slide.NotesPage.Shapes.Item(2).TextFrame.TextRange.Text } catch { $notes = "" }
         Output-Json @{ success = $true; data = @{ slideIndex = $index; notes = $notes } }
@@ -5491,7 +5840,7 @@ switch ($Action) {
         if ($null -eq $pres) { Output-Json @{ success = $false; error = "No active presentation" }; return }
         $index = if ($p.index) { $p.index } else { $p.slideIndex }
         if (-not $index) { $index = 1 }
-        $slide = $pres.Slides.Item($index)
+        $slide = $pres.Slides.Item([int]$index)
         $slide.NotesPage.Shapes.Item(2).TextFrame.TextRange.Text = if ($p.notes) { $p.notes } else { "" }
         Output-Json @{ success = $true; data = @{ slideIndex = $index } }
     }
@@ -5506,7 +5855,21 @@ switch ($Action) {
         if ($null -eq $layoutType) { $layoutType = 2 }
         $position = if ($p.position) { $p.position } else { $pres.Slides.Count + 1 }
         $slide = $pres.Slides.Add($position, $layoutType)
-        if ($p.title -and $slide.Shapes.HasTitle) { $slide.Shapes.Title.TextFrame.TextRange.Text = $p.title }
+        if ($p.title) {
+            # Office 二期 quirk 修正（两轮迭代）：HasTitle 判断（无论 Shapes 级还是 Slide 级）在
+            # 某一方不可靠，try Shapes.Title 是唯一三方可靠信号；无占位符时落文本框（等效实现，
+            # 如实 warning——不算静默降级，标题可见且内容正确）。
+            $titled = $true
+            try { $null = $slide.Shapes.Title } catch { $titled = $false }
+            if ($titled) {
+                $slide.Shapes.Title.TextFrame.TextRange.Text = $p.title
+            } else {
+                try {
+                    $tb = $slide.Shapes.AddTextbox(1, 20, 20, 640, 60)
+                    $tb.TextFrame.TextRange.Text = $p.title
+                } catch {}
+            }
+        }
         if ($p.content) {
             try {
                 foreach ($shape in $slide.Shapes) {
@@ -5531,7 +5894,21 @@ switch ($Action) {
         if ($null -eq $layoutType) { $layoutType = 2 }
         $position = if ($p.position) { $p.position } else { $pres.Slides.Count + 1 }
         $slide = $pres.Slides.Add($position, $layoutType)
-        if ($p.title -and $slide.Shapes.HasTitle) { $slide.Shapes.Title.TextFrame.TextRange.Text = $p.title }
+        if ($p.title) {
+            # Office 二期 quirk 修正（两轮迭代）：HasTitle 判断（无论 Shapes 级还是 Slide 级）在
+            # 某一方不可靠，try Shapes.Title 是唯一三方可靠信号；无占位符时落文本框（等效实现，
+            # 如实 warning——不算静默降级，标题可见且内容正确）。
+            $titled = $true
+            try { $null = $slide.Shapes.Title } catch { $titled = $false }
+            if ($titled) {
+                $slide.Shapes.Title.TextFrame.TextRange.Text = $p.title
+            } else {
+                try {
+                    $tb = $slide.Shapes.AddTextbox(1, 20, 20, 640, 60)
+                    $tb.TextFrame.TextRange.Text = $p.title
+                } catch {}
+            }
+        }
         if ($p.content) {
             try {
                 foreach ($shape in $slide.Shapes) {
@@ -5551,7 +5928,7 @@ switch ($Action) {
         if ($null -eq $ppt) { Output-Json @{ success = $false; error = "WPS PPT not running" }; return }
         $pres = Get-TargetPres $ppt $p
         $slideIndex = if ($p.slideIndex) { $p.slideIndex } else { $ppt.ActiveWindow.Selection.SlideRange.SlideIndex }
-        $slide = $pres.Slides.Item($slideIndex)
+        $slide = $pres.Slides.Item([int]$slideIndex)
         $left = if ($p.left) { $p.left } else { 100 }
         $top = if ($p.top) { $p.top } else { 100 }
         $width = if ($p.width) { $p.width } else { 400 }
@@ -5568,7 +5945,7 @@ switch ($Action) {
         if ($null -eq $ppt) { Output-Json @{ success = $false; error = "WPS PPT not running" }; return }
         $pres = Get-TargetPres $ppt $p
         $slideIndex = if ($p.slideIndex) { $p.slideIndex } else { 1 }
-        $slide = $pres.Slides.Item($slideIndex)
+        $slide = $pres.Slides.Item([int]$slideIndex)
         $shape = $slide.Shapes.Item($(if ($p.name) { $p.name } else { $p.shapeIndex }))
         $shape.Delete()
         Output-Json @{ success = $true; data = @{ deleted = $(if ($p.name) { $p.name } else { $p.shapeIndex }) } }
@@ -5579,7 +5956,7 @@ switch ($Action) {
         if ($null -eq $ppt) { Output-Json @{ success = $false; error = "WPS PPT not running" }; return }
         $pres = Get-TargetPres $ppt $p
         $slideIndex = if ($p.slideIndex) { $p.slideIndex } else { 1 }
-        $slide = $pres.Slides.Item($slideIndex)
+        $slide = $pres.Slides.Item([int]$slideIndex)
         $textBoxes = @()
         for ($i = 1; $i -le $slide.Shapes.Count; $i++) {
             $shape = $slide.Shapes.Item($i)
@@ -5604,7 +5981,7 @@ switch ($Action) {
         if ($null -eq $ppt) { Output-Json @{ success = $false; error = "WPS PPT not running" }; return }
         $pres = Get-TargetPres $ppt $p
         $slideIndex = if ($p.slideIndex) { $p.slideIndex } else { 1 }
-        $slide = $pres.Slides.Item($slideIndex)
+        $slide = $pres.Slides.Item([int]$slideIndex)
         $shape = $slide.Shapes.Item($(if ($p.name) { $p.name } else { $p.shapeIndex }))
         $shape.TextFrame.TextRange.Text = if ($p.text) { $p.text } else { "" }
         Output-Json @{ success = $true; data = @{ name = $shape.Name; text = $p.text } }
@@ -5615,7 +5992,7 @@ switch ($Action) {
         if ($null -eq $ppt) { Output-Json @{ success = $false; error = "WPS PPT not running" }; return }
         $pres = Get-TargetPres $ppt $p
         $slideIndex = if ($p.slideIndex) { $p.slideIndex } else { 1 }
-        $slide = $pres.Slides.Item($slideIndex)
+        $slide = $pres.Slides.Item([int]$slideIndex)
         $shape = $slide.Shapes.Item($(if ($p.name) { $p.name } else { $p.shapeIndex }))
         $tr = $shape.TextFrame.TextRange
         if ($p.fontSize) { $tr.Font.Size = $p.fontSize }
@@ -5638,8 +6015,15 @@ switch ($Action) {
         if ($null -eq $ppt) { Output-Json @{ success = $false; error = "WPS PPT not running" }; return }
         $pres = Get-TargetPres $ppt $p
         $slideIndex = if ($p.slideIndex) { $p.slideIndex } else { 1 }
-        $slide = $pres.Slides.Item($slideIndex)
-        if ($slide.Shapes.HasTitle) { $slide.Shapes.Title.TextFrame.TextRange.Text = $p.title }
+        $slide = $pres.Slides.Item([int]$slideIndex)
+        # Office 二期 quirk 修正（2026-11-07，两轮迭代）：标题占位符判断最终采用 try Shapes.Title。
+        # 第一版 Shapes.HasTitle 在 Office 恒 null（静默假成功）；第二版 Slide.HasTitle 在 pwsh7+
+        # Office 下求值为空（探针实证 layout=2 有 Title 占位符但 HasTitle 打印空）——两个判断属性
+        # 都不可靠。Shapes.Title 无占位符时抛异常是三方（WPS/Office×5.1/pwsh7）唯一可靠信号。
+        $titled = $true
+        try { $null = $slide.Shapes.Title } catch { $titled = $false }
+        if ($titled) { $slide.Shapes.Title.TextFrame.TextRange.Text = $p.title }
+        else { Output-Json @{ success = $false; error = "该页没有标题占位符（layout 不含标题），无法设标题" }; return }
         Output-Json @{ success = $true; data = @{ slideIndex = $slideIndex; title = $p.title } }
     }
 
@@ -5648,9 +6032,12 @@ switch ($Action) {
         if ($null -eq $ppt) { Output-Json @{ success = $false; error = "WPS PPT not running" }; return }
         $pres = Get-TargetPres $ppt $p
         $slideIndex = if ($p.slideIndex) { $p.slideIndex } else { 1 }
-        $slide = $pres.Slides.Item($slideIndex)
+        $slide = $pres.Slides.Item([int]$slideIndex)
         $title = ""
-        if ($slide.Shapes.HasTitle) { $title = $slide.Shapes.Title.TextFrame.TextRange.Text }
+        # Office 二期 quirk 修正（两轮迭代）：同 setSlideTitle——try Shapes.Title 三方可靠。
+        $titled = $true
+        try { $null = $slide.Shapes.Title } catch { $titled = $false }
+        if ($titled) { $title = $slide.Shapes.Title.TextFrame.TextRange.Text }
         Output-Json @{ success = $true; data = @{ slideIndex = $slideIndex; title = $title } }
     }
 
@@ -5659,7 +6046,7 @@ switch ($Action) {
         if ($null -eq $ppt) { Output-Json @{ success = $false; error = "WPS PPT not running" }; return }
         $pres = Get-TargetPres $ppt $p
         $slideIndex = if ($p.slideIndex) { $p.slideIndex } else { 1 }
-        $slide = $pres.Slides.Item($slideIndex)
+        $slide = $pres.Slides.Item([int]$slideIndex)
         for ($i = 1; $i -le $slide.Shapes.Count; $i++) {
             $shape = $slide.Shapes.Item($i)
             $placeholderType = $null
@@ -5680,7 +6067,7 @@ switch ($Action) {
         if ($null -eq $ppt) { Output-Json @{ success = $false; error = "WPS PPT not running" }; return }
         $pres = Get-TargetPres $ppt $p
         $slideIndex = if ($p.slideIndex) { $p.slideIndex } else { 1 }
-        $slide = $pres.Slides.Item($slideIndex)
+        $slide = $pres.Slides.Item([int]$slideIndex)
         for ($i = 1; $i -le $slide.Shapes.Count; $i++) {
             $shape = $slide.Shapes.Item($i)
             $placeholderType = $null
@@ -5703,9 +6090,11 @@ switch ($Action) {
         if ($null -eq $ppt) { Output-Json @{ success = $false; error = "WPS PPT not running" }; return }
         $pres = Get-TargetPres $ppt $p
         $slideIndex = if ($p.slideIndex) { $p.slideIndex } else { 1 }
-        $slide = $pres.Slides.Item($slideIndex)
+        $slide = $pres.Slides.Item([int]$slideIndex)
         $shapeTypeMap = @{ rectangle = 1; oval = 9; triangle = 7; diamond = 4; pentagon = 51; hexagon = 52; arrow = 13; star = 12; heart = 21; cloud = 179 }
-        $shapeType = $shapeTypeMap[$p.type]
+        # pwsh7 硬化（二期抽验发现）：hashtable 以 $null 键索引在 pwsh7 会抛"数组索引的计算结果
+        # 为 null"（PS5.1 只返回 $null）——type 缺省时不能裸索引。
+        $shapeType = if ($null -ne $p.type) { $shapeTypeMap[$p.type] } else { $null }
         if ($null -eq $shapeType) { $shapeType = if ($p.type) { $p.type } else { 1 } }
         $left = if ($p.left) { $p.left } else { 100 }
         $top = if ($p.top) { $p.top } else { 100 }
@@ -5725,7 +6114,7 @@ switch ($Action) {
         if ($null -eq $ppt) { Output-Json @{ success = $false; error = "WPS PPT not running" }; return }
         $pres = Get-TargetPres $ppt $p
         $slideIndex = if ($p.slideIndex) { $p.slideIndex } else { 1 }
-        $slide = $pres.Slides.Item($slideIndex)
+        $slide = $pres.Slides.Item([int]$slideIndex)
         $shape = $slide.Shapes.Item($(if ($p.name) { $p.name } else { $p.shapeIndex }))
         $shape.Delete()
         Output-Json @{ success = $true; data = @{ deleted = $(if ($p.name) { $p.name } else { $p.shapeIndex }) } }
@@ -5741,7 +6130,7 @@ switch ($Action) {
         if ($null -eq $ppt) { Output-Json @{ success = $false; error = "WPS PPT not running" }; return }
         $pres = Get-TargetPres $ppt $p
         $slideIndex = if ($p.slideIndex) { $p.slideIndex } else { 1 }
-        $slide = $pres.Slides.Item($slideIndex)
+        $slide = $pres.Slides.Item([int]$slideIndex)
         $items = @($p.shapes)
         if ($items.Count -eq 0) { Output-Json @{ success = $false; error = "[勿重试·先改参数] shapes 为空——至少给一项" }; return }
         if ($items.Count -gt 50) { Output-Json @{ success = $false; error = "[勿重试·先改参数] shapes 上限 50（收到 $($items.Count)）——大批量请分批" }; return }
@@ -5806,7 +6195,7 @@ switch ($Action) {
         if ($null -eq $ppt) { Output-Json @{ success = $false; error = "WPS PPT not running" }; return }
         $pres = Get-TargetPres $ppt $p
         $slideIndex = if ($p.slideIndex) { $p.slideIndex } else { 1 }
-        $slide = $pres.Slides.Item($slideIndex)
+        $slide = $pres.Slides.Item([int]$slideIndex)
         $shapes = @()
         for ($i = 1; $i -le $slide.Shapes.Count; $i++) {
             $shape = $slide.Shapes.Item($i)
@@ -5820,7 +6209,7 @@ switch ($Action) {
         if ($null -eq $ppt) { Output-Json @{ success = $false; error = "WPS PPT not running" }; return }
         $pres = Get-TargetPres $ppt $p
         $slideIndex = if ($p.slideIndex) { $p.slideIndex } else { 1 }
-        $slide = $pres.Slides.Item($slideIndex)
+        $slide = $pres.Slides.Item([int]$slideIndex)
         $shape = $slide.Shapes.Item($(if ($p.name) { $p.name } else { $p.shapeIndex }))
         if ($p.fillColor) {
             $fillColor = Convert-HexColorToRgbInt([string]$p.fillColor)
@@ -5843,7 +6232,7 @@ switch ($Action) {
         $pres = Get-TargetPres $ppt $p
         if ($null -eq $pres) { Output-Json @{ success = $false; error = "No active presentation" }; return }
         $slideIndex = if ($p.slideIndex) { $p.slideIndex } else { 1 }
-        $slide = $pres.Slides.Item($slideIndex)
+        $slide = $pres.Slides.Item([int]$slideIndex)
         $shape = $slide.Shapes.Item($(if ($p.name) { $p.name } else { $p.shapeIndex }))
         $rgb = Convert-ColorToRgbInt([string]$p.color)
         if ($null -eq $rgb) {
@@ -5870,7 +6259,7 @@ switch ($Action) {
         if ($null -eq $ppt) { Output-Json @{ success = $false; error = "WPS PPT not running" }; return }
         $pres = Get-TargetPres $ppt $p
         $slideIndex = if ($p.slideIndex) { $p.slideIndex } else { 1 }
-        $slide = $pres.Slides.Item($slideIndex)
+        $slide = $pres.Slides.Item([int]$slideIndex)
         $shape = $slide.Shapes.Item($(if ($p.name) { $p.name } else { $p.shapeIndex }))
         if ($p.color) {
             $fillColor = Convert-HexColorToRgbInt([string]$p.color)
@@ -5888,7 +6277,7 @@ switch ($Action) {
         if ($null -eq $ppt) { Output-Json @{ success = $false; error = "WPS PPT not running" }; return }
         $pres = Get-TargetPres $ppt $p
         $slideIndex = if ($p.slideIndex) { $p.slideIndex } else { 1 }
-        $slide = $pres.Slides.Item($slideIndex)
+        $slide = $pres.Slides.Item([int]$slideIndex)
         $shape = $slide.Shapes.Item($(if ($p.name) { $p.name } else { $p.shapeIndex }))
         $shape.TextFrame.TextRange.Text = if ($p.text) { $p.text } else { "" }
         Output-Json @{ success = $true; data = @{ name = $shape.Name; text = $p.text } }
@@ -5899,7 +6288,7 @@ switch ($Action) {
         if ($null -eq $ppt) { Output-Json @{ success = $false; error = "WPS PPT not running" }; return }
         $pres = Get-TargetPres $ppt $p
         $slideIndex = if ($p.slideIndex) { $p.slideIndex } else { 1 }
-        $slide = $pres.Slides.Item($slideIndex)
+        $slide = $pres.Slides.Item([int]$slideIndex)
         $shape = $slide.Shapes.Item($(if ($p.name) { $p.name } else { $p.shapeIndex }))
         if ($null -ne $p.left) { $shape.Left = $p.left }
         if ($null -ne $p.top) { $shape.Top = $p.top }
@@ -5913,7 +6302,7 @@ switch ($Action) {
         if ($null -eq $ppt) { Output-Json @{ success = $false; error = "WPS PPT not running" }; return }
         $pres = Get-TargetPres $ppt $p
         $slideIndex = if ($p.slideIndex) { $p.slideIndex } else { 1 }
-        $slide = $pres.Slides.Item($slideIndex)
+        $slide = $pres.Slides.Item([int]$slideIndex)
         $left = if ($p.left) { $p.left } else { 100 }
         $top = if ($p.top) { $p.top } else { 100 }
         $width = if ($null -ne $p.width) { $p.width } else { -1 }
@@ -5927,7 +6316,7 @@ switch ($Action) {
         if ($null -eq $ppt) { Output-Json @{ success = $false; error = "WPS PPT not running" }; return }
         $pres = Get-TargetPres $ppt $p
         $slideIndex = if ($p.slideIndex) { $p.slideIndex } else { 1 }
-        $slide = $pres.Slides.Item($slideIndex)
+        $slide = $pres.Slides.Item([int]$slideIndex)
         $shape = $slide.Shapes.Item($(if ($p.name) { $p.name } else { $p.shapeIndex }))
         $shape.Delete()
         Output-Json @{ success = $true; data = @{ deleted = $(if ($p.name) { $p.name } else { $p.shapeIndex }) } }
@@ -5940,7 +6329,7 @@ switch ($Action) {
         $pres = Get-TargetPres $ppt $p
         if ($null -eq $pres) { Output-Json @{ success = $false; error = "No active presentation" }; return }
         $slideIndex = if ($p.slideIndex) { $p.slideIndex } else { 1 }
-        $slide = $pres.Slides.Item($slideIndex)
+        $slide = $pres.Slides.Item([int]$slideIndex)
         $sel = if ($p.name) { $p.name } else { $p.shapeIndex }
         if ($null -eq $sel) { Output-Json @{ success = $false; error = "shapeIndex or name required" }; return }
         $newPath = if ($p.path) { $p.path } elseif ($p.filePath) { $p.filePath } else { $null }
@@ -5961,7 +6350,7 @@ switch ($Action) {
         if ($null -eq $ppt) { Output-Json @{ success = $false; error = "WPS PPT not running" }; return }
         $pres = Get-TargetPres $ppt $p
         $slideIndex = if ($p.slideIndex) { $p.slideIndex } else { 1 }
-        $slide = $pres.Slides.Item($slideIndex)
+        $slide = $pres.Slides.Item([int]$slideIndex)
         $shape = $slide.Shapes.Item($(if ($p.name) { $p.name } else { $p.shapeIndex }))
         if ($null -ne $p.left) { $shape.Left = $p.left }
         if ($null -ne $p.top) { $shape.Top = $p.top }
@@ -5991,7 +6380,7 @@ switch ($Action) {
         if ($null -eq $pres) { Output-Json @{ success = $false; error = "No target presentation (presentationName not found or no active presentation)" }; return }
         $slideIndex = if ($p.slideIndex) { [int]$p.slideIndex } else { 1 }
         if ($slideIndex -lt 1 -or $slideIndex -gt $pres.Slides.Count) { Output-Json @{ success = $false; error = "slideIndex $slideIndex out of range (1..$($pres.Slides.Count)) in '$($pres.Name)'" }; return }
-        $slide = $pres.Slides.Item($slideIndex)
+        $slide = $pres.Slides.Item([int]$slideIndex)
         $outputPath = if ($p.outputPath) { $p.outputPath } else { $p.path }
         if ([string]::IsNullOrEmpty($outputPath)) { Output-Json @{ success = $false; error = "Missing outputPath" }; return }
         # 确保父目录存在
@@ -6021,7 +6410,7 @@ switch ($Action) {
         if ($null -eq $ppt) { Output-Json @{ success = $false; error = "WPS PPT not running" }; return }
         $pres = Get-TargetPres $ppt $p
         $slideIndex = if ($p.slideIndex) { $p.slideIndex } else { 1 }
-        $slide = $pres.Slides.Item($slideIndex)
+        $slide = $pres.Slides.Item([int]$slideIndex)
         $rows = if ($p.rows) { $p.rows } else { 3 }
         $cols = if ($p.cols) { $p.cols } else { 3 }
         $left = if ($p.left) { $p.left } else { 100 }
@@ -6049,7 +6438,7 @@ switch ($Action) {
         if ($null -eq $ppt) { Output-Json @{ success = $false; error = "WPS PPT not running" }; return }
         $pres = Get-TargetPres $ppt $p
         $slideIndex = if ($p.slideIndex) { $p.slideIndex } else { 1 }
-        $slide = $pres.Slides.Item($slideIndex)
+        $slide = $pres.Slides.Item([int]$slideIndex)
         $shape = $null
         $tableCount = 0
         $targetIndex = if ($p.tableIndex) { $p.tableIndex } else { 1 }
@@ -6076,7 +6465,7 @@ switch ($Action) {
         if ($null -eq $ppt) { Output-Json @{ success = $false; error = "WPS PPT not running" }; return }
         $pres = Get-TargetPres $ppt $p
         $slideIndex = if ($p.slideIndex) { $p.slideIndex } else { 1 }
-        $slide = $pres.Slides.Item($slideIndex)
+        $slide = $pres.Slides.Item([int]$slideIndex)
         $shape = $null
         $tableCount = 0
         $targetIndex = if ($p.tableIndex) { $p.tableIndex } else { 1 }
@@ -6107,7 +6496,7 @@ switch ($Action) {
         if ($null -eq $ppt) { Output-Json @{ success = $false; error = "WPS PPT not running" }; return }
         $pres = Get-TargetPres $ppt $p
         $slideIndex = if ($p.slideIndex) { $p.slideIndex } else { 1 }
-        $slide = $pres.Slides.Item($slideIndex)
+        $slide = $pres.Slides.Item([int]$slideIndex)
         # tableIndex 是"第几个表格"，不是"第几个形状" —— 以前直接当形状序号用，
         # 拿到的往往是矩形文本框，于是设样式全落空、返回却是 success。
         $shape = $null
@@ -6173,7 +6562,7 @@ switch ($Action) {
         if ($null -eq $ppt) { Output-Json @{ success = $false; error = "WPS PPT not running" }; return }
         $pres = Get-TargetPres $ppt $p
         $slideIndex = if ($p.slideIndex) { $p.slideIndex } else { 1 }
-        $slide = $pres.Slides.Item($slideIndex)
+        $slide = $pres.Slides.Item([int]$slideIndex)
         $shape = $null
         $tableCount = 0
         $targetIndex = if ($p.tableIndex) { $p.tableIndex } else { 1 }
@@ -6209,7 +6598,7 @@ switch ($Action) {
         if ($null -eq $ppt) { Output-Json @{ success = $false; error = "WPS PPT not running" }; return }
         $pres = Get-TargetPres $ppt $p
         $slideIndex = if ($p.slideIndex) { $p.slideIndex } else { 1 }
-        $slide = $pres.Slides.Item($slideIndex)
+        $slide = $pres.Slides.Item([int]$slideIndex)
         $shape = $null
         $tableCount = 0
         $targetIndex = if ($p.tableIndex) { $p.tableIndex } else { 1 }
@@ -6268,7 +6657,7 @@ switch ($Action) {
         if ($null -eq $ppt) { Output-Json @{ success = $false; error = "WPS PPT not running" }; return }
         $pres = Get-TargetPres $ppt $p
         $slideIndex = if ($p.slideIndex) { $p.slideIndex } else { 1 }
-        $slide = $pres.Slides.Item($slideIndex)
+        $slide = $pres.Slides.Item([int]$slideIndex)
         $shape = $slide.Shapes.Item($(if ($p.name) { $p.name } else { $p.shapeIndex }))
         $shape.Shadow.Visible = $true
         if ($p.color) {
@@ -6287,7 +6676,7 @@ switch ($Action) {
         if ($null -eq $ppt) { Output-Json @{ success = $false; error = "WPS PPT not running" }; return }
         $pres = Get-TargetPres $ppt $p
         $slideIndex = if ($p.slideIndex) { $p.slideIndex } else { 1 }
-        $slide = $pres.Slides.Item($slideIndex)
+        $slide = $pres.Slides.Item([int]$slideIndex)
         $bg = $slide.Background.Fill
         $bg.Visible = $true
         # 同 setShapeGradient：schema 给 gradient:{colors:[...]}，摊平后是 $p.colors
@@ -6313,7 +6702,7 @@ switch ($Action) {
         if ($null -eq $ppt) { Output-Json @{ success = $false; error = "WPS PPT not running" }; return }
         $pres = Get-TargetPres $ppt $p
         $slideIndex = if ($p.slideIndex) { $p.slideIndex } else { 1 }
-        $slide = $pres.Slides.Item($slideIndex)
+        $slide = $pres.Slides.Item([int]$slideIndex)
         $shape = $slide.Shapes.Item($(if ($p.name) { $p.name } else { $p.shapeIndex }))
         # 文档承诺的是 gradient:{type,colors:["#a","#b"]}，入口摊平后变成 $p.colors；
         # 而这里只认 $p.color1/$p.color2 —— 于是"传了渐变却什么都没变"。两种都接。
@@ -6339,7 +6728,7 @@ switch ($Action) {
         if ($null -eq $ppt) { Output-Json @{ success = $false; error = "WPS PPT not running" }; return }
         $pres = Get-TargetPres $ppt $p
         $slideIndex = if ($p.slideIndex) { $p.slideIndex } else { 1 }
-        $slide = $pres.Slides.Item($slideIndex)
+        $slide = $pres.Slides.Item([int]$slideIndex)
         $shape = $slide.Shapes.Item($(if ($p.name) { $p.name } else { $p.shapeIndex }))
         if ($p.color) {
             $borderColor = Convert-HexColorToRgbInt([string]$p.color)
@@ -6354,7 +6743,7 @@ switch ($Action) {
         if ($null -eq $ppt) { Output-Json @{ success = $false; error = "WPS PPT not running" }; return }
         $pres = Get-TargetPres $ppt $p
         $slideIndex = if ($p.slideIndex) { $p.slideIndex } else { 1 }
-        $slide = $pres.Slides.Item($slideIndex)
+        $slide = $pres.Slides.Item([int]$slideIndex)
         $shape = $slide.Shapes.Item($(if ($p.name) { $p.name } else { $p.shapeIndex }))
         if ($null -ne $p.transparency) {
             # 工具/文档说的是"百分比 0~100"，COM 要的是 0~1 —— 直接塞 50 会报"值不在预期的范围内"。
@@ -6372,8 +6761,18 @@ switch ($Action) {
         if ($null -eq $ppt) { Output-Json @{ success = $false; error = "WPS PPT not running" }; return }
         $pres = Get-TargetPres $ppt $p
         $slideIndex = if ($p.slideIndex) { $p.slideIndex } else { 1 }
-        $slide = $pres.Slides.Item($slideIndex)
+        $slide = $pres.Slides.Item([int]$slideIndex)
         $shape = $slide.Shapes.Item($(if ($p.name) { $p.name } else { $p.shapeIndex }))
+        # Office 二期 quirk 修正（2026-11-07，探针实锤）：Adjustments.Count=0 的形状（矩形等）
+        # 没有 adjustment 手柄——WPS 宽容吞下赋值（假成功不生效），Office 诚实抛
+        # "Value does not fall within the expected range"。统一防护：无手柄明确报错（圆角只对
+        # 圆角矩形等带手柄的形状有意义），跨 host 不静默假成功。
+        $adjCount = 0
+        try { $adjCount = [int]$shape.Adjustments.Count } catch {}
+        if ($adjCount -lt 1) {
+            Output-Json @{ success = $false; error = "该形状没有 adjustment 手柄（Adjustments.Count=0，矩形等无圆角手柄）——圆角请对圆角矩形（roundRect）等带手柄的形状使用" }
+            return
+        }
         if ($null -ne $p.roundness) { $shape.Adjustments.Item(1) = $p.roundness }
         Output-Json @{ success = $true; data = @{ name = $shape.Name } }
     }
@@ -6383,7 +6782,7 @@ switch ($Action) {
         if ($null -eq $ppt) { Output-Json @{ success = $false; error = "WPS PPT not running" }; return }
         $pres = Get-TargetPres $ppt $p
         $slideIndex = if ($p.slideIndex) { $p.slideIndex } else { 1 }
-        $slide = $pres.Slides.Item($slideIndex)
+        $slide = $pres.Slides.Item([int]$slideIndex)
         $shape = $slide.Shapes.Item($(if ($p.name) { $p.name } else { $p.shapeIndex }))
         if ($p.fillColor) { $shape.Fill.ForeColor.RGB = Convert-HexColorToRgbInt([string]$p.fillColor) }
         if ($p.lineColor) { $shape.Line.ForeColor.RGB = Convert-HexColorToRgbInt([string]$p.lineColor) }
@@ -6397,7 +6796,7 @@ switch ($Action) {
         if ($null -eq $ppt) { Output-Json @{ success = $false; error = "WPS PPT not running" }; return }
         $pres = Get-TargetPres $ppt $p
         $slideIndex = if ($p.slideIndex) { $p.slideIndex } else { 1 }
-        $slide = $pres.Slides.Item($slideIndex)
+        $slide = $pres.Slides.Item([int]$slideIndex)
         $alignMap = @{ left = 1; center = 2; right = 3; top = 4; middle = 5; bottom = 6 }
         $align = $alignMap[$p.alignment]
         if ($null -eq $align) { $align = 1 }
@@ -6419,7 +6818,7 @@ switch ($Action) {
         if ($null -eq $ppt) { Output-Json @{ success = $false; error = "WPS PPT not running" }; return }
         $pres = Get-TargetPres $ppt $p
         $slideIndex = if ($p.slideIndex) { $p.slideIndex } else { 1 }
-        $slide = $pres.Slides.Item($slideIndex)
+        $slide = $pres.Slides.Item([int]$slideIndex)
         $distMap = @{ horizontal = 0; vertical = 1 }
         $dist = $distMap[$p.direction]
         if ($null -eq $dist) { $dist = 0 }
@@ -6433,7 +6832,7 @@ switch ($Action) {
         if ($null -eq $ppt) { Output-Json @{ success = $false; error = "WPS PPT not running" }; return }
         $pres = Get-TargetPres $ppt $p
         $slideIndex = if ($p.slideIndex) { $p.slideIndex } else { 1 }
-        $slide = $pres.Slides.Item($slideIndex)
+        $slide = $pres.Slides.Item([int]$slideIndex)
         $range = $slide.Shapes.Range($p.names)
         $group = $range.Group()
         Output-Json @{ success = $true; data = @{ name = $group.Name } }
@@ -6444,7 +6843,7 @@ switch ($Action) {
         if ($null -eq $ppt) { Output-Json @{ success = $false; error = "WPS PPT not running" }; return }
         $pres = Get-TargetPres $ppt $p
         $slideIndex = if ($p.slideIndex) { $p.slideIndex } else { 1 }
-        $slide = $pres.Slides.Item($slideIndex)
+        $slide = $pres.Slides.Item([int]$slideIndex)
         $shape = $slide.Shapes.Item($(if ($p.name) { $p.name } else { $p.shapeIndex }))
         $dup = $shape.Duplicate()
         Output-Json @{ success = $true; data = @{ name = $dup.Name } }
@@ -6455,7 +6854,7 @@ switch ($Action) {
         if ($null -eq $ppt) { Output-Json @{ success = $false; error = "WPS PPT not running" }; return }
         $pres = Get-TargetPres $ppt $p
         $slideIndex = if ($p.slideIndex) { $p.slideIndex } else { 1 }
-        $slide = $pres.Slides.Item($slideIndex)
+        $slide = $pres.Slides.Item([int]$slideIndex)
         $shape = $slide.Shapes.Item($(if ($p.name) { $p.name } else { $p.shapeIndex }))
         $zMap = @{ front = 0; forward = 2; backward = 3; back = 1 }
         $z = $zMap[$p.zOrder]
@@ -6469,7 +6868,7 @@ switch ($Action) {
         if ($null -eq $ppt) { Output-Json @{ success = $false; error = "WPS PPT not running" }; return }
         $pres = Get-TargetPres $ppt $p
         $slideIndex = if ($p.slideIndex) { $p.slideIndex } else { 1 }
-        $slide = $pres.Slides.Item($slideIndex)
+        $slide = $pres.Slides.Item([int]$slideIndex)
         # 坐标/尺寸用 $null -ne 判断，不用真值判断：0 是合法坐标（与 TS 侧 add_shape 的 ?? 修复同批，审计三.1）
         $left = if ($null -ne $p.left) { $p.left } else { 100 }
         $top = if ($null -ne $p.top) { $p.top } else { 100 }
@@ -6509,7 +6908,7 @@ switch ($Action) {
         if ($null -eq $ppt) { Output-Json @{ success = $false; error = "WPS PPT not running" }; return }
         $pres = Get-TargetPres $ppt $p
         $slideIndex = if ($p.slideIndex) { $p.slideIndex } else { 1 }
-        $slide = $pres.Slides.Item($slideIndex)
+        $slide = $pres.Slides.Item([int]$slideIndex)
         # 两个致命点，都是实测踩出来的（不是推测）：
         #   1) 老实现只读 shapeName，而工具传的是 shapeIndex → Shapes.Item($null) 拿到坏对象，
         #      AddEffect 之后【整页】的 Shapes/Background 全部报"不能对 Null 值表达式调用方法"，
@@ -6564,7 +6963,7 @@ switch ($Action) {
         if ($null -eq $ppt) { Output-Json @{ success = $false; error = "WPS PPT not running" }; return }
         $pres = Get-TargetPres $ppt $p
         $slideIndex = if ($p.slideIndex) { $p.slideIndex } else { 1 }
-        $slide = $pres.Slides.Item($slideIndex)
+        $slide = $pres.Slides.Item([int]$slideIndex)
         # 合并后的 wps_ppt_set_transition 传的是 effect；旧的直接调用方还在传 transition，两个都认。
         if ($null -eq $p.effect -and $p.transition) { $p | Add-Member -NotePropertyName effect -NotePropertyValue $p.transition -Force }
         $effectName = if ($p.effect) { ([string]$p.effect).ToLower() } else { "fade" }
@@ -6592,7 +6991,7 @@ switch ($Action) {
         if ($null -eq $ppt) { Output-Json @{ success = $false; error = "WPS PPT not running" }; return }
         $pres = Get-TargetPres $ppt $p
         $slideIndex = if ($p.slideIndex) { $p.slideIndex } else { 1 }
-        $slide = $pres.Slides.Item($slideIndex)
+        $slide = $pres.Slides.Item([int]$slideIndex)
         if ($p.color) {
             $colorValue = Convert-HexColorToRgbInt([string]$p.color)
             if ($null -ne $colorValue) { $slide.Background.Fill.ForeColor.RGB = $colorValue }
@@ -6636,7 +7035,7 @@ switch ($Action) {
         $start = if ($p.slideIndex) { [int]$p.slideIndex } else { 1 }
         $end = if ($p.slideIndex) { [int]$p.slideIndex } else { $pres.Slides.Count }
         for ($i = $start; $i -le $end; $i++) {
-            $slide = $pres.Slides.Item($i)
+            $slide = $pres.Slides.Item([int]$i)
             for ($j = 1; $j -le $slide.Shapes.Count; $j++) {
                 $shape = $slide.Shapes.Item($j)
                 try {
@@ -6660,7 +7059,7 @@ switch ($Action) {
         if ($null -eq $ppt) { Output-Json @{ success = $false; error = "WPS PPT not running" }; return }
         $pres = Get-TargetPres $ppt $p
         $slideIndex = if ($p.slideIndex) { $p.slideIndex } else { 1 }
-        $slide = $pres.Slides.Item($slideIndex)
+        $slide = $pres.Slides.Item([int]$slideIndex)
         $left = if ($p.left) { $p.left } else { 100 }
         $top = if ($p.top) { $p.top } else { 100 }
         $width = if ($p.width) { $p.width } else { 200 }
@@ -6674,7 +7073,7 @@ switch ($Action) {
         if ($null -eq $ppt) { Output-Json @{ success = $false; error = "WPS PPT not running" }; return }
         $pres = Get-TargetPres $ppt $p
         $slideIndex = if ($p.slideIndex) { $p.slideIndex } else { 1 }
-        $slide = $pres.Slides.Item($slideIndex)
+        $slide = $pres.Slides.Item([int]$slideIndex)
         $left = if ($p.left) { $p.left } else { 100 }
         $top = if ($p.top) { $p.top } else { 100 }
         $width = if ($p.width) { $p.width } else { 120 }
@@ -6693,7 +7092,7 @@ switch ($Action) {
         if ($null -eq $scheme) { $scheme = $schemes["business"] }
         $count = 0
         for ($i = 1; $i -le $pres.Slides.Count; $i++) {
-            $slide = $pres.Slides.Item($i)
+            $slide = $pres.Slides.Item([int]$i)
             for ($j = 1; $j -le $slide.Shapes.Count; $j++) {
                 $shape = $slide.Shapes.Item($j)
                 try {
@@ -6713,7 +7112,7 @@ switch ($Action) {
         if ($null -eq $ppt) { Output-Json @{ success = $false; error = "WPS PPT not running" }; return }
         $pres = Get-TargetPres $ppt $p
         $slideIndex = if ($p.slideIndex) { $p.slideIndex } else { $ppt.ActiveWindow.Selection.SlideRange.SlideIndex }
-        $slide = $pres.Slides.Item($slideIndex)
+        $slide = $pres.Slides.Item([int]$slideIndex)
         $schemes = @{ business = @{ title = 0x2F5496; body = 0x333333 }; tech = @{ title = 0x00B0F0; body = 0x404040 }; creative = @{ title = 0xFF6B6B; body = 0x4A4A4A }; minimal = @{ title = 0x000000; body = 0x666666 } }
         $schemeKey = if ($p.style) { $p.style } else { "business" }
         $scheme = $schemes[$schemeKey]
@@ -6738,7 +7137,7 @@ switch ($Action) {
         if ($null -eq $ppt) { Output-Json @{ success = $false; error = "WPS PPT not running" }; return }
         $pres = Get-TargetPres $ppt $p
         $slideIndex = if ($p.slideIndex) { $p.slideIndex } else { 1 }
-        $slide = $pres.Slides.Item($slideIndex)
+        $slide = $pres.Slides.Item([int]$slideIndex)
 
         # `@(...)` 不是多余的：写成 `$cards = if ($p.cards) { $p.cards }` 时，
         # PowerShell 会把【单元素】数组在管道里摊平，$cards 变成裸 PSCustomObject，
@@ -6785,7 +7184,7 @@ switch ($Action) {
         if ($null -eq $ppt) { Output-Json @{ success = $false; error = "WPS PPT not running" }; return }
         $pres = Get-TargetPres $ppt $p
         $slideIndex = if ($p.slideIndex) { $p.slideIndex } else { 1 }
-        $slide = $pres.Slides.Item($slideIndex)
+        $slide = $pres.Slides.Item([int]$slideIndex)
 
         $rows = if ($p.rows) { $p.rows } else { 5 }
         $cols = if ($p.cols) { $p.cols } else { 4 }
@@ -6845,7 +7244,7 @@ switch ($Action) {
         if ($null -eq $ppt) { Output-Json @{ success = $false; error = "WPS PPT not running" }; return }
         $pres = Get-TargetPres $ppt $p
         $slideIndex = if ($p.slideIndex) { $p.slideIndex } else { 1 }
-        $slide = $pres.Slides.Item($slideIndex)
+        $slide = $pres.Slides.Item([int]$slideIndex)
 
         $left = if ($p.left) { $p.left } else { 50 }
         $top = if ($p.top) { $p.top } else { 130 }
@@ -6863,7 +7262,7 @@ switch ($Action) {
         if ($null -eq $ppt) { Output-Json @{ success = $false; error = "WPS PPT not running" }; return }
         $pres = Get-TargetPres $ppt $p
         $slideIndex = if ($p.slideIndex) { $p.slideIndex } else { 1 }
-        $slide = $pres.Slides.Item($slideIndex)
+        $slide = $pres.Slides.Item([int]$slideIndex)
 
         $total = $pres.Slides.Count
         $current = $slideIndex
@@ -6888,7 +7287,7 @@ switch ($Action) {
         if ($null -eq $scheme) { $scheme = $schemes["business"] }
         $count = 0
         for ($i = 1; $i -le $pres.Slides.Count; $i++) {
-            $slide = $pres.Slides.Item($i)
+            $slide = $pres.Slides.Item([int]$i)
             for ($j = 1; $j -le $slide.Shapes.Count; $j++) {
                 $shape = $slide.Shapes.Item($j)
                 try {
@@ -6909,7 +7308,7 @@ switch ($Action) {
         if ($null -eq $ppt) { Output-Json @{ success = $false; error = "WPS PPT not running" }; return }
         $pres = Get-TargetPres $ppt $p
         $slideIndex = if ($p.slideIndex) { $p.slideIndex } else { 1 }
-        $slide = $pres.Slides.Item($slideIndex)
+        $slide = $pres.Slides.Item([int]$slideIndex)
 
         $left = if ($p.left) { $p.left } else { 100 }
         $top = if ($p.top) { $p.top } else { 300 }
@@ -6950,7 +7349,7 @@ switch ($Action) {
         if ($null -eq $ppt) { Output-Json @{ success = $false; error = "WPS PPT not running" }; return }
         $pres = Get-TargetPres $ppt $p
         $slideIndex = if ($p.slideIndex) { $p.slideIndex } else { 1 }
-        $slide = $pres.Slides.Item($slideIndex)
+        $slide = $pres.Slides.Item([int]$slideIndex)
 
         $centerX = if ($p.centerX) { $p.centerX } else { 360 }
         $centerY = if ($p.centerY) { $p.centerY } else { 300 }
@@ -6992,7 +7391,7 @@ switch ($Action) {
         if ($null -eq $ppt) { Output-Json @{ success = $false; error = "WPS PPT not running" }; return }
         $pres = Get-TargetPres $ppt $p
         $slideIndex = if ($p.slideIndex) { $p.slideIndex } else { 1 }
-        $slide = $pres.Slides.Item($slideIndex)
+        $slide = $pres.Slides.Item([int]$slideIndex)
 
         $items = @(if ($p.items) { $p.items })
         $startX = if ($p.startX) { $p.startX } else { 50 }
@@ -7041,7 +7440,7 @@ switch ($Action) {
         if ($null -eq $ppt) { Output-Json @{ success = $false; error = "WPS PPT not running" }; return }
         $pres = Get-TargetPres $ppt $p
         $slideIndex = if ($p.slideIndex) { $p.slideIndex } else { 1 }
-        $slide = $pres.Slides.Item($slideIndex)
+        $slide = $pres.Slides.Item([int]$slideIndex)
 
         $centerX = if ($p.centerX) { $p.centerX } else { 360 }
         $centerY = if ($p.centerY) { $p.centerY } else { 280 }
@@ -7084,7 +7483,7 @@ switch ($Action) {
         if ($null -eq $ppt) { Output-Json @{ success = $false; error = "WPS PPT not running" }; return }
         $pres = Get-TargetPres $ppt $p
         $slideIndex = if ($p.slideIndex) { $p.slideIndex } else { 1 }
-        $slide = $pres.Slides.Item($slideIndex)
+        $slide = $pres.Slides.Item([int]$slideIndex)
 
         $layout = if ($p.layout) { $p.layout } else { "grid" }
         $margin = if ($p.margin) { [double]$p.margin } else { 50.0 }
@@ -7164,7 +7563,7 @@ switch ($Action) {
         if ($null -eq $ppt) { Output-Json @{ success = $false; error = "WPS PPT not running" }; return }
         $pres = Get-TargetPres $ppt $p
         $slideIndex = if ($p.slideIndex) { $p.slideIndex } else { 1 }
-        $slide = $pres.Slides.Item($slideIndex)
+        $slide = $pres.Slides.Item([int]$slideIndex)
 
         $direction = if ($p.direction) { $p.direction } else { "horizontal" }
         $shapeNames = @(if ($p.shapes) { $p.shapes })
@@ -7249,7 +7648,7 @@ switch ($Action) {
         if ($null -eq $ppt) { Output-Json @{ success = $false; error = "WPS PPT not running" }; return }
         $pres = Get-TargetPres $ppt $p
         $slideIndex = if ($p.slideIndex) { $p.slideIndex } else { 1 }
-        $slide = $pres.Slides.Item($slideIndex)
+        $slide = $pres.Slides.Item([int]$slideIndex)
 
         $rows = if ($p.rows) { $p.rows } else { 2 }
         $cols = if ($p.cols) { $p.cols } else { 3 }
@@ -7284,7 +7683,7 @@ switch ($Action) {
         if ($null -eq $ppt) { Output-Json @{ success = $false; error = "WPS PPT not running" }; return }
         $pres = Get-TargetPres $ppt $p
         $slideIndex = if ($p.slideIndex) { $p.slideIndex } else { 1 }
-        $slide = $pres.Slides.Item($slideIndex)
+        $slide = $pres.Slides.Item([int]$slideIndex)
 
         $preset = if ($p.preset) { $p.preset } else { "fadeIn" }
         $timeline = $slide.TimeLine
@@ -7314,7 +7713,7 @@ switch ($Action) {
         if ($null -eq $ppt) { Output-Json @{ success = $false; error = "WPS PPT not running" }; return }
         $pres = Get-TargetPres $ppt $p
         $slideIndex = if ($p.slideIndex) { $p.slideIndex } else { 1 }
-        $slide = $pres.Slides.Item($slideIndex)
+        $slide = $pres.Slides.Item([int]$slideIndex)
         $shape = $slide.Shapes.Item($(if ($p.shapeName) { $p.shapeName } else { $p.shapeIndex }))
 
         $effectType = if ($p.effect) { $p.effect } else { "pulse" }
@@ -7333,7 +7732,7 @@ switch ($Action) {
         if ($null -eq $ppt) { Output-Json @{ success = $false; error = "WPS PPT not running" }; return }
         $pres = Get-TargetPres $ppt $p
         $slideIndex = if ($p.slideIndex) { $p.slideIndex } else { 1 }
-        $slide = $pres.Slides.Item($slideIndex)
+        $slide = $pres.Slides.Item([int]$slideIndex)
 
         $steps = if ($p.steps) { $p.steps } else { @("开始", "步骤1", "步骤2", "结束") }
         $direction = if ($p.direction) { $p.direction } else { "horizontal" }
@@ -7398,7 +7797,7 @@ switch ($Action) {
         if ($null -eq $ppt) { Output-Json @{ success = $false; error = "WPS PPT not running" }; return }
         $pres = Get-TargetPres $ppt $p
         $slideIndex = if ($p.slideIndex) { $p.slideIndex } else { 1 }
-        $slide = $pres.Slides.Item($slideIndex)
+        $slide = $pres.Slides.Item([int]$slideIndex)
 
         $nodes = if ($p.nodes) { $p.nodes } else { @(@{ name = "CEO"; level = 0 }, @{ name = "技术总监"; level = 1 }, @{ name = "市场总监"; level = 1 }, @{ name = "财务总监"; level = 1 }) }
         $centerX = 360
@@ -7454,7 +7853,7 @@ switch ($Action) {
         if ($null -eq $ppt) { Output-Json @{ success = $false; error = "WPS PPT not running" }; return }
         $pres = Get-TargetPres $ppt $p
         $slideIndex = if ($p.slideIndex) { $p.slideIndex } else { 1 }
-        $slide = $pres.Slides.Item($slideIndex)
+        $slide = $pres.Slides.Item([int]$slideIndex)
 
         $events = if ($p.events) { $p.events } else { @(@{ date = "2020"; title = "成立" }, @{ date = "2021"; title = "融资" }, @{ date = "2022"; title = "扩张" }, @{ date = "2023"; title = "上市" }) }
         $startX = if ($p.startX) { $p.startX } else { 80 }
@@ -7570,7 +7969,7 @@ switch ($Action) {
         if ($null -eq $ppt) { Output-Json @{ success = $false; error = "WPS PPT not running" }; return }
         $pres = Get-TargetPres $ppt $p
         $slideIndex = if ($p.slideIndex) { $p.slideIndex } else { 1 }
-        $slide = $pres.Slides.Item($slideIndex)
+        $slide = $pres.Slides.Item([int]$slideIndex)
         $shape = $slide.Shapes.Item($(if ($p.shapeName) { $p.shapeName } else { $p.shapeIndex }))
 
         # 工具传的是 rotation:{x,y,z} 对象，而这里读的是扁平 rotationX/Y/Z ——
@@ -7601,7 +8000,7 @@ switch ($Action) {
         if ($null -eq $ppt) { Output-Json @{ success = $false; error = "WPS PPT not running" }; return }
         $pres = Get-TargetPres $ppt $p
         $slideIndex = if ($p.slideIndex) { $p.slideIndex } else { 1 }
-        $slide = $pres.Slides.Item($slideIndex)
+        $slide = $pres.Slides.Item([int]$slideIndex)
         $shape = $slide.Shapes.Item($(if ($p.shapeName) { $p.shapeName } else { $p.shapeIndex }))
 
         $depth = if ($p.depth) { $p.depth } else { 20 }
@@ -7624,7 +8023,7 @@ switch ($Action) {
         if ($null -eq $ppt) { Output-Json @{ success = $false; error = "WPS PPT not running" }; return }
         $pres = Get-TargetPres $ppt $p
         $slideIndex = if ($p.slideIndex) { $p.slideIndex } else { 1 }
-        $slide = $pres.Slides.Item($slideIndex)
+        $slide = $pres.Slides.Item([int]$slideIndex)
         $shape = $slide.Shapes.Item($(if ($p.shapeName) { $p.shapeName } else { $p.shapeIndex }))
 
         $material = if ($p.material) { $p.material } else { "plastic" }
@@ -7640,7 +8039,7 @@ switch ($Action) {
         if ($null -eq $ppt) { Output-Json @{ success = $false; error = "WPS PPT not running" }; return }
         $pres = Get-TargetPres $ppt $p
         $slideIndex = if ($p.slideIndex) { $p.slideIndex } else { 1 }
-        $slide = $pres.Slides.Item($slideIndex)
+        $slide = $pres.Slides.Item([int]$slideIndex)
 
         $text = if ($p.text) { $p.text } else { "3D文字" }
         $left = if ($p.left) { $p.left } else { 200 }
@@ -7673,7 +8072,7 @@ switch ($Action) {
         if ($null -eq $ppt) { Output-Json @{ success = $false; error = "WPS PPT not running" }; return }
         $pres = Get-TargetPres $ppt $p
         $slideIndex = if ($p.slideIndex) { $p.slideIndex } else { 1 }
-        $slide = $pres.Slides.Item($slideIndex)
+        $slide = $pres.Slides.Item([int]$slideIndex)
         $shape = $slide.Shapes.Item($(if ($p.chartName) { $p.chartName } else { $p.chartIndex }))
         $chart = $shape.Chart
         $chart.ChartData.Activate()
@@ -7729,7 +8128,7 @@ switch ($Action) {
         if ($null -eq $ppt) { Output-Json @{ success = $false; error = "WPS PPT not running" }; return }
         $pres = Get-TargetPres $ppt $p
         $slideIndex = if ($p.slideIndex) { $p.slideIndex } else { 1 }
-        $slide = $pres.Slides.Item($slideIndex)
+        $slide = $pres.Slides.Item([int]$slideIndex)
         $shape = $slide.Shapes.Item($(if ($p.chartName) { $p.chartName } else { $p.chartIndex }))
         $chart = $shape.Chart
         # 参数形状归一化（第 3 轮修"假成功"）：
@@ -7794,7 +8193,7 @@ switch ($Action) {
         if ($null -eq $ppt) { Output-Json @{ success = $false; error = "WPS PPT not running" }; return }
         $pres = Get-TargetPres $ppt $p
         $slideIndex = if ($p.slideIndex) { $p.slideIndex } else { 1 }
-        $slide = $pres.Slides.Item($slideIndex)
+        $slide = $pres.Slides.Item([int]$slideIndex)
         $seq = $slide.TimeLine.MainSequence
         # 工具传的是 animationIndex，这里以前只读 index → 落进 else 分支把【所有动画都删了】，
         # 计数变化看起来"成功"，但删多删少都不受控。两个键都认，并做越界检查。
@@ -7820,7 +8219,7 @@ switch ($Action) {
         if ($null -eq $ppt) { Output-Json @{ success = $false; error = "WPS PPT not running" }; return }
         $pres = Get-TargetPres $ppt $p
         $slideIndex = if ($p.slideIndex) { $p.slideIndex } else { 1 }
-        $slide = $pres.Slides.Item($slideIndex)
+        $slide = $pres.Slides.Item([int]$slideIndex)
         $seq = $slide.TimeLine.MainSequence
         $animations = @()
         for ($i = 1; $i -le $seq.Count; $i++) {
@@ -7835,7 +8234,7 @@ switch ($Action) {
         if ($null -eq $ppt) { Output-Json @{ success = $false; error = "WPS PPT not running" }; return }
         $pres = Get-TargetPres $ppt $p
         $slideIndex = if ($p.slideIndex) { $p.slideIndex } else { 1 }
-        $slide = $pres.Slides.Item($slideIndex)
+        $slide = $pres.Slides.Item([int]$slideIndex)
         $seq = $slide.TimeLine.MainSequence
         # 工具传的是 animationIndex/newOrder，这里以前只读 from/to → Item($null) 必报"值不在预期的范围内"
         $fromIdx = if ($null -ne $p.animationIndex) { [int]$p.animationIndex } elseif ($null -ne $p.from) { [int]$p.from } else { 0 }
@@ -7859,7 +8258,7 @@ switch ($Action) {
         if ($null -eq $ppt) { Output-Json @{ success = $false; error = "WPS PPT not running" }; return }
         $pres = Get-TargetPres $ppt $p
         $slideIndex = if ($p.slideIndex) { $p.slideIndex } else { 1 }
-        $slide = $pres.Slides.Item($slideIndex)
+        $slide = $pres.Slides.Item([int]$slideIndex)
         $slide.SlideShowTransition.EntryEffect = 0
         Output-Json @{ success = $true; data = @{ slideIndex = $slideIndex } }
     }
@@ -7884,7 +8283,7 @@ switch ($Action) {
         if ($p.duration) { try { $dur = [double]$p.duration } catch { $dur = 0.0 } }
         $applied = 0
         for ($i = 1; $i -le $pres.Slides.Count; $i++) {
-            $slide = $pres.Slides.Item($i)
+            $slide = $pres.Slides.Item([int]$i)
             $tr = $slide.SlideShowTransition
             $tr.EntryEffect = $transition
             if ($dur -gt 0) { try { $tr.Duration = $dur } catch {} }
@@ -7901,7 +8300,7 @@ switch ($Action) {
         $colorValue = Convert-HexColorToRgbInt([string]$p.color)
         if ($p.applyToAll) {
             for ($i = 1; $i -le $pres.Slides.Count; $i++) {
-                $slide = $pres.Slides.Item($i)
+                $slide = $pres.Slides.Item([int]$i)
                 $slide.FollowMasterBackground = $false
                 $slide.Background.Fill.Solid()
                 if ($null -ne $colorValue) { $slide.Background.Fill.ForeColor.RGB = $colorValue }
@@ -7909,7 +8308,7 @@ switch ($Action) {
             Output-Json @{ success = $true; data = @{ color = $p.color; appliedTo = $pres.Slides.Count } }
         } else {
             $slideIndex = if ($p.slideIndex) { $p.slideIndex } else { 1 }
-            $slide = $pres.Slides.Item($slideIndex)
+            $slide = $pres.Slides.Item([int]$slideIndex)
             $slide.FollowMasterBackground = $false
             $slide.Background.Fill.Solid()
             if ($null -ne $colorValue) { $slide.Background.Fill.ForeColor.RGB = $colorValue }
@@ -7922,7 +8321,7 @@ switch ($Action) {
         if ($null -eq $ppt) { Output-Json @{ success = $false; error = "WPS PPT not running" }; return }
         $pres = Get-TargetPres $ppt $p
         $slideIndex = if ($p.slideIndex) { $p.slideIndex } else { 1 }
-        $slide = $pres.Slides.Item($slideIndex)
+        $slide = $pres.Slides.Item([int]$slideIndex)
         $slide.FollowMasterBackground = $false
         $slide.Background.Fill.UserPicture($p.path)
         Output-Json @{ success = $true; data = @{ slideIndex = $slideIndex; path = $p.path } }
@@ -7933,7 +8332,7 @@ switch ($Action) {
         if ($null -eq $ppt) { Output-Json @{ success = $false; error = "WPS PPT not running" }; return }
         $pres = Get-TargetPres $ppt $p
         $slideIndex = if ($p.slideIndex) { $p.slideIndex } else { 1 }
-        $slide = $pres.Slides.Item($slideIndex)
+        $slide = $pres.Slides.Item([int]$slideIndex)
         $shape = $slide.Shapes.Item($(if ($p.shapeName) { $p.shapeName } else { $p.shapeIndex }))
         $actionSettings = $shape.ActionSettings.Item(1)
         $actionSettings.Hyperlink.Address = if ($p.address) { $p.address } else { "" }
@@ -7946,7 +8345,7 @@ switch ($Action) {
         if ($null -eq $ppt) { Output-Json @{ success = $false; error = "WPS PPT not running" }; return }
         $pres = Get-TargetPres $ppt $p
         $slideIndex = if ($p.slideIndex) { $p.slideIndex } else { 1 }
-        $slide = $pres.Slides.Item($slideIndex)
+        $slide = $pres.Slides.Item([int]$slideIndex)
         $shape = $slide.Shapes.Item($(if ($p.shapeName) { $p.shapeName } else { $p.shapeIndex }))
         $shape.ActionSettings.Item(1).Hyperlink.Address = ""
         Output-Json @{ success = $true; data = @{ shapeName = $shape.Name } }
@@ -7987,7 +8386,7 @@ switch ($Action) {
         $pres = Get-TargetPres $ppt $p
         $results = @()
         for ($i = 1; $i -le $pres.Slides.Count; $i++) {
-            $slide = $pres.Slides.Item($i)
+            $slide = $pres.Slides.Item([int]$i)
             for ($j = 1; $j -le $slide.Shapes.Count; $j++) {
                 $shape = $slide.Shapes.Item($j)
                 try {
@@ -8014,7 +8413,7 @@ switch ($Action) {
         if ([string]::IsNullOrEmpty($findText)) { Output-Json @{ success = $false; error = "find text required" }; return }
         $count = 0
         for ($i = 1; $i -le $pres.Slides.Count; $i++) {
-            $slide = $pres.Slides.Item($i)
+            $slide = $pres.Slides.Item([int]$i)
             for ($j = 1; $j -le $slide.Shapes.Count; $j++) {
                 $shape = $slide.Shapes.Item($j)
                 # 递归处理：文本框 + 表格单元格 + 组合(Group)内所有子形状
@@ -8046,7 +8445,7 @@ switch ($Action) {
         $fontName = if ($p.fontName) { $p.fontName } else { "微软雅黑" }
         $count = 0
         for ($i = 1; $i -le $pres.Slides.Count; $i++) {
-            $slide = $pres.Slides.Item($i)
+            $slide = $pres.Slides.Item([int]$i)
             for ($j = 1; $j -le $slide.Shapes.Count; $j++) {
                 $shape = $slide.Shapes.Item($j)
                 try {
@@ -8077,10 +8476,10 @@ switch ($Action) {
         $slideIndex = $p.slideIndex
         $slides = @()
         if ($slideIndex -eq "all") {
-            for ($i = 1; $i -le $pres.Slides.Count; $i++) { $slides += $pres.Slides.Item($i) }
+            for ($i = 1; $i -le $pres.Slides.Count; $i++) { $slides += $pres.Slides.Item([int]$i) }
         } else {
             $target = if ($slideIndex) { [int]$slideIndex } else { $ppt.ActiveWindow.Selection.SlideRange.SlideIndex }
-            $slides += $pres.Slides.Item($target)
+            $slides += $pres.Slides.Item([int]$target)
         }
         $ops = @(
             @{ operation = "unify_font"; count = 0 },
@@ -8148,7 +8547,7 @@ switch ($Action) {
         $fontCount = 0
         $colorCount = 0
         for ($i = $startIdx; $i -le $endIdx; $i++) {
-            $slide = $pres.Slides.Item($i)
+            $slide = $pres.Slides.Item([int]$i)
             for ($j = 1; $j -le $slide.Shapes.Count; $j++) {
                 $shape = $slide.Shapes.Item($j)
                 try {
@@ -8827,7 +9226,7 @@ switch ($Action) {
     # ⚠️ 探针绝大多数是只读的；两处例外（styles.modifyFont / table.merge / table.addRow）
     #    会短暂改动后复原或依赖文档现状，所以【必须在副本上跑】。
     "__probeCaps" {
-        $word = Get-ActiveWpsApp 'Kwps.Application'
+        $word = Get-ActiveWpsApp (Get-ProgidForApp 'word')
         $doc = if ($word) { Resolve-Doc $word $p } else { $null }
         if (-not $doc) {
             Output-Json @{ success = $false; error = "没有可用的文稿（能力探测需要打开一个文档）" }

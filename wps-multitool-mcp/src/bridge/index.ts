@@ -480,6 +480,53 @@ server.listen(PIPE_NAME, () => {
   // 管道已就绪。注意：不要往 stdout 打印，桥的 stdio 是 ignore 的。
 });
 
+// ==================== EPHEMERAL 父存活监测（Office 收口合并卡 C 段 2026-11-07）====================
+// 病灶（二期附带发现② + 判定实战撞上）：WPS_BRIDGE_EPHEMERAL=1（脚本型会话）时，父 node
+// 客户端异常退出（崩溃/被杀/kill，dispose 没跑到）会把桥和 pwsh 守护留成孤儿（执行者轮
+// 9+ 条残留；孤儿桥占默认管道害判定误报一轮）。
+// 修法：EPHEMERAL 模式下每秒探测 process.ppid 存活（kill 0），连续 2 秒探测不到（ESRCH，
+// 抗单次抖动）= 父亡 → 收子进程 + 退出（≤5 秒归零，含 pwsh 由 wps-comd 看门狗链式兜底）。
+// 【默认（非 EPHEMERAL）桥不启用本监测】——活过 server 重启是设计意图（父 PID 会变，
+// 监测会误杀），生命周期一字不动。
+const EPHEMERAL = process.env.WPS_BRIDGE_EPHEMERAL === '1';
+if (EPHEMERAL) {
+  const parentPid = process.ppid;
+  // 内核级父亡检测（判定阶段修正 2026-11-07）：父进程死亡时内核立刻关闭子进程继承的
+  // stdin 写端 → 本端 'end'/'close'，与 PID 复用无关（轮询 kill(ppid,0) 在 Windows 上
+  // 会被秒级复用的新进程骗成"活着"——实测 crash 轮迟到退出）。stdin EOF 为主，
+  // ppid 轮询降级为兜底（stdin 未接管的极端场景）。
+  let parentGoneHandled = false;
+  const onParentGone = () => {
+    if (parentGoneHandled) return;
+    parentGoneHandled = true;
+    for (const c of children.values()) c.dispose();
+    children.clear();
+    server.close(() => process.exit(0));
+    setTimeout(() => process.exit(0), 800).unref();
+  };
+  try {
+    process.stdin.on('end', onParentGone);
+    process.stdin.on('close', onParentGone);
+    process.stdin.resume();
+  } catch { /* stdin 不可用时只剩轮询兜底 */ }
+  let parentGoneTicks = 0;
+  const parentWatch = setInterval(() => {
+    let alive = true;
+    try {
+      process.kill(parentPid, 0);   // 0 号信号 = 只探测不杀
+    } catch (e) {
+      const code = (e as NodeJS.ErrnoException).code;
+      // ESRCH = 进程不存在（父亡）；EPERM 等 = 存在只是没权限，按活着
+      alive = code !== 'ESRCH';
+    }
+    if (alive) { parentGoneTicks = 0; return; }
+    parentGoneTicks++;
+    // 轮询兜底（PID 复用会让本路径失明——主路径是上面的 stdin EOF）
+    if (parentGoneTicks >= 7) { onParentGone(); }
+  }, 300);
+  parentWatch.unref();
+}
+
 // HTTP 状态端点（任务窗格轮询用）。放在 listen 之后，确保桥本身先就绪。
 startHttpEndpoint();
 
