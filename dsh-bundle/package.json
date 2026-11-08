@@ -9,7 +9,7 @@
     "README.md"
   ],
   "dependencies": {
-    "wps-multitool-mcp": "^1.0.5"
+    "wps-multitool-mcp": "^1.1.0"
   },
   "engines": {
     "dsh": ">=0.2.0 <0.3.0"
