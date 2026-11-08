@@ -10,6 +10,7 @@
     'use strict';
 
     function boot() {
+        if (window.WpsAddonModelDetect) { window.WpsAddonModelDetect.apply('wpp'); }
         if (window.WpsAddonChannel) {
             window.WpsAddonChannel.start('wpp');
         } else {

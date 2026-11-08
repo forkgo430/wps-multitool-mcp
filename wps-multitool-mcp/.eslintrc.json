@@ -1,0 +1,26 @@
+{
+  "root": true,
+  "parser": "@typescript-eslint/parser",
+  "parserOptions": {
+    "ecmaVersion": 2022,
+    "sourceType": "module"
+  },
+  "plugins": ["@typescript-eslint"],
+  "extends": [],
+  "env": { "node": true, "es2022": true },
+  "ignorePatterns": ["dist/", "node_modules/", "*.generated.ts", "scripts/manual/", "scripts/gen-*.js"],
+  "rules": {
+    "no-unused-vars": "off",
+    "@typescript-eslint/no-unused-vars": ["error", { "argsIgnorePattern": "^_", "varsIgnorePattern": "^_" }],
+    "no-throw-literal": "error",
+    "eqeqeq": ["error", "smart"],
+    "prefer-const": "error",
+    "no-var": "error",
+    "no-constant-condition": ["error", { "checkLoops": false }],
+    "no-async-promise-executor": "error",
+    "no-cond-assign": "error",
+    "no-prototype-builtins": "error",
+    "no-template-curly-in-string": "warn",
+    "no-unreachable": "error"
+  }
+}

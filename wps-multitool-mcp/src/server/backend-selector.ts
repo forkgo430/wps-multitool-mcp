@@ -76,7 +76,7 @@ export interface ParsedServerBinary {
  */
 export function parseLocalServerBinary(value: string): ParsedServerBinary | null {
   if (!value || !value.trim()) return null;
-  let p = value.trim();
+  const p = value.trim();
   let exe = '';
   if (p.startsWith('"')) {
     const end = p.indexOf('"', 1);

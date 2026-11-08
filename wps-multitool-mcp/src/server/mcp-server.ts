@@ -29,8 +29,8 @@ import { createChildLogger } from '../utils/logger';
 import { McpError, formatWpsErrorTag, WpsErrorType } from '../utils/error';
 import { runWithCancel } from './cancel-context';
 import { getToolAnnotations } from './tool-annotations';
+// getToolMeta 已不进 tools/list（examples 剔除，提质小卡 2026-11-08）；searchTools 路径自持。
 import { runWithProgress } from './progress-context';
-import { getToolMeta } from './tool-metadata';
 import { serverInstructions, setToolCount } from './server-info';
 import { CancelError } from '../bridge/cancellable';
 import { WpsAppType } from '../types/wps';
@@ -265,12 +265,10 @@ export class WpsMcpServer {
       return {
         tools: tools.map((tool) => {
           const annotations = getToolAnnotations(tool.name);
-          // examples 是【独立字段】，不拼进 description：
-          //   ① 搜索路径把 description 截成首行 120 字（tool-registry.ts），拼进去会被吃掉；
-          //   ② 拼进描述会污染模型的工具选择（描述是"这工具能干啥"，不是"用户怎么说"）。
-          // 定义上没写 examples 的，优先退回 CURATED 表（同 searchTools 的口径，两条路径一致）。
-          const meta = getToolMeta(tool);
-          const examples = tool.examples?.length ? tool.examples : meta.examples;
+          // examples 不进 tools/list（提质小卡 2026-11-08）：examples 是本仓自定义扩展字段
+          // （MCP 规格无此字段），不认识的客户端纯烧 token（约 2.7KB/会话）。
+          // examples 只在 wps_search_tools 返回——那是它发挥价值的地方（搜索结果需要
+          // "用户怎么说"的示例），两条路径的口径差异是刻意的。
           return {
             name: tool.name,
             description: tool.description,
@@ -278,7 +276,6 @@ export class WpsMcpServer {
             // 注解必须【嵌套】在 annotations 里。铺在顶层客户端会整个忽略 ——
             // 这坑踩过：单测全绿，端到端才发现 40 个工具一个注解都没透出去。
             ...(annotations ? { annotations } : {}),
-            ...(examples?.length ? { examples } : {}),
           };
         }),
       };
@@ -332,8 +329,7 @@ export class WpsMcpServer {
     name: string,
     args: Record<string, unknown>
   ): Promise<{ content: ToolContent[]; isError: boolean }> {
-    {
-      // 检查Tool是否存在。不存在时给个线索：是不是"组没加载"？
+    // 检查Tool是否存在。不存在时给个线索：是不是"组没加载"？
       if (!this.registry.hasTool(name)) {
         const similar = this.registry.suggestSimilar(name);
         const hint = similar.length
@@ -370,14 +366,21 @@ export class WpsMcpServer {
           isError: !result.success,
           // 结构化输出（2026-10-26 对标）：工具文本里如果是 JSON 对象，同步给 structuredContent
           // 让客户端拿到结构化数据而非纯文本。仅试探首块，不递归。
+          // P0 体积闸门（提质小卡 2026-11-08）：镜像只对 ≤2048 字节的小 JSON——大回包
+          // text+structured 双份直接翻倍响应体（getRangeData/getShapes 等读类预估 -45~50%）。
+          // 超过闸门只留 text 主载体（逐字节不变，闸门只影响 structuredContent 副本）。
           ...(() => {
             const first = result.content.find((c) => c.type === 'text');
             if (!first || first.type !== 'text') return {};
-            const trimmed = (first as { text: string }).text.trim();
+            const text = (first as { text: string }).text;
+            const trimmed = text.trim();
             if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) return {};
             try {
               const parsed = JSON.parse(trimmed);
-              if (parsed && typeof parsed === 'object') return { structuredContent: parsed };
+              if (parsed && typeof parsed === 'object') {
+                if (Buffer.byteLength(trimmed, 'utf8') <= 2048) return { structuredContent: parsed };
+                return {};
+              }
             } catch { }
             return {};
           })(),
@@ -416,7 +419,6 @@ export class WpsMcpServer {
           error instanceof Error ? error.message : 'Unknown error'
         );
       }
-    }
   }
 
   /**

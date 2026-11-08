@@ -10,6 +10,7 @@
     'use strict';
 
     function boot() {
+        if (window.WpsAddonModelDetect) { window.WpsAddonModelDetect.apply('wps'); }
         if (window.WpsAddonChannel) {
             window.WpsAddonChannel.start('wps');
         } else {

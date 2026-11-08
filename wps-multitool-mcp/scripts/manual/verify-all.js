@@ -51,6 +51,10 @@ const FAST = [
   ['readback-slim-verify.js', '回包瘦身（体验修复轮 B）：read_range maxRows/brief 摘要/inline 开关（mock COM）'],
   ['office-host-verify.js', 'Office host 维度（一期+二期+收口轮）：探测纯函数/ps1 结构 gate/对账表一致性/绑定一致性/find51/孤儿桥监测（全 mock）'],
   ['orphan-bridge-verify.js', '孤儿桥生命周期：EPHEMERAL 父亡监测 10 连跑归零（不起 WPS COM，ping 全链）'],
+  ['response-gate-verify.js', '提质小卡 P0：structuredContent 体积闸门（≤2048 镜像/text 逐字节不变/大回包只留 text）'],
+  ['toolslist-shape-verify.js', '提质小卡 P1：tools/list 无 examples + searchTools 仍有 examples + 注解回归'],
+  ['shape-cleanup-verify.js', '提质小卡 P3：handleToolCall 孤儿 {} 块清理'],
+  ['lint-run-verify.js', '提质小卡：lint 真跑 0 错 + eslint 精确锁版本 + 最小 config'],
   ['word-target-verify.js', 'word target 参数链路（mock COM）'],
   ['tool-groups-test.js', '工具组加载'],
   ['intent-test.js', '意图识别词表'],
@@ -63,6 +67,7 @@ const FAST = [
   ['backend-selector-test.js', '平台识别决策链（Linux B0）+ Office host 维度（WPS_OFFICE 矩阵/二进制解析）'],
   ['addon-channel-test.js', '加载项通道骨架（Linux B2：握手三态/端口绑定/路由/失败语义/轮询闭环）'],
   ['actions-dispatcher-test.js', '加载项动作分发器 20 动作 mock 单测（Linux B2.5）'],
+  ['actions-sync-verify.js', 'Linux 落仓轮：actions-sync 字节指纹钉（云端 B5-T4 验证版）/ 规格计数 13+15+95 / model-detect 双分支 / 三型接线（全 mock）'],
   ['deckkit-test.js', 'deckkit 引擎（E2 骨架 + E3 主题/溢出检查 + 质量修复轮：0 坐标/参数名对齐，10 页型展开 + 排版纪律 + mock 冒烟）'],
   ['task-engine-test.js', '任务引擎（意图一期：服务端执行/参数模板跨步引用/confirm 闸门/fail-fast，mock 注入）'],
 ];

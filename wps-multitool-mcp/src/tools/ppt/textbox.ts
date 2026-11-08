@@ -74,7 +74,8 @@ export const getTextboxesHandler: ToolHandler = async (
   // brief 模式（体验修复轮 B）：只留 index/name/几何摘要，正文与详细属性瘦身掉——全量传 brief:false
   const list = brief
     ? rawList.map((b) => {
-        const { text, ...rest } = b;
+        // 故意剥离 text 字段（brief 瘦身正文）；下划线前缀 = lint 免除的弃置变量
+        const { text: _text, ...rest } = b;
         return rest;
       })
     : rawList;

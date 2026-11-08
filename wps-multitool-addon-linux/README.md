@@ -38,3 +38,22 @@ wpp 只有 Presentations），一个加载项只能拿一种应用的对象模�
 骨架照它的 manifest/ribbon 结构改型别而来；**两者物理分开**（C2）：
 Windows 走 COM 桥 + 27731 只读面板，Linux 走 27740 执行通道。
 不要在两边互相搬实现。
+
+
+## 双模型架构（B5-T4 落仓，2026-11-08）
+
+12.x 的 webview 里 `window.Application` 是 WPS 注入的「同步 JSAPI 门面」（属性/方法直调，
+返回值即时可得）；11.x 只有 jsAsynCall(cefQuery) 异步桥。两套模型共存于本包，boot 时选路：
+
+```
+boot() → WpsAddonModelDetect.apply(type)
+  ├─ 探测到门面（12.x）→ WpsAddonActions{Word|Excel|Ppt} 替换为 js/actions-sync/ 同步实现
+  └─ 探测不到（11.x） → 保留 js/actions/*.js 的 jsAsynCall 异步实现（兜底，基线不动）
+```
+
+- `js/actions-sync/runtime.js`：同步运行时（取集合用 .Item()、写值 Value2=、读值 Value()、
+  裸  规整、AddEffect 禁读数量等 S1 §4 语义适配全部内建）
+- `js/actions-sync/{word,ppt,excel}.js`：声明式动作规格（13/15/95 条），来自 S1-REPORT §3
+- `js/model-detect.js`：双模型检测 + `POST /env` 上报（phase=modelDetect）
+- 字节指纹：五文件 SHA-256 钉死在主仓 `scripts/manual/actions-sync-verify.js`（FAST 项）——
+  与云端 B5-T4 真机验证版逐字节等价是 123/123 证据的前提，改动即门禁红
