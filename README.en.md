@@ -41,7 +41,7 @@ npx -y wps-multitool-mcp
 }
 ```
 
-Restart your MCP client, open a WPS document, and just say:
+Restart your MCP client, open a WPS or Microsoft Office 365 document, and just say:
 
 > Bold the amount section of this contract and add a risk note at the end
 
@@ -58,13 +58,13 @@ irm https://cdn.jsdelivr.net/gh/forkgo430/wps-multitool-mcp@main/scripts/install
 ```
 
 > Security-minded? Download the script first, verify it with `Get-FileHash` against the SHA256
-> published on the Releases page, then run; swap `@main` for `@v1.0.3` to pin a version.
+> published on the Releases page, then run; swap `@main` for `@v1.1.0` to pin a version.
 
 ## What it does
 
 | Capability | How |
 |---|---|
-| A finished document from a blank page | Create, add slides, write titles and body, apply themes, add animations and transitions, page numbers — one chain |
+| A finished document from a blank page | Deck: create, add slides, themes, animations and page numbers in one chain; Word: headings, paragraphs, tables and images generated from a declarative spec |
 | Turn spreadsheet numbers into report material | Build charts or pivot tables from the sheet, export as images, drop them into a presentation |
 | Structural slide elements | Timelines, flowcharts, org charts, gauges, donut charts, progress bars, KPI cards, mini charts, styled tables — all first-class tools |
 | Unified look across the file | `beautify_all_slides` applies one style, `unify_font` unifies fonts, `auto_layout` and `smart_distribute` arrange everything |
@@ -218,7 +218,7 @@ Full threat model in [SECURITY.md](SECURITY.md).
 
 ## Design boundaries (each is a choice — and a promise)
 
-- **Native Windows integration**: drives the office suite you have open — the AI works on the live documents in front of you, WYSIWYG; if a file isn't open it will tell you to open it, never popping windows behind your back. Both WPS Office and Microsoft Office 365 are supported through the same tool surface with automatic host detection (Office drives when installed; pin it explicitly via `WPS_OFFICE`); verified capability coverage is published in the compatibility matrix. Linux support is under construction (roadmap below).
+- **Native Windows integration**: drives the office suite you have open — the AI works on the live documents in front of you, WYSIWYG; if a file isn't open it will tell you to open it, never popping windows behind your back. Both WPS Office and Microsoft Office 365 are supported through the same tool surface with automatic host detection (Office drives when installed; pin it explicitly via `WPS_OFFICE`); verified capability coverage is published in the compatibility matrix. The Linux channel is validated end-to-end (roadmap below).
 - **Cloud documents count**: a cloud doc opened in WPS is a live document — the AI reads and writes whatever WPS has open, regardless of where it's stored; the focus stays on the document open in front of you.
 - **Multi-step tasks in one shot**: the task engine runs a whole workflow server-side (with progress notifications) — the AI only sees the final result.
 - **Undo & recover**: step-by-step undo (`wps_word_undo`, UndoRecord-grade) + automatic snapshots before destructive operations with one-click restore (`snapshot_restore`) — every change has a clear way back.
@@ -241,11 +241,10 @@ Full threat model in [SECURITY.md](SECURITY.md).
 
 ## Roadmap
 
-- **Linux**: platform auto-detection and the add-in channel skeleton have landed; full WPS JSAPI
-  coverage has been measured (296 actions: 199 supported / 45 adaptable); the action layer implements
-  **123/296** (B4 + B5 batches, all mock-green). Cloud real-machine qualification is confirmed
-  (channel 2ms, three add-in types, zero cross-talk) — the last layer under attack is the native
-  `jsAsynCall` method encoding (cloud re-test dispatched).
+- **Linux**: the add-in action layer is fully field-tested — **123 actions all green** on the
+  12.1.2.x sync facade (two cloud real-machine rounds, fresh-machine re-validation passed), the
+  implementation now ships from the main repo with the 11.x async fallback retained (dual-model
+  auto-routing). Next: folding the Linux-side install experience into the release flow.
 - More batch scenarios and checks are on the way — [tell us](https://github.com/forkgo430/wps-multitool-mcp/issues) which workflow you want.
 
 ## License

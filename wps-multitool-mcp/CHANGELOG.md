@@ -1,5 +1,30 @@
 # wps-multitool-mcp
 
+## 1.1.0
+
+### Minor Changes
+
+- 1.1.0 —— 办公生态扩至双套件，Linux 加载项动作层收进主仓
+  
+  **Office 双套件（新）**
+  - 新增 host 维度：`WPS_OFFICE=on|off|auto`，同一套工具面驱动 WPS 或 Microsoft Office 365；
+    auto 探测解析 ProgID 链到服务器二进制真身（WPS 顶名劫持免疫），装了 Office 就自动选路
+  - 313 个动作逐条对账：直通 177 / 已适配 125 / WPS 专用 11（明确报错）/ 未落地 0；
+    Office 365 真机验证 75 工具
+  - Office 真机适配落地：集合 .Item()、Value2 写入、数字参数强转、边距单位、
+    DisplayAlerts 护栏、convertToPDF 可指定目标应用（app 参数）等
+  
+  **Linux 加载项（收进主仓）**
+  - 双模型架构：12.x 同步门面（window.Application）+ 11.x jsAsynCall 异步兜底，boot 时自动选路
+  - 同步动作层 123 动作（word 13 / ppt 15 / excel 95），云端全新机器复验 123/123 全绿、
+    与验证版逐字节等价（SHA-256 指纹钉进 FAST 门禁，改动即红）
+  
+  **任务引擎与提质**
+  - 服务端任务包执行（中间结果不出服务端）；wordkit 文档质量引擎、⑤批量形状原语
+  - structuredContent 2KB 闸门：大 JSON 回包不再双份，响应体约减半；tools/list 每会话约 -900 tokens
+  - 环境病根治：PPT 会话记账 + COM 消息过滤器 + 实例探活，反向验证 33/33
+  - 打包对账门禁：npm 包内容 + 版本五处一致性进 CI（"打包漏文件"家族根治）
+
 ## 1.0.5
 
 ### Patch Changes
