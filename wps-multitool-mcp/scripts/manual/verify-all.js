@@ -58,6 +58,7 @@ const FAST = [
   ['quality-anchors-verify.js', '提质合并卡：R1/R2/R4/R5/R6 锚断言（绑定/归一/降级/raw，静态+坏HOME运行时）'],
   ['schema-weight-verify.js', '提质合并卡 B 段：默认档 payload ≤36000B 门禁（防回弹）'],
   ['slow-actions-verify.js', '提质合并卡 R4：超时分级表断言（五动作慢档/快动作不放宽）'],
+  ['janitor-verify.js', '看门狗 janitor：journal 落盘/四条件决策/UI 零误伤/PID 复用免疫/销账/滚动截断（pwsh7 注入，零 WPS COM）'],
   ['word-target-verify.js', 'word target 参数链路（mock COM）'],
   ['tool-groups-test.js', '工具组加载'],
   ['intent-test.js', '意图识别词表'],

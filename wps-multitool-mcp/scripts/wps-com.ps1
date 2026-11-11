@@ -248,6 +248,8 @@ function New-TrackedWpsInstance([string]$ProgId, [string]$Kind = 'word') {
         foreach ($procId in $new) {
             try { if ('WpsParentWatchdog' -as [type]) { [WpsParentWatchdog]::Track([int]$procId) } } catch {}
         }
+        # A（janitor）：PID 差集落盘 journal（SpawnedBy=ps1-user；sandbox 路径另记）
+        try { Write-SpawnJournal $new 'ps1-user' | Out-Null } catch {}
     }
     return $app
 }
@@ -375,6 +377,138 @@ function Test-AppIdentity($app) {
     return ($pth -match 'Microsoft Office')                    # 读到了且不匹配 = 确定的 wrong host
 }
 
+# ==================== Janitor 看门狗（第 5 期主线甲 2026-11-12）====================
+# 灰区关闭：COM 拉起的 WPS/Office 实例此前无常驻看门狗——本块补完四件：
+#   A · PID 台账常驻化：New-TrackedWpsInstance 的 PID 差集落盘 spawn-journal.jsonl
+#      （行格式 {pid, exe, startTime, spawnedBy, ts}；startTime = PID 复用免疫的第二把钥匙）
+#   B · 启动清扫：守护启动时按 journal 判定收走 headless 孤儿（四条件全命中才杀，
+#      UI 实例有窗口标题一律不动——最高红线）
+#   C · 心跳对账：wpsStatus/守护启动时顺带销账死 PID + journal 滚动上限（10MB 截断留尾）
+#   D · FAST 门禁：Get-JournalSweepPlan 决策/执行分离，纯函数可注入测试
+# 实现取舍（报告写明）：ps1 直接 Append journal（不走 Output-Json 回传 TS 落盘）——
+#   少一层跨进程序列化，ps1 侧记账点与 PID 差集采集在同一处，不会漏。
+function Get-JournalPath {
+    $homeDir = if ($env:USERPROFILE) { $env:USERPROFILE } elseif ($env:HOME) { $env:HOME } else { [System.Environment]::GetFolderPath('UserProfile') }
+    return (Join-Path $homeDir '.wps-multitool-mcp\spawn-journal.jsonl')
+}
+
+# A：把 PID 差集写进 journal（一行一个 JSON）。SpawnedBy 标记来源（ps1-user / ps1-sandbox）。
+function Write-SpawnJournal([int[]]$Pids, [string]$SpawnedBy) {
+    if (-not $Pids -or $Pids.Count -eq 0) { return 0 }
+    $journalPath = Get-JournalPath
+    try {
+        $dir = Split-Path -Parent $journalPath
+        if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }
+        $written = 0
+        foreach ($procId in $Pids) {
+            try {
+                $proc = Get-Process -Id $procId -ErrorAction Stop
+                $entry = @{
+                    pid = [int]$procId
+                    exe = [string]$proc.Name
+                    startTime = $proc.StartTime.ToString('o')
+                    spawnedBy = $SpawnedBy
+                    ts = (Get-Date).ToString('o')
+                } | ConvertTo-Json -Compress
+                Add-Content -Path $journalPath -Value $entry -Encoding UTF8
+                $written++
+            } catch { } # 吞错有据：进程刚退出就别记账了（活着才算灰区）
+        }
+        return $written
+    } catch { return 0 } # journal 写不进不能拦住主流程（记账是增益不是依赖）
+}
+
+# B/C 决策函数（纯函数，FAST 可注入）：给定 journal 行 + 现场进程快照，输出杀/跳过计划。
+# kill 条件【全部】命中：exe ∈ host 家族 ∧ StartTime 与 journal 一致 ∧ 无窗口标题（headless）
+#                    ∧ spawnedBy 标记为我们拉的。任何一条不满足 → skip（带原因）。
+# $LiveProcs 元素形态：{ id, name, startTime(ISO), mainWindowTitle }
+function Get-JournalSweepPlan([object[]]$Entries, [object[]]$LiveProcs) {
+    $family = @(Get-HostProcNames 'all') + @('WINWORD', 'EXCEL', 'POWERPNT')
+    $plan = @{ kill = @(); skip = @(); dead = @() }
+    if (-not $Entries) { return $plan }
+    $liveById = @{}
+    foreach ($p in $LiveProcs) { $liveById[[int]$p.id] = $p }
+    foreach ($e in $Entries) {
+        if ($null -eq $e -or -not $e.pid) { continue }
+        $pidNum = [int]$e.pid
+        if (-not $liveById.ContainsKey($pidNum)) {
+            $plan.dead += @{ pid = $pidNum; reason = 'process-dead' }   # C：死 PID 销账
+            continue
+        }
+        $live = $liveById[$pidNum]
+        $exeName = ([string]$live.name).ToLower()
+        if (-not ($family -contains $exeName)) { $plan.skip += @{ pid = $pidNum; reason = 'not-ours' }; continue }
+        # PID 复用免疫：现场 StartTime 与 journal 记录一致才算同一个进程（秒级比对）
+        $jStart = ''
+        try { $jStart = ([datetime]$e.startTime).ToString('yyyy-MM-dd HH:mm:ss') } catch {}
+        $lStart = ''
+        try { $lStart = ([datetime]$live.startTime).ToString('yyyy-MM-dd HH:mm:ss') } catch {}
+        if (-not $jStart -or $jStart -ne $lStart) { $plan.skip += @{ pid = $pidNum; reason = 'pid-reused' }; continue }
+        if ($live.mainWindowTitle -and [string]$live.mainWindowTitle -ne '') {
+            $plan.skip += @{ pid = $pidNum; reason = 'ui-window' }; continue   # 最高红线：UI 实例不动
+        }
+        if (-not $e.spawnedBy -or ([string]$e.spawnedBy -notmatch '^ps1-')) { $plan.skip += @{ pid = $pidNum; reason = 'not-ours' }; continue }
+        $plan.kill += @{ pid = $pidNum; exe = $exeName; spawnedBy = [string]$e.spawnedBy }
+    }
+    return $plan
+}
+
+# B/C 执行壳：读 journal → 现场快照 → 决策 → 杀 + 销账 + 滚动截断。返回统计供 wpsStatus 回显。
+function Invoke-JanitorSweep {
+    $result = @{ swept = 0; skipped = 0; dead = 0; truncated = $false; journalEntries = 0 }
+    $journalPath = Get-JournalPath
+    if (-not (Test-Path $journalPath)) { return $result }
+    try {
+        # C：滚动上限——超 10MB 截断留尾（保留后 5MB，oplog 先例）
+        if ((Get-Item $journalPath).Length -gt 10MB) {
+            $bytes = [System.IO.File]::ReadAllBytes($journalPath)
+            $tail = [System.Text.Encoding]::UTF8.GetString($bytes[($bytes.Length - 5MB)..($bytes.Length - 1)])
+            $nl = $tail.IndexOf([char]10)
+            if ($nl -ge 0) { $tail = $tail.Substring($nl + 1) }
+            [System.IO.File]::WriteAllText($journalPath, $tail, (New-Object System.Text.UTF8Encoding $false))
+            $result.truncated = $true
+        }
+        $entries = @()
+        foreach ($line in @(Get-Content $journalPath -ErrorAction SilentlyContinue)) {
+            if (-not $line) { continue }
+            try { $entries += ($line | ConvertFrom-Json) } catch { } # 坏行跳过
+        }
+        $result.journalEntries = $entries.Count
+        # 现场快照：host 家族 ∪ Office 家族的全部进程
+        $procNames = @((Get-HostProcNames 'all') + @('WINWORD', 'EXCEL', 'POWERPNT')) | Select-Object -Unique
+        $liveProcs = @(Get-Process -Name $procNames -ErrorAction SilentlyContinue | ForEach-Object {
+            @{ id = $_.Id; name = $_.Name; startTime = $_.StartTime.ToString('o'); mainWindowTitle = [string]$_.MainWindowTitle }
+        })
+        $plan = Get-JournalSweepPlan $entries $liveProcs
+        $deadPids = @()
+        foreach ($k in @($plan.kill)) {
+            try {
+                Stop-Process -Id $k.pid -Force -ErrorAction Stop
+                $result.swept++
+                $deadPids += $k.pid
+                $script:UserCreatedPids = @($script:UserCreatedPids | Where-Object { [int]$_ -ne [int]$k.pid })
+            } catch { } # 吞错有据：杀失败（竞态退出）下次对账再收
+        }
+        $result.skipped = @($plan.skip).Count
+        $result.dead = @($plan.dead).Count
+        foreach ($d in @($plan.dead)) { $deadPids += $d.pid }
+        # C：死 PID 销账 + 已杀行销账（重写 journal，保留仍活着的观察行）
+        if (@($deadPids).Count -gt 0) {
+            $keep = @()
+            foreach ($line in @(Get-Content $journalPath -ErrorAction SilentlyContinue)) {
+                if (-not $line) { continue }
+                $keepIt = $true
+                try { $j = $line | ConvertFrom-Json; if ($deadPids -contains [int]$j.pid) { $keepIt = $false } } catch { }
+                if ($keepIt) { $keep += $line }
+            }
+            $body = if ($keep.Count) { ($keep -join "`n") + "`n" } else { '' }
+            [System.IO.File]::WriteAllText($journalPath, $body, (New-Object System.Text.UTF8Encoding $false))
+            $result.journalEntries = $keep.Count
+        }
+    } catch { } # sweep 任何异常都不能带死守护——下次启动再收
+    return $result
+}
+
 # ==================== AI 撤销分组（逐步撤销，对标 per-action undo） ====================
 # AI 的每个破坏性动作包进一个自定义撤销记录：用户 Ctrl+Z 一次退回一整个动作，
 # 而不是跟自己的编辑混在一起。仅 Word 侧有 UndoRecord；拿不到时静默返回 $null——
@@ -466,6 +600,8 @@ function Get-WpsWord {
         try { $after = @(Get-Process -Name (Get-HostProcNames 'word') -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Id) } catch {}
         # 记下"创建前后新增的 PID" —— quitWps 只回收这批，绝不 taskkill /IM 全杀
         $script:SandboxWordPids = @($after | Where-Object { $before -notcontains $_ })
+        # A（janitor）：沙箱 PID 也入账（SpawnedBy=ps1-sandbox）
+        if ($script:SandboxWordPids.Count -gt 0) { try { Write-SpawnJournal $script:SandboxWordPids 'ps1-sandbox' | Out-Null } catch {} }
         foreach ($procId in $script:SandboxWordPids) {
             try { if ('WpsParentWatchdog' -as [type]) { [WpsParentWatchdog]::Track([int]$procId) } } catch {}
         }
@@ -1736,6 +1872,11 @@ switch ($Action) {
             }
         }
 
+        # C（janitor）：顺带心跳对账（死 PID 销账）+ sweep 统计如实回显
+        try {
+            $jan = Invoke-JanitorSweep
+            $report.janitor = @{ swept = $jan.swept; skipped = $jan.skipped; dead = $jan.dead; journalEntries = $jan.journalEntries }
+        } catch { $report.janitor = @{ error = 'sweep failed' } }
         Output-Json @{ success = $true; data = $report }
     }
 
@@ -10015,6 +10156,12 @@ switch ($Action) {
 # 常驻模式：wps-comd.ps1 先设 $env:WPS_COM_DAEMON=1 再 dot-source 本文件，
 #           此时只需拿到 Invoke-WpsAction 的定义，不执行任何动作。
 # 直跑模式（默认）：行为与改造前完全一致。
+if ($env:WPS_COM_DAEMON -eq '1') {
+    # B（janitor）：守护启动清扫——收走 journal 记录的 headless 孤儿（UI 实例零误伤）；
+    # 每 (app,instance) 守护各跑一次，幂等（已杀/已销账的行第二次进来是 no-op）。
+    try { Invoke-JanitorSweep | Out-Null } catch { }
+}
+
 if ($env:WPS_COM_DAEMON -ne '1') {
     # F1（环境病根治轮）：直跑模式也是 STA（powershell.exe 默认 STA）——注册消息过滤器；
     # 注册失败静默，忙态兜底由 Invoke-WpsActionWithBusyRetry 承担。
