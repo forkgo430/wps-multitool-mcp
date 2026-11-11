@@ -287,6 +287,14 @@ $script:HostProcNames = @{
     office = @{ word = @('WINWORD'); excel = @('EXCEL'); ppt = @('POWERPNT'); all = @('WINWORD', 'EXCEL', 'POWERPNT') }
 }
 
+# R2（提质合并卡 2026-11-11）：Windows host 路径归一——正斜杠在 Slide.Export/
+# Shapes.AddPicture 等 COM API 上炸（实地报告 R2："PowerPoint 无法将 ^0 保存到 ^1"，
+# 未替换占位符同款）。TS/ps1 入口统一 / → \。
+function Normalize-WinPath([string]$p) {
+    if (-not $p) { return $p }
+    return ($p -replace '/', '\')
+}
+
 # LocalServer32 注册表值 → exe 真身归类（office / wps / ''=认不出）。
 # 与 TS 侧 parseLocalServerBinary 同口径：兼容带引号与不带引号两种注册形态。
 function Test-ServerBinaryHost([string]$serverValue) {
@@ -3280,7 +3288,9 @@ switch ($Action) {
         # 统一 Resolve-Sheet 化（与 setCellValue 同款）。
         $sheet = $(Resolve-Sheet $excel $p)
         if ($null -eq $sheet) { Output-Json @{ success = $false; error = "No active sheet" }; return }
-        $outputPath = if ($p.outputPath) { $p.outputPath } else { $p.path }
+        # R2：正斜杠归一（Slide.Export 对 / 路径炸，实地报告 R2）
+        $outputPathRaw = if ($p.outputPath) { $p.outputPath } else { $p.path }
+        $outputPath = Normalize-WinPath $outputPathRaw
         if ([string]::IsNullOrEmpty($outputPath)) { Output-Json @{ success = $false; error = "Missing outputPath" }; return }
         $chartName = $p.chartName
         if ([string]::IsNullOrEmpty($chartName)) { Output-Json @{ success = $false; error = "Missing chartName" }; return }
@@ -4483,7 +4493,7 @@ switch ($Action) {
         $top = if ($null -ne $p.top) { $p.top } else { 100 }
         $width = if ($null -ne $p.width) { $p.width } else { -1 }
         $height = if ($null -ne $p.height) { $p.height } else { -1 }
-        $pic = $sheet.Shapes.AddPicture($p.path, $false, $true, $left, $top, $width, $height)
+        $pic = $sheet.Shapes.AddPicture((Normalize-WinPath ([string]$p.path)), $false, $true, $left, $top, $width, $height)
         Output-Json @{ success = $true; data = @{ name = $pic.Name; path = $p.path } }
     }
 
@@ -5957,6 +5967,9 @@ switch ($Action) {
         $pres = Get-TargetPres $ppt $p
         $slideIndex = if ($p.slideIndex) { $p.slideIndex } else { 1 }
         $slide = $pres.Slides.Item([int]$slideIndex)
+        # R6（提质合并卡 2026-11-11）：raw=true 时追加 isPlaceholder 标记（形状是占位符还是
+        # 自绘文本框）——机器可结构化判读；缺省回包格式一字不变（老调用方零破坏）。
+        $raw = if ($null -ne $p.raw) { [bool]$p.raw } else { $false }
         $textBoxes = @()
         for ($i = 1; $i -le $slide.Shapes.Count; $i++) {
             $shape = $slide.Shapes.Item($i)
@@ -5970,7 +5983,17 @@ switch ($Action) {
                 try { $bw = [math]::Round($shape.BoundWidth, 2) } catch {}
                 try { $bh = [math]::Round($shape.BoundHeight, 2) } catch {}
                 try { $fs = $shape.TextFrame.TextRange.Font.Size } catch {}
-                $textBoxes += @{ name = $shape.Name; index = $i; text = $text; left = $shape.Left; top = $shape.Top; width = $shape.Width; height = $shape.Height; boundWidth = $bw; boundHeight = $bh; fontSize = $fs }
+                $entry = @{ name = $shape.Name; index = $i; text = $text; left = $shape.Left; top = $shape.Top; width = $shape.Width; height = $shape.Height; boundWidth = $bw; boundHeight = $bh; fontSize = $fs }
+                if ($raw) {
+                    # msoPlaceholder=14：占位符（标题/正文等版式槽位）；其余为自绘文本框
+                    $isPh = $false
+                    try { $isPh = ([int]$shape.Type -eq 14) } catch {}
+                    $entry.isPlaceholder = $isPh
+                    $phType = $null
+                    try { $phType = [int]$shape.PlaceholderFormat.Type } catch {}
+                    $entry.placeholderType = $phType
+                }
+                $textBoxes += $entry
             }
         }
         Output-Json @{ success = $true; data = @{ slideIndex = $slideIndex; textBoxes = $textBoxes; count = $textBoxes.Count } }
@@ -6244,7 +6267,11 @@ switch ($Action) {
             return
         }
         if (-not $shape.TextFrame.HasText) {
-            Output-Json @{ success = $false; error = "第 $slideIndex 页第 $($p.shapeIndex) 个形状是空文本，设置字色不会有任何可见变化。请先 wps_ppt_set_shape_text 写入文字" }
+            # R1（提质合并卡 2026-11-11）：deckkit table 页收尾上色步按序号定位，Office 宿主
+            # 序号漂移时落到空文本形状——原报错会让整个 build_deck 中止（实地 13/23 步）。
+            # 改为跳过 + warning（生成引擎语境下"没东西可上色"不是失败）；直接调用方语义
+            # 变化（报错→成功+warning）已记交付。
+            Output-Json @{ success = $true; data = @{ name = [string]$shape.Name; color = [string]$p.color; skipped = 'empty-text' }; warnings = @(@{ step = 'setFontColor'; message = "第 $slideIndex 页第 $($p.shapeIndex) 个形状是空文本，字色跳过（该形状没有可上色的文字）" }) }
             return
         }
         $shape.TextFrame.TextRange.Font.Color.RGB = $rgb
@@ -6307,7 +6334,7 @@ switch ($Action) {
         $top = if ($p.top) { $p.top } else { 100 }
         $width = if ($null -ne $p.width) { $p.width } else { -1 }
         $height = if ($null -ne $p.height) { $p.height } else { -1 }
-        $pic = $slide.Shapes.AddPicture($p.path, $false, $true, $left, $top, $width, $height)
+        $pic = $slide.Shapes.AddPicture((Normalize-WinPath ([string]$p.path)), $false, $true, $left, $top, $width, $height)
         Output-Json @{ success = $true; data = @{ name = $pic.Name; path = $p.path } }
     }
 
@@ -6381,7 +6408,9 @@ switch ($Action) {
         $slideIndex = if ($p.slideIndex) { [int]$p.slideIndex } else { 1 }
         if ($slideIndex -lt 1 -or $slideIndex -gt $pres.Slides.Count) { Output-Json @{ success = $false; error = "slideIndex $slideIndex out of range (1..$($pres.Slides.Count)) in '$($pres.Name)'" }; return }
         $slide = $pres.Slides.Item([int]$slideIndex)
-        $outputPath = if ($p.outputPath) { $p.outputPath } else { $p.path }
+        # R2：正斜杠归一（Slide.Export 对 / 路径炸——实地报告 R2 + 本轮矩阵 A/B 对照实锤）
+        $outputPathRaw = if ($p.outputPath) { $p.outputPath } else { $p.path }
+        $outputPath = Normalize-WinPath $outputPathRaw
         if ([string]::IsNullOrEmpty($outputPath)) { Output-Json @{ success = $false; error = "Missing outputPath" }; return }
         # 确保父目录存在
         $dir = Split-Path -Parent $outputPath

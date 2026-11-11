@@ -61,34 +61,15 @@ interface WpsStatusData {
 
 export const statusDefinition: ToolDefinition = {
   name: 'wps_common_status',
-  description: `查看 WPS MCP 的运行状态：桥（守护进程）这一层 + WPS 三件套这一层。
+  description: `查看 WPS MCP 运行状态：桥（守护进程）+ WPS 三件套两层。
 
-报告内容：
-- 桥：是否就绪、进程号、已存活多久、重连次数、在途请求数、队列上限与排队超时
-- 每个应用（表格/文字/演示/通用）的子进程：在途数、排队数、最近一次排队等待、累计被拒次数
-- WPS 三件套：分别有没有已连接的实例，以及实例名、版本、打开文档数
+- 桥：就绪/进程号/存活/重连次数/在途请求数/队列上限与超时
+- 各应用子进程：在途数、排队数、排队等待、累计被拒次数
+- 三件套：实例连接、实例名、版本、打开文档数
+- 并发：COM 是 STA，同应用同时刻一个动作；队列上限 4，排满/排队超 10 秒回 [busy]（可安全重试，请求未送出）
+- 身份三字段：app/progId=权威（Ket/Kwps/Kwpp），product=由 Path 反推，reportedName=自报仅供参考（WPS 会自报 Microsoft Excel/Word，别拿它判身份）
 
-关于并发（重要）：
-COM 是 STA，同一个应用同一时刻只能跑一个动作。所以并发不是"提高吞吐"，
-而是把等待变成有界的、可见的：队列默认上限 4、排满立刻回 [busy]、
-排队超过 10 秒也回 [busy]（这两个都是【可安全重试】的，请求从未送出）。
-看到 queued 长期不为 0，说明前面有慢动作在占着这一路。
-
-关于"实例名"的一个重要提醒：
-WPS 为了兼容 Excel/Word 宏，会故意把 Application.Name 自报成 "Microsoft Excel" /
-"Microsoft Word"，Version 也报成 Office 的兼容版本号。所以本工具把身份拆成三个字段：
-  app / progId  —— 权威身份（我们请求的就是 WPS 自家的 Ket/Kwps/Kwpp）
-  product       —— 由 Application.Path 反推的产品（WPS Office / Microsoft Office）
-  reportedName  —— 应用自报名，仅供参考，别拿它判断"到底在用谁"
-（实测本机 Ket.Application 的 Path 就在 WPS 安装目录，且没装 EXCEL.EXE。）
-
-使用场景：
-- "WPS 连上了吗"
-- "为什么刚才那个工具没反应 / 报 busy"
-- "现在开了几个文档"
-- 排查问题时先跑这个，比翻日志快
-
-本工具只读，且不会顺手把 WPS 启动起来。`,
+排查 busy/连接问题时先跑这个。只读，不会启动 WPS。`,
   category: ToolCategory.COMMON,
   inputSchema: {
     type: 'object',

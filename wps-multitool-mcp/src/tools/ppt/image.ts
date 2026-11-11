@@ -262,7 +262,7 @@ export const exportSlideAsImageDefinition: ToolDefinition = {
       },
       outputPath: {
         type: 'string',
-        description: '输出图片文件的绝对路径（如 /Users/xxx/Downloads/slide1.png）',
+        description: '输出图片文件绝对路径',
       },
       format: {
         type: 'string',
@@ -279,7 +279,7 @@ export const exportSlideAsImageDefinition: ToolDefinition = {
       },
       inline: {
         type: 'boolean',
-        description: '是否把导出的图内联进回包（体验修复轮 B 开关，默认 true 保持现状；false 只回路径省带宽）',
+        description: '导出图内联进回包，默认 true；false 只回路径',
       },
     },
     required: ['slideIndex', 'outputPath'],

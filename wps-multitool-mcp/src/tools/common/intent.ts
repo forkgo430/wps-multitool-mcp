@@ -193,7 +193,7 @@ export const routeIntentDefinition: ToolDefinition = {
       task: { type: 'string', description: '任务描述（一句话即可，中文英文都行）' },
       autoLoad: {
         type: 'boolean',
-        description: '仅定组层生效：是否直接加载命中的组（默认 false）。设 WPS_INTENT_AUTOLOAD=1 可全局打开',
+        description: '仅定组层生效：直接加载命中的组，默认 false',
       },
     },
     required: ['task'],

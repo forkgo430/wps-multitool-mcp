@@ -102,20 +102,20 @@ export const createChartDefinition: ToolDefinition = {
     properties: {
       data_range: {
         type: 'string',
-        description: '数据范围，如 A1:C10，图表数据的来源',
+        description: '数据范围，如 A1:C10',
       },
       chart_type: {
         type: 'string',
-        description: '图表类型，默认 column_clustered（簇状柱形图）',
+        description: '图表类型，默认 column_clustered',
         enum: Object.values(ChartType),
       },
       title: {
         type: 'string',
-        description: '图表标题，如 "销售趋势图"',
+        description: '图表标题',
       },
       position: {
         type: 'object',
-        description: '图表位置，不填则自动放在数据右侧',
+        description: '图表位置，不填自动放数据右侧',
         properties: {
           left: {
             type: 'number',
@@ -127,29 +127,29 @@ export const createChartDefinition: ToolDefinition = {
           },
           width: {
             type: 'number',
-            description: '图表宽度（磅），默认480',
+            description: '宽度（磅），默认480',
           },
           height: {
             type: 'number',
-            description: '图表高度（磅），默认300',
+            description: '高度（磅），默认300',
           },
         },
       },
       sheet: {
         type: 'string',
-        description: '工作表名称，不填则使用当前活动工作表',
+        description: '工作表名，不填=活动表',
       },
       has_header: {
         type: 'boolean',
-        description: '数据第一行是否为表头，默认true',
+        description: '首行是否表头，默认 true',
       },
       show_legend: {
         type: 'boolean',
-        description: '是否显示图例，默认true',
+        description: '显示图例，默认 true',
       },
       show_data_labels: {
         type: 'boolean',
-        description: '是否显示数据标签，默认false',
+        description: '显示数据标签，默认 false',
       },
     },
     required: ['data_range'],

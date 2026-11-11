@@ -28,7 +28,7 @@
 | `wps_common_save` | 是 | — | live | 保存当前文档。<br><sub>别名：保存 / 存盘</sub> |
 | `wps_common_save_as` | 是 | DN | live | 将当前文档另存为指定路径和格式。<br><sub>别名：另存为 / 存到 / 保存as</sub> |
 | `wps_common_show_window` | 是 | — | live | 把 WPS 窗口显示出来并置于前台。<br><sub>别名：显示窗口 / 展示窗口 / 窗口</sub> |
-| `wps_common_status` | 是 | R | live | 查看 WPS MCP 的运行状态：桥（守护进程）这一层 + WPS 三件套这一层。<br><sub>别名：状态 / 桥状态 / 看看还活着吗</sub> |
+| `wps_common_status` | 是 | R | live | 查看 WPS MCP 运行状态：桥（守护进程）+ WPS 三件套两层。<br><sub>别名：状态 / 桥状态 / 看看还活着吗</sub> |
 | `wps_convert_format` | 是 | DN | live | 将当前文档转换为其他格式。<br><sub>别名：格式转换 / 转格式 / docx转xlsx</sub> |
 | `wps_convert_to_pdf` | 是 | DN | live | 将当前文档转换为PDF格式。支持Word、Excel、PPT文档。<br><sub>别名：转PDF / 导出PDF / 转成PDF</sub> |
 | `wps_execute_method` | 是 | DN | live | 执行自定义WPS API方法<br><sub>别名：直接调COM / 万能方法 / 没有对应工具</sub> |

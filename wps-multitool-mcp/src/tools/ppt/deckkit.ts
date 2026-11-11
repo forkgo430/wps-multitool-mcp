@@ -288,7 +288,10 @@ const pageSteps: Record<string, (slide: number, s: any, T: DeckTypoCtx) => DeckS
     ];
   },
 
-  // #1/#2 标题带；表头 j：色块 3+2j、文本 4+2j；数据行 (i,j)：色块、文本（无单独上色）
+  // #1/#2 标题带；表头 j：色块 3+2j、文本 4+2j；数据行 (i,j)：色块、文本（无单独上色）。
+  // R1（提质合并卡 2026-11-11）：色块上色步从"每列落完就上"改为【全部文本写完后统一收尾】——
+  // 实地报告：Office 宿主上色步（#5）落在空文本形状上中止（13/23 步）。先写文本后上色，
+  // 序号语义与写入顺序解耦。
   table: (slide, s, T) => {
     if (!s.head?.length) throw new Error('table 页需要 head（表头行）');
     if (s.head.length > T.maxTableCols) throw new Error(`列数 ${s.head.length} 超上限 ${T.maxTableCols}——矩形拼表格的密度纪律`);
@@ -300,7 +303,6 @@ const pageSteps: Record<string, (slide: number, s: any, T: DeckTypoCtx) => DeckS
     s.head.forEach((h: string, j: number) => {
       steps.push({ tool: 'wps_ppt_add_shape', args: { slideIndex: slide, type: 'rectangle', left: T.margin + j * w, top: T.bodyTop, width: w, height: headH, fillColor: T.theme.deep } });
       steps.push(textbox(slide, { left: T.margin + j * w + 6, top: T.bodyTop + 6, width: w - 12, height: headH - 12, text: h, fontSize: T.bodyFont, fontName: T.theme.fontPair.heading }));
-      steps.push(color(slide, 3 + 2 * j, '#FFFFFF'));
     });
     s.rows.forEach((row: string[], i: number) => {
       const top = T.bodyTop + headH + i * rowH;
@@ -308,6 +310,10 @@ const pageSteps: Record<string, (slide: number, s: any, T: DeckTypoCtx) => DeckS
         steps.push({ tool: 'wps_ppt_add_shape', args: { slideIndex: slide, type: 'rectangle', left: T.margin + j * w, top, width: w, height: rowH, fillColor: i % 2 === 0 ? T.theme.paper : '#FFFFFF' } });
         steps.push(textbox(slide, { left: T.margin + j * w + 6, top: top + 6, width: w - 12, height: rowH - 12, text: String(cell), fontSize: T.bodyFontMin, fontName: T.theme.fontPair.body }));
       });
+    });
+    // 统一收尾：表头色块上白字（3+2j）——文本全部落定后执行
+    s.head.forEach((_h: string, j: number) => {
+      steps.push(color(slide, 3 + 2 * j, '#FFFFFF'));
     });
     return steps;
   },

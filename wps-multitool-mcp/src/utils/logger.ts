@@ -58,20 +58,32 @@ const createLogger = (name: string): winston.Logger => {
   const logDir = path.join(homeDir, `.${RUNTIME_ID}`, 'logs');
   // MCP 默认走 stdio 协议，stdout 必须保持纯净；仅在显式开启时才输出 Console 日志
   const enableConsoleLog = isEnvTrue(process.env.MCP_CONSOLE_LOG);
+  // R5（提质合并卡 2026-11-11）：日志目录建不出（坏 HOME / 只读盘）时【降级为无文件日志】
+  // ——不能让 winston File transport 在模块加载期裸抛 ENOENT 把整个服务带死。
+  // 实测锚：HOME=Q:/nonexistent 时服务必须照常起、tools/list 照常回。
+  let fileTransports: winston.transport[] = [];
+  try {
+    require('fs').mkdirSync(logDir, { recursive: true });
+    fileTransports = [
+      // 文件输出 - 错误单独记录，出问题好找
+      new winston.transports.File({
+        filename: path.join(logDir, 'error.log'),
+        level: 'error',
+        maxsize: LOG_MAX_SIZE,
+        maxFiles: LOG_MAX_FILES,
+      }),
+      // 所有日志
+      new winston.transports.File({
+        filename: path.join(logDir, 'combined.log'),
+        maxsize: LOG_MAX_SIZE,
+        maxFiles: LOG_MAX_FILES,
+      }),
+    ];
+  } catch {
+    // 降级：无文件日志；console 仍按 MCP_CONSOLE_LOG 走
+  }
   const transports: winston.transport[] = [
-    // 文件输出 - 错误单独记录，出问题好找
-    new winston.transports.File({
-      filename: path.join(logDir, 'error.log'),
-      level: 'error',
-      maxsize: LOG_MAX_SIZE,
-      maxFiles: LOG_MAX_FILES,
-    }),
-    // 所有日志
-    new winston.transports.File({
-      filename: path.join(logDir, 'combined.log'),
-      maxsize: LOG_MAX_SIZE,
-      maxFiles: LOG_MAX_FILES,
-    }),
+    ...fileTransports,
   ];
 
   if (enableConsoleLog) {

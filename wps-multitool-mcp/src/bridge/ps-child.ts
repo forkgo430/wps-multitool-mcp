@@ -121,6 +121,13 @@ const DEFAULT_SLOW_ACTIONS = [
   'findReplace',
   'insertSlidesFromFile',
   'convertTableToText',
+  // ⑤ R4（提质合并卡 2026-11-11）：插图与保存——实地报告 R4 实测干净态也会超 30s 快超时
+  //    （首次插图触发图像管线 / saveAs 首次落盘），误杀后整路重建代价远大于慢等。
+  'insertPptImage',
+  'insertExcelImage',
+  'insertImage',
+  'save',
+  'saveAs',
 ];
 
 /** 慢动作清单：环境变量可覆盖（逗号分隔），没设就用默认那张表 */

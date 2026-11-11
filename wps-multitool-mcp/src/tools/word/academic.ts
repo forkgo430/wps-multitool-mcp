@@ -80,7 +80,7 @@ export const getOutlineDefinition: ToolDefinition = {
 参数：
 - limit: 最多返回多少个标题，默认 100（体验修复轮 B 由 500 收紧——大纲是导航不是全量导出）`,
   category: ToolCategory.DOCUMENT,
-  inputSchema: { type: 'object', properties: { target: WORD_TARGET_PROPERTY,  limit: { type: 'number', description: '最多返回标题数，默认 100（体验修复轮 B 收紧）' } } },
+  inputSchema: { type: 'object', properties: { target: WORD_TARGET_PROPERTY,  limit: { type: 'number', description: '最多返回标题数，默认 100' } } },
 };
 
 export const getOutlineHandler: ToolHandler = async (args) => {

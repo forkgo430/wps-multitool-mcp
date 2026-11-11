@@ -54,16 +54,16 @@ export const insertTextDefinition: ToolDefinition = {
       },
       position: {
         type: 'string',
-        description: '插入位置，可选值: "cursor"(光标位置), "start"(文档开头), "end"(文档结尾)。默认cursor',
+        description: '插入位置：cursor/start/end，默认 cursor',
         enum: ['cursor', 'start', 'end'],
       },
       style: {
         type: 'string',
-        description: '插入后应用的样式，如 "标题 1"、"正文"',
+        description: '应用样式名，如 标题 1',
       },
       new_paragraph: {
         type: 'boolean',
-        description: '插入后是否新起一段，默认false',
+        description: '是否新起一段，默认 false',
       },
     },
     required: ['text'],
