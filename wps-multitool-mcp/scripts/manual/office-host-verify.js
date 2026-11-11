@@ -153,16 +153,16 @@ const matrixPath = path.join(ROOT, '..', 'docs', 'agents', 'office-compat-matrix
 if (fs.existsSync(matrixPath)) {
   const matrix = fs.readFileSync(matrixPath, 'utf8');
   const rowMatches = matrix.match(/^\| `[A-Za-z0-9_]+` \|/gm) || [];
-  ok('对账表行数 = 313（与 gen-action-routes 分母一致）', rowMatches.length === 313, `rows=${rowMatches.length}`);
+  ok('对账表行数 = 313（与 gen-action-routes 分母一致）', rowMatches.length === 315, `rows=${rowMatches.length}`);
   ok('对账表四类统计行齐备（直通/已落地/未落地/WPS 专用）',
     matrix.includes('需 quirk 分支(已落地)') && matrix.includes('需 quirk 分支(未落地)') &&
-    matrix.includes('WPS 专用') && matrix.includes('| **合计** | **313** |'));
+    matrix.includes('WPS 专用') && matrix.includes('| **合计** | **315** |'));
   // 表内 case 与路由表一一对应（不许漂）
   const matrixCases = new Set((matrix.match(/^\| `([A-Za-z0-9_]+)` \|/gm) || []).map((r) => r.match(/`([A-Za-z0-9_]+)`/)[1]));
   const routeCases = [...routesSrc.matchAll(/"([A-Za-z0-9_]+)":\s*'(\w+)'/g)].map((m) => m[1]);
   const missingInMatrix = routeCases.filter((c) => !matrixCases.has(c));
-  ok('路由表 313 case 全部在对账表（无漂移）', missingInMatrix.length === 0 && routeCases.length === 313,
-    missingInMatrix.length ? '缺: ' + missingInMatrix.slice(0, 5).join(',') : `313/313`);
+  ok('路由表 313 case 全部在对账表（无漂移）', missingInMatrix.length === 0 && routeCases.length === 315,
+    missingInMatrix.length ? '缺: ' + missingInMatrix.slice(0, 5).join(',') : `315/315`);
 } else {
   ok('对账表存在', false, matrixPath + ' 不存在');
 }

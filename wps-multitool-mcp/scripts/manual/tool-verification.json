@@ -120,7 +120,9 @@
     "wps_get_active_presentation": "live",
     "wps_run_task": "static",
     "wps_ppt_batch_upsert_shapes": "static",
-    "wps_word_build_document": "static"
+    "wps_word_build_document": "static",
+    "wps_render_template": "static",
+    "wps_extract_template": "static"
   },
   "evidence": {
     "core": "verify-all 快测档（tool-groups-test / search-meta-verify）真跑注册表",
@@ -144,7 +146,7 @@
     "2026-11-03-unit-pt": "wps_ppt_set_slide_size 单位改磅（2026-11-03 所有者裁定全组统一磅，体验修复轮 A）——行为变更使原 px→pt 时代的 live 证据失效，从逐条表降回组级 static，待真机复核后再升。本轮 build/gen/mock 门禁全绿不构成真机证据。"
   },
   "officeHost": {
-    "_note": "Office 支持一期+二期+收口轮（2026-11-07）：host=office 维度的验证台账（第二个维度）。列出的工具 = Office 365 真机实测（live，一期试点 31 + 二期抽验 36 + 收口轮 7）；【未列出的工具在 Office host 下未验证——不宣称，等同 static】。findInSheet 已收口（多区域 Range 终极破案，见对账表）。WPS host 维度见顶层 tools/groups 原有台账，两维度相互独立。",
+    "_note": "Office 支持一期+二期+收口轮+模板层（2026-11-12）：host=office 维度验证台账。列出的工具=Office 365 真机实测（live）；未列出的在 Office host 下未验证——不宣称，等同 static。WPS host 维度见顶层 tools/groups 原有台账。模板两工具待双宿主真机后按实测更新。",
     "live": {
       "wps_word_create_document": "试点 W1（createDocument）",
       "wps_word_insert_text": "试点 W2（insertText）",
@@ -219,7 +221,9 @@
       "wps_ppt_remove_ppt_hyperlink": "收口轮 B2-9（removePptHyperlink 真机绿）",
       "wps_ppt_add_master_element": "收口轮 B2-11/12（addMasterElement textbox 真机绿 + 母版形状数复核）",
       "wps_ppt_get_slide_master": "收口轮 B2-10/12（getSlideMaster 真机绿）",
-      "wps_ppt_set_master_background": "收口轮 B2-13/14（setMasterBackground solid+gradient 真机绿）"
+      "wps_ppt_set_master_background": "收口轮 B2-13/14（setMasterBackground solid+gradient 真机绿）",
+      "wps_render_template": "模板层大卡双宿主真机 PASS（WPS 宿主 off + Office 宿主 on 各 render 15880/15881B 落盘+filled=3）",
+      "wps_extract_template": "模板层大卡双宿主真机 PASS（双宿主 extract 占位 2/标题 0）"
     }
   }
 }

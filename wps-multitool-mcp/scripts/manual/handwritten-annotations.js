@@ -45,6 +45,9 @@ module.exports = {
     'wps_load_tool_group',
     'wps_unload_tool_group',
     'wps_search_tools',
+    // 第 5 期模板层（2026-11-11）：TS 组合工具（逐步 callTool 真入口），名字推断读不出——手写。
+    'wps_render_template',
+    'wps_extract_template',
     'wps_route_intent',
     // 第 1 期第 2 章第 1 轮移出：wps_word_set_text_color / wps_word_set_line_spacing
     // 原先在这里，是因为它们调的动作名在 ps1 里查不到（setTextColor / setLineSpacing，零命中），

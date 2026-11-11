@@ -47,7 +47,7 @@ MCP 提供了近 300 个工具（以 `tools/list` 与 `wps_search_tools` 为准�
 
 ### 3. 加载组
 
-默认只列出 40 个基础工具，其余组要显式加载：`wps_load_tool_group`。
+默认只列出 42 个基础工具，其余组要显式加载：`wps_load_tool_group`。
 
 **"工具不存在"通常不是没有这个能力，是组没加载。** 先搜再加载，别直接告诉用户做不到。
 
@@ -141,3 +141,9 @@ PPT 组的真值（照 `scripts/manual/tool-verification.json` 的 `ppt` 条目�
 | `references/errors.md` | 调用报错、或要决定能不能重试时 |
 | `references/recipes.md` | 任务跨多步（整篇论文排版、批量改格式、做演示）时 |
 | `references/dsh.md` | **在 DeepSeek Harness 里跑的时候**（挂载写法、DSH 特有的坑、平台限制） |
+
+## 模板两轨分工
+
+- **版式设计走数据模板**：`wps_render_template`（模板 docx 预置书签锚点 + {{key}} 占位，data JSON 填充；`wps_extract_template` 从现有文档提取带锚点模板）。
+- **固定场景走配方**：`wps_route_intent` / `wps_run_task` 的场景配方（周报/公文/合同等 task-packages）。
+- 模板两轨与配方双轨的关系：模板管"版式复用+数据填充"，配方管"固定流程编排"。

@@ -96,6 +96,21 @@ const EXTRA_ANNOTATIONS: Record<string, ToolAnnotations> = {
     idempotentHint: false,
     openWorldHint: false,
   },
+  // 第 5 期模板层（2026-11-11）：渲染写类非幂等（同 outputPath 二次渲染被入口拒，但换路径会
+  //  再落盘）；提取非幂等（占位序号递增）。破坏性不标（不删不改既有文件——outputPath 已存在
+  //  时入口明确拒绝）。
+  wps_render_template: {
+    readOnlyHint: false,
+    destructiveHint: false,
+    idempotentHint: false,
+    openWorldHint: false,
+  },
+  wps_extract_template: {
+    readOnlyHint: false,
+    destructiveHint: false,
+    idempotentHint: false,
+    openWorldHint: false,
+  },
   wps_execute_method: {
     readOnlyHint: false,
     destructiveHint: true,

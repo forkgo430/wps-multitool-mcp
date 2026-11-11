@@ -12,7 +12,8 @@
     "scripts/wps-com.ps1",
     "scripts/wps-comd.ps1",
     "skills",
-    "src/server/*.json"
+    "src/server/*.json",
+    "templates/**"
   ],
   "scripts": {
     "build": "tsc",

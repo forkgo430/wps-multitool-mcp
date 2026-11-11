@@ -8,7 +8,7 @@
  */
 export type ToolVerification = 'live' | 'static';
 
-/** 每个注册工具的验证状态（覆盖 285/285） */
+/** 每个注册工具的验证状态（覆盖 287/287） */
 export const TOOL_VERIFICATION: Readonly<Record<string, ToolVerification>> = {
   "wps_cache_data": "live",
   "wps_check_connection": "live",
@@ -119,6 +119,7 @@ export const TOOL_VERIFICATION: Readonly<Record<string, ToolVerification>> = {
   "wps_excel_update_pivot_table": "live",
   "wps_excel_write_range": "live",
   "wps_execute_method": "live",
+  "wps_extract_template": "static",
   "wps_get_active_presentation": "live",
   "wps_get_active_workbook": "live",
   "wps_get_cached_data": "live",
@@ -223,6 +224,7 @@ export const TOOL_VERIFICATION: Readonly<Record<string, ToolVerification>> = {
   "wps_ppt_switch_presentation": "live",
   "wps_ppt_switch_slide": "live",
   "wps_ppt_unify_font": "live",
+  "wps_render_template": "static",
   "wps_route_intent": "live",
   "wps_run_task": "static",
   "wps_search_tools": "live",
@@ -298,4 +300,4 @@ export const TOOL_VERIFICATION: Readonly<Record<string, ToolVerification>> = {
 };
 
 /** 生成时的总量，供自检/文档使用（别手写这些数字） */
-export const VERIFICATION_TOTALS = { live: 270, static: 15, total: 285 } as const;
+export const VERIFICATION_TOTALS = { live: 270, static: 17, total: 287 } as const;

@@ -10145,6 +10145,165 @@ switch ($Action) {
         }
     }
 
+    # ==================== 模板层（第 5 期主线 · 数据模板 + 模板提取）====================
+    # R2 教训防复发：路径参数入口归一（/ → \）；render 走慢档（ps-child DEFAULT_SLOW_ACTIONS 已补）。
+    "renderTemplate" {
+        $word = Get-WpsWord
+        if ($null -eq $word) { Output-Json @{ success = $false; error = "WPS Word not running" }; return }
+        $templatePath = Normalize-WinPath ([string]$p.templatePath)
+        $outputPath = Normalize-WinPath ([string]$p.outputPath)
+        if ([string]::IsNullOrEmpty($templatePath)) { Output-Json @{ success = $false; error = "templatePath required" }; return }
+        if ([string]::IsNullOrEmpty($outputPath)) { Output-Json @{ success = $false; error = "outputPath required" }; return }
+        if (-not (Test-Path $templatePath)) { Output-Json @{ success = $false; error = "模板不存在: $templatePath" }; return }
+        if ($null -eq $p.data -or $p.data -isnot [PSCustomObject]) { Output-Json @{ success = $false; error = "data required（JSON 对象：锚点名 → 值）" }; return }
+        $dataProps = @($p.data.PSObject.Properties)
+        if ($dataProps.Count -eq 0) { Output-Json @{ success = $false; error = "data 为空对象——至少给一个锚点值" }; return }
+        # 同名输出文件保护：已存在则明确报错（不静默覆盖——模板渲染产物可能覆盖用户文档）
+        if (Test-Path $outputPath) { Output-Json @{ success = $false; error = "[勿重试·先改参数] outputPath 已存在: $outputPath（不静默覆盖，请换路径或先删除）" }; return }
+
+        $doc = $word.Documents.Open($templatePath)
+        if ($null -eq $doc) { Output-Json @{ success = $false; error = "模板打开失败: $templatePath" }; return }
+
+        $filled = @()      # 成功填充清单
+        $missing = @()     # 模板里有、data 没给的锚点（缺 key 不静默——列全清单）
+        $dataKeys = @($dataProps | ForEach-Object { $_.Name })
+
+        # ---- 锚点双轨 ①：书签锚点优先（WPS 开放平台正统做法）----
+        # 模板里预置书签（名 = 锚点名），渲染时按 data 键名匹配替换内容。
+        $bookmarkNames = @()
+        try { $bookmarkNames = @($doc.Bookmarks | ForEach-Object { [string]$_.Name }) } catch {}
+        foreach ($bn in $bookmarkNames) {
+            $val = $dataProps | Where-Object { $_.Name -eq $bn } | Select-Object -First 1
+            if ($null -ne $val) {
+                try {
+                    $bm = $doc.Bookmarks.Item($bn)
+                    $bmStart = $bm.Start
+                    $bm.Range.Text = [string]$val.Value
+                    $doc.Bookmarks.Add($bn, $doc.Range($bmStart, $bmStart + ([string]$val.Value).Length)) | Out-Null
+                    $filled += @{ anchor = $bn; via = 'bookmark' }
+                } catch {
+                    $missing += $bn   # 书签替换失败也如实列（不静默）
+                }
+            } else {
+                $missing += $bn
+            }
+        }
+
+        # ---- 锚点双轨 ②：{{key}} 文本占位兜底（复用查找替换）----
+        # 先扫正文还有哪些 {{key}}（书签替换后仍存在的），按 data 键逐个替换。
+        $fullText = ""
+        try { $fullText = [string]$doc.Content.Text } catch {}
+        $placeholderKeys = @()
+        foreach ($m in @([regex]::Matches($fullText, '\{\{([A-Za-z0-9_\-]+)\}\}'))) {
+            $k = $m.Groups[1].Value
+            if ($placeholderKeys -notcontains $k) { $placeholderKeys += $k }
+        }
+        $findReplace = $word.Selection  # 占位替换用 Find.Execute 全文档范围
+        foreach ($prop in $dataProps) {
+            $k = $prop.Name
+            $needle = "{{" + $k + "}}"
+            if ($placeholderKeys -notcontains $k) { continue }
+            try {
+                $rng = $doc.Content
+                $find = $rng.Find
+                $find.ClearFormatting() | Out-Null
+                $find.Text = $needle
+                $find.Replacement.ClearFormatting() | Out-Null
+                $find.Replacement.Text = [string]$prop.Value
+                $find.Forward = $true
+                $find.Wrap = 1   # wdFindContinue
+                $find.MatchCase = $true
+                $null = $find.Execute()
+                $filled += @{ anchor = $k; via = 'placeholder' }
+            } catch {
+                $missing += $k   # 替换失败如实列
+            }
+        }
+        foreach ($k in $placeholderKeys) {
+            if ($dataKeys -notcontains $k -and -not ($filled | Where-Object { $_.anchor -eq $k })) { $missing += $k }
+        }
+
+        # ---- saveAs + 落盘校验（saveAs 先例：DisplayAlerts 护栏 + 读回 verified + 大小>0）----
+        $da0 = $null
+        try { $da0 = $word.DisplayAlerts } catch {}
+        try { $word.DisplayAlerts = $false } catch {}
+        try {
+            $doc.SaveAs($outputPath)
+        } finally {
+            try { if ($null -ne $da0) { $word.DisplayAlerts = $da0 } } catch {}
+        }
+        $verified = $false; $size = 0
+        try {
+            if (Test-Path $outputPath) { $size = (Get-Item $outputPath).Length; $verified = ($size -gt 0) }
+        } catch {}
+        try { $doc.Close($false) } catch {}
+
+        if (-not $verified) {
+            Output-Json @{ success = $false; error = "渲染完成但落盘校验失败（文件不存在或 0 字节）: $outputPath"; data = @{ filled = $filled; missing = $missing } }
+            return
+        }
+        # 缺 key 不静默：模板里有、data 没给的锚点 → warnings 列全清单
+        $warns = @()
+        if (@($missing).Count -gt 0) {
+            $warns += @{ step = 'renderTemplate'; message = "以下锚点在模板里存在但 data 未提供值，保留原文未替换：" + (($missing | Select-Object -Unique) -join '、') }
+        }
+        Output-Json @{ success = $true; data = @{ outputPath = $outputPath; size = $size; filled = $filled; skipped = @($missing | Select-Object -Unique); filledCount = @($filled).Count }; warnings = $warns }
+    }
+
+    "extractTemplate" {
+        $word = Get-WpsWord
+        if ($null -eq $word) { Output-Json @{ success = $false; error = "WPS Word not running" }; return }
+        $srcPath = Normalize-WinPath ([string]$p.path)
+        $outputPath = Normalize-WinPath ([string]$p.outputPath)
+        if ([string]::IsNullOrEmpty($srcPath)) { Output-Json @{ success = $false; error = "path required（源文档）" }; return }
+        if ([string]::IsNullOrEmpty($outputPath)) { Output-Json @{ success = $false; error = "outputPath required（模板落点）" }; return }
+        if (-not (Test-Path $srcPath)) { Output-Json @{ success = $false; error = "源文档不存在: $srcPath" }; return }
+        if (Test-Path $outputPath) { Output-Json @{ success = $false; error = "[勿重试·先改参数] outputPath 已存在: $outputPath（不静默覆盖）" }; return }
+        $maxSlots = 200
+        if ($p.maxSlots) { try { $maxSlots = [Math]::Min(500, [Math]::Max(1, [int]$p.maxSlots)) } catch {} }
+
+        # 复制源文档为模板底稿（保样式/版式的实现方式：对副本逐段替换正文，样式随段落保留）
+        Copy-Item -LiteralPath $srcPath -Destination $outputPath -Force
+        $doc = $word.Documents.Open($outputPath)
+        if ($null -eq $doc) { Output-Json @{ success = $false; error = "副本打开失败: $outputPath" }; return }
+
+        $anchors = @()
+        $slot = 0
+        $paraCount = 0
+        try { $paraCount = $doc.Paragraphs.Count } catch {}
+        for ($i = 1; $i -le $paraCount -and $slot -lt $maxSlots; $i++) {
+            $para = $null
+            try { $para = $doc.Paragraphs.Item($i) } catch { continue }
+            if ($null -eq $para) { continue }
+            $styleName = ""
+            try { $styleName = [string]$para.Range.Style.NameLocal } catch {}
+            $text = ""
+            try { $text = $para.Range.Text.TrimEnd([char]13, [char]7) } catch {}
+            if ([string]::IsNullOrWhiteSpace($text)) { continue }   # 空段不动
+            $isHeading = $styleName -match '标题|Heading'
+            if ($isHeading) {
+                # 标题结构保留（只记锚点清单，不转占位——层级是模板骨架）
+                $anchors += @{ paragraph = $i; style = $styleName; kind = 'heading'; original = $text.Substring(0, [Math]::Min(40, $text.Length)) }
+                continue
+            }
+            # 正文段 → {{占位}}（Range.Text 赋值保留段落样式）
+            $slot++
+            $key = "text_" + $slot
+            try {
+                $rng = $para.Range
+                $rng.MoveEnd(1, -1) | Out-Null   # 不吃段落标记
+                $rng.Text = "{{$key}}"
+                $anchors += @{ paragraph = $i; style = $styleName; kind = 'placeholder'; anchor = $key; original = $text.Substring(0, [Math]::Min(40, $text.Length)) }
+            } catch {
+                $anchors += @{ paragraph = $i; style = $styleName; kind = 'skipped'; reason = 'replace failed' }
+            }
+        }
+        try { $doc.Save() } catch {}
+        try { $doc.Close($false) } catch {}
+        $placeholderCount = @($anchors | Where-Object { $_.kind -eq 'placeholder' }).Count
+        Output-Json @{ success = $true; data = @{ outputPath = $outputPath; anchors = $anchors; placeholderCount = $placeholderCount; headingCount = @($anchors | Where-Object { $_.kind -eq 'heading' }).Count } }
+    }
+
     default {
         Output-Json @{ success = $false; error = "Unknown action: $Action" }
     }

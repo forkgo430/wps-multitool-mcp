@@ -189,7 +189,8 @@ console.log('\n=== 三层意图：学术五件套（第 3 期任务包扩容 12�
   const pkgs = JSON.parse(fs.readFileSync(path.join(ROOT, 'src', 'server', 'task-packages.json'), 'utf8')).packages;
   const need = ['thesis_skeleton', 'literature_matrix', 'defense_deck', 'journal_format', 'group_meeting_report'];
   const ids = pkgs.map((p) => p.task);
-  check('任务包真相源 17 包且学术五件套在列', need.every((n) => ids.includes(n)) && pkgs.length === 17, 'total=' + pkgs.length);
+  // 模板层大卡 C 段（2026-11-11）追加 resume_fill/weekly_report_template 两配方 → 19 包（计数断言随数据增长更新，学术五件套在列主判据不变）
+  check('任务包真相源 19 包且学术五件套在列', need.every((n) => ids.includes(n)) && pkgs.length === 19, 'total=' + pkgs.length);
   check('学术五件套每包配 not_for 反例 + 触发词 ≥ 4 + 步骤带 note',
     pkgs.filter((p) => need.includes(p.task)).every((p) => Array.isArray(p.not_for) && p.not_for.length >= 1 && p.match.length >= 4 && p.steps.every((s) => s.note)));
   // handler 链路：学术话术走到 task_package 层且回包带反例边界

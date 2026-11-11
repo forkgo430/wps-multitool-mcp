@@ -128,6 +128,9 @@ const DEFAULT_SLOW_ACTIONS = [
   'insertImage',
   'save',
   'saveAs',
+  // ⑥ 模板层（第 5 期模板大卡）：渲染/提取涉及开模板+批量替换+另存——大模板超 30s
+  'renderTemplate',
+  'extractTemplate',
 ];
 
 /** 慢动作清单：环境变量可覆盖（逗号分隔），没设就用默认那张表 */

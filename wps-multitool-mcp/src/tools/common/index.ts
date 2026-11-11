@@ -35,6 +35,9 @@ import { taskrunnerTools } from './taskrunner';
  *
  * 默认只列基础档里【真机验证过】的工具（WPS_TOOL_TIER=full 可关闭），其余靠 search + load 按需拉
  */
+import { templateTools } from './template';
+export { renderTemplateDefinition, renderTemplateHandler, extractTemplateDefinition, extractTemplateHandler } from './template';
+
 export const commonTools: RegisteredTool[] = [
   ...convertTools,
   ...generalTools,
@@ -110,5 +113,8 @@ export {
   setSelectedTextDefinition,
   setSelectedTextHandler,
 } from './general';
+
+// 模板层（第 5 期主线）：数据模板渲染/提取（本卡属地授权例外：仅追加注册）
+commonTools.push(...templateTools);
 
 export default commonTools;

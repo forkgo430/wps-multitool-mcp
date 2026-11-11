@@ -3,7 +3,7 @@
 > 本文件由 `wps-multitool-mcp/scripts/manual/gen-tools-doc.js` 从**运行时注册表**生成，请勿手改。
 > 改完工具跑一次 `node scripts/manual/gen-tools-doc.js`；CI 会重跑并 `git diff --exit-code`，对不上就红。
 
-**285 个工具**（7 内置 + 278 专业/组工具）· 默认列出 40 个 · 注解覆盖 285/285 · 真机验证 270/285
+**287 个工具**（7 内置 + 280 专业/组工具）· 默认列出 40 个 · 注解覆盖 287/287 · 真机验证 270/287
 
 | 标记 | 含义 |
 |---|---|
@@ -21,7 +21,7 @@
 | `wps_search_tools` | 是 | R | live | 在所有工具里搜索（包括未加载组的工具），返回名字 + 所属组 + 是否已列出 + 中文别名 + 验证状态。<br><sub>别名：找工具 / 搜工具 / 有没有什么工具</sub> |
 | `wps_unload_tool_group` | 是 | — | live | 卸载一个工具组，卸载后该组工具不再出现在工具列表里（仍可直接调用，但不推荐）。<br><sub>别名：卸载工具组合 / 工具 / 组合</sub> |
 
-## 通用（22）
+## 通用（23）
 
 | 工具 | 默认档 | 注解 | 验证 | 说明 |
 |---|---|---|---|---|
@@ -46,9 +46,10 @@
 | `wps_common_snapshot_restore` |  | DN | live | 把快照恢复回去。 |
 | `wps_get_cached_data` |  | R | live | 从MCP Server获取缓存的数据，用于跨应用数据传递。<br><sub>别名：取暂存数据 / 读缓存 / 取暂存结果</sub> |
 | `wps_list_cache` |  | R | live | 列出MCP Server中所有缓存的数据键名<br><sub>别名：看缓存列表 / 暂存了哪些 / 列出cache</sub> |
+| `wps_render_template` |  | N | static | 数据模板渲染：打开模板（docx），书签锚点优先 + {{key}} 占位兜底填充，另存 outputPath。缺 key 保… |
 | `wps_run_task` |  | N | static | 执行一个"服务端任务包"：一次调用跑完整个多步骤流程，只返回最终摘要。 |
 
-## Word（68）
+## Word（69）
 
 | 工具 | 默认档 | 注解 | 验证 | 说明 |
 |---|---|---|---|---|
@@ -62,6 +63,7 @@
 | `wps_word_open_document` | 是 | — | live | 打开指定路径的Word文档。<br><sub>别名：打开文档 / 文档</sub> |
 | `wps_word_set_default_font` | 是 | — | live | 设置文档默认字体（改 Normal 样式，正文与后续新建段落都会跟着变）。<br><sub>别名：设置默认字体 / 设定默认字体 / 默认</sub> |
 | `wps_word_switch_document` | 是 | — | live | 切换到指定名称的文档。<br><sub>别名：切换文档 / 文档</sub> |
+| `wps_extract_template` |  | N | static | 模板提取：读现有 Word 文档结构，正文段转 {{占位}}（样式随段落保留），标题层级保序，存为带锚点模板。 |
 | `wps_word_add_caption` |  | N | live | 在当前位置插入题注（自动编号，如"图 1""表 2"）。<br><sub>别名：添加题注 / 新增题注 / 加题注</sub> |
 | `wps_word_add_footnote` |  | N | live | 插入脚注（页脚注释，自动编号）。<br><sub>别名：添加脚注 / 新增脚注 / 加脚注</sub> |
 | `wps_word_add_list` |  | N | live | 在当前位置插入项目符号或编号列表（一次写多条）。<br><sub>别名：添加列出 / 新增列出 / 加列出</sub> |
