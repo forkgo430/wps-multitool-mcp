@@ -3,8 +3,8 @@
  * 源：scripts/wps-com.ps1 的【顶层】switch ($Action) 分支（嵌套 switch 的分支标签不算动作）。
  * 重新生成：node scripts/gen-action-routes.js
  *
- * 统计：common=20  word=77  ppt=113  excel=105  合计 315
- * 口径：可分发动作 315 个（含 __ 内部探针 12 个）→ 面向用户 303 个
+ * 统计：common=20  word=77  ppt=114  excel=106  合计 317
+ * 口径：可分发动作 317 个（含 __ 内部探针 12 个）→ 面向用户 305 个
  */
 
 import type { AppKey } from './action-routes';
@@ -223,6 +223,8 @@ export const ACTION_ROUTES: Record<string, AppKey> = {
   "removeSlideTransition": 'ppt',
   "renameSheet": 'excel',
   "renderTemplate": 'word',
+  "renderTemplatePpt": 'ppt',
+  "renderTemplateXlsx": 'excel',
   "replaceBookmarkContent": 'word',
   "replaceInSheet": 'excel',
   "replacePptImage": 'ppt',

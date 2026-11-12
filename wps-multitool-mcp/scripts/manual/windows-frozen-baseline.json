@@ -7,7 +7,7 @@
   ],
   "files": {
     "src/bridge/index.ts": "e8857b7ac552165dd0d5089857d941cfb3d67ad53613014e20844f058981e42c",
-    "src/bridge/ps-child.ts": "611dc86da1900a215f42291ae275316e316f7a7a3a72c48096de65769f6c94af",
+    "src/bridge/ps-child.ts": "65427876f50e7109f72c4c2d3ba9ee1a0c0f62298c646921c4a28a8b7151c0e7",
     "src/bridge/cancellable.ts": "cca50b741574e6bbaf62f06b00a6f43ec64fe75305b8d7185af944bc5cfe64e2",
     "src/client/ps-daemon.ts": "bcef70d62b96f17eca9cf83ec8e6ca0c204f87e38c21c09d9c1a55b73c8c9b9d",
     "scripts/wps-comd.ps1": "2befecfec2151101f84564567493724f6a6350b9ef35040075ad9f2da07f876b"

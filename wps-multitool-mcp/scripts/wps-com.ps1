@@ -6102,6 +6102,213 @@ switch ($Action) {
         Output-Json @{ success = $true; data = @{ deleted = $(if ($p.name) { $p.name } else { $p.shapeIndex }) } }
     }
 
+    # ==================== 模板三格式补全（第 5 期 · pptx/xlsx 渲染路径）====================
+    # R2/R4 教训全延续：路径归一（Normalize-WinPath）、DisplayAlerts 护栏、outputPath 已存在
+    # 拒绝、缺 key 列全、慢档（ps-child DEFAULT_SLOW_ACTIONS 已补 renderTemplatePpt/Xlsx）。
+    # ppt 无书签等价物——{{key}} 占位单轨；xlsx 走 Range.Replace 标量两参（Find 对象参数在
+    # daemon 会话态不稳定——findInSheet B1 先例），多区域 Areas 枚举同款防线。
+    "renderTemplatePpt" {
+        $ppt = Get-WpsPpt
+        if ($null -eq $ppt) { Output-Json @{ success = $false; error = "WPS PPT not running" }; return }
+        $templatePath = Normalize-WinPath ([string]$p.templatePath)
+        $outputPath = Normalize-WinPath ([string]$p.outputPath)
+        if ([string]::IsNullOrEmpty($templatePath)) { Output-Json @{ success = $false; error = "templatePath required" }; return }
+        if ([string]::IsNullOrEmpty($outputPath)) { Output-Json @{ success = $false; error = "outputPath required" }; return }
+        if (-not (Test-Path $templatePath)) { Output-Json @{ success = $false; error = "模板不存在: $templatePath" }; return }
+        if ($null -eq $p.data -or $p.data -isnot [PSCustomObject]) { Output-Json @{ success = $false; error = "data required（JSON 对象：锚点名 → 值）" }; return }
+        $dataProps = @($p.data.PSObject.Properties)
+        if ($dataProps.Count -eq 0) { Output-Json @{ success = $false; error = "data 为空对象——至少给一个锚点值" }; return }
+        if (Test-Path $outputPath) { Output-Json @{ success = $false; error = "[勿重试·先改参数] outputPath 已存在: $outputPath（不静默覆盖，请换路径或先删除）" }; return }
+
+        # B1 同款防线（模板三格式卡）：pwsh7 daemon STA 上 Close 后再 Open/替换 会话态绑定
+        # 不稳（null/固定集合炸）——渲染核心交 PowerShell 5.1 子进程（附着 ROT PPT 宿主，
+        # 5.1 绑定干净）。探针实测：独立 pwsh7 全绿、daemon 会话态必炸。
+        $f51Params = @{ templatePath = $templatePath; outputPath = $outputPath; data = $p.data; progId = (Get-ProgidForApp 'ppt') } | ConvertTo-Json -Compress -Depth 4
+        # 判定阶段修正（2026-11-12）：JSON 串直过命令行会被 CommandLineToArgvW 折叠 \ 转义与引号
+        # （实测子进程 ConvertFrom-Json 必坏 → data required）——base64 过命令行，ASCII 安全免疫
+        $f51b64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($f51Params))
+        $out51 = & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'wps-render-ppt51.ps1') -Params $f51b64 2>$null
+        $r51 = $null
+        try { $r51 = ($out51 -join "`n") | ConvertFrom-Json } catch {}
+        if ($null -ne $r51 -and $r51.success) {
+            Output-Json @{ success = $true; data = $r51.data }
+            return
+        }
+        $f51err = $(if ($r51 -and $r51.error) { $r51.error } else { '5.1 子进程无有效输出' })
+        Output-Json @{ success = $false; error = "render-ppt51: $f51err" }
+        return
+        # ---- 5.1 失败降级参考（不执行）：daemon STA 上旧路径作为对照记录 ----
+        if ($false) {
+        $pres = $ppt.Presentations.Open($templatePath, $true, $false, $false)   # ReadOnly/WithWindow=false
+        if ($null -eq $pres) {
+            # WPS PPT 空集合 ReadOnly 无窗 Open 返回 null（两态病，与 Presentations.Add null 同款
+            # 家族——实测锚：closePresentation 后集合空时必现）。修法 = 先 Add 空演示撑起集合
+            # 再 Open（一期收口先例）。
+            try { $null = $ppt.Presentations.Add(1) } catch { }
+            $pres = $ppt.Presentations.Open($templatePath, $true, $false, $false)
+        }
+        if ($null -eq $pres) { Output-Json @{ success = $false; error = "模板打开失败: $templatePath" }; return }
+
+        # 递归收集文本形状（组合/嵌套 GroupItems 一层展开，实测模板层级 ≤2；更深如实跳过计数）
+        function Collect-TextShapes([object]$shapes, [object]$acc) {
+            for ($i = 1; $i -le $shapes.Count; $i++) {
+                $sh = $shapes.Item($i)
+                if ([int]$sh.Type -eq 6) {   # msoGroup：递归组合内
+                    try { Collect-TextShapes $sh.GroupItems $acc } catch { $acc.skipped += $i }
+                    continue
+                }
+                $has = $false
+                try { $has = $sh.HasTextFrame -and $sh.TextFrame.HasText } catch {}
+                if ($has) { [void]$acc.shapes.Add($sh) }
+            }
+        }
+        $acc = @{ shapes = (New-Object System.Collections.ArrayList); skipped = 0 }
+        for ($si = 1; $si -le $pres.Slides.Count; $si++) {
+            Collect-TextShapes $pres.Slides.Item($si).Shapes $acc
+        }
+
+        # 先扫全模板文本收集 {{key}} 集合（缺 key 判据）
+        $allText = ""
+        foreach ($sh in $acc.shapes) { try { $allText += [string]$sh.TextFrame.TextRange.Text + [char]10 } catch {} }
+        $phKeys = @()
+        foreach ($m in @([regex]::Matches($allText, '\{\{([A-Za-z0-9_\-]+)\}\}'))) {
+            if ($phKeys -notcontains $m.Groups[1].Value) { $phKeys += $m.Groups[1].Value }
+        }
+
+        # 替换：TextRange.Replace(FindWhat, ReplaceWhat) 标量两参——对象参数在 daemon 会话态不稳（B1 先例）
+        $filled = @()
+        $missing = @()
+        foreach ($prop in $dataProps) {
+            $needle = "{{" + $prop.Name + "}}"
+            if ($phKeys -notcontains $prop.Name) { continue }
+            $replaced = 0
+            foreach ($sh in $acc.shapes) {
+                try {
+                    $t = [string]$sh.TextFrame.TextRange.Text
+                    if ($t.Contains($needle)) {
+                        $null = $sh.TextFrame.TextRange.Replace($needle, [string]$prop.Value)
+                        $replaced++
+                    }
+                } catch { }
+            }
+            if ($replaced -gt 0) { $filled += @{ anchor = $prop.Name; via = 'placeholder'; shapes = $replaced } }
+            else { $missing += $prop.Name }
+        }
+        foreach ($k in $phKeys) {
+            $given = $dataProps | Where-Object { $_.Name -eq $k } | Select-Object -First 1
+            if ($null -eq $given -and -not ($filled | Where-Object { $_.anchor -eq $k })) { $missing += $k }
+        }
+
+        # SaveAs（DisplayAlerts 护栏 + 同名拒绝已前置——渲染产物 SaveAs 直接落）
+        $da0 = $null
+        try { $da0 = $ppt.DisplayAlerts } catch {}
+        try { $ppt.DisplayAlerts = 0 } catch {}
+        try { $pres.SaveAs($outputPath) } finally { try { if ($null -ne $da0) { $ppt.DisplayAlerts = $da0 } } catch {} }
+        $pres.Close()
+        }
+        $verified = $false; $size = 0
+        try { if (Test-Path $outputPath) { $size = (Get-Item $outputPath).Length; $verified = ($size -gt 0) } } catch {}
+        if (-not $verified) {
+            Output-Json @{ success = $false; error = "渲染完成但落盘校验失败（文件不存在或 0 字节）: $outputPath"; data = @{ filled = $filled; missing = $missing } }
+            return
+        }
+        $warns = @()
+        if (@($missing).Count -gt 0) {
+            $warns += @{ step = 'renderTemplatePpt'; message = "以下锚点在模板里存在但 data 未提供值，保留原文未替换：" + (($missing | Select-Object -Unique) -join '、') }
+        }
+        Output-Json @{ success = $true; data = @{ outputPath = $outputPath; size = $size; filled = $filled; skipped = @($missing | Select-Object -Unique); filledCount = @($filled).Count }; warnings = $warns }
+    }
+
+    "renderTemplateXlsx" {
+        $excel = Get-WpsExcel
+        if ($null -eq $excel) { Output-Json @{ success = $false; error = "WPS Excel not running" }; return }
+        $templatePath = Normalize-WinPath ([string]$p.templatePath)
+        $outputPath = Normalize-WinPath ([string]$p.outputPath)
+        if ([string]::IsNullOrEmpty($templatePath)) { Output-Json @{ success = $false; error = "templatePath required" }; return }
+        if ([string]::IsNullOrEmpty($outputPath)) { Output-Json @{ success = $false; error = "outputPath required" }; return }
+        if (-not (Test-Path $templatePath)) { Output-Json @{ success = $false; error = "模板不存在: $templatePath" }; return }
+        if ($null -eq $p.data -or $p.data -isnot [PSCustomObject]) { Output-Json @{ success = $false; error = "data required（JSON 对象：锚点名 → 值）" }; return }
+        $dataProps = @($p.data.PSObject.Properties)
+        if ($dataProps.Count -eq 0) { Output-Json @{ success = $false; error = "data 为空对象——至少给一个锚点值" }; return }
+        if (Test-Path $outputPath) { Output-Json @{ success = $false; error = "[勿重试·先改参数] outputPath 已存在: $outputPath（不静默覆盖，请换路径或先删除）" }; return }
+
+        $wb = $excel.Workbooks.Open($templatePath, $null, $true)   # ReadOnly 打开模板
+        if ($null -eq $wb) { Output-Json @{ success = $false; error = "模板打开失败: $templatePath" }; return }
+
+        # 先收集 {{key}} 集合（UsedRange.Value2 多区域枚举 + GetValue——B1 findInSheet 同款防线）
+        $phKeys = @()
+        foreach ($ws in @($wb.Worksheets)) {
+            try {
+                $scope = $ws.UsedRange
+                $raw = $scope.Value2
+                if ($null -eq $raw) { continue }
+                $rows = [int]$scope.Rows.Count; $cols = [int]$scope.Columns.Count
+                if ($raw -is [object[,]]) {
+                    $lb0 = $raw.GetLowerBound(0); $lb1 = $raw.GetLowerBound(1)
+                    for ($r = 1; $r -le $rows; $r++) { for ($c = 1; $c -le $cols; $c++) {
+                        $cell = $raw.GetValue($lb0 + $r - 1, $lb1 + $c - 1)
+                        if ($null -eq $cell) { continue }
+                        $t = [string]$cell
+                        foreach ($m in @([regex]::Matches($t, '\{\{([A-Za-z0-9_\-]+)\}\}'))) {
+                            if ($phKeys -notcontains $m.Groups[1].Value) { $phKeys += $m.Groups[1].Value }
+                        }
+                    } }
+                } elseif ($raw -is [array]) {
+                    foreach ($v in $raw) { if ($null -eq $v) { continue }; $t = [string]$v
+                        foreach ($m in @([regex]::Matches($t, '\{\{([A-Za-z0-9_\-]+)\}\}'))) {
+                            if ($phKeys -notcontains $m.Groups[1].Value) { $phKeys += $m.Groups[1].Value }
+                        } }
+                } else {
+                    $t = [string]$raw
+                    foreach ($m in @([regex]::Matches($t, '\{\{([A-Za-z0-9_\-]+)\}\}'))) {
+                        if ($phKeys -notcontains $m.Groups[1].Value) { $phKeys += $m.Groups[1].Value }
+                    }
+                }
+            } catch { }
+        }
+
+        # 替换：Range.Replace(What, Replacement) 标量两参（Find/FindNext 对象参数会话态不稳——B1 先例）
+        $filled = @()
+        $missing = @()
+        $da0 = $null
+        try { $da0 = $excel.DisplayAlerts } catch {}
+        try { $excel.DisplayAlerts = $false } catch {}
+        foreach ($prop in $dataProps) {
+            $needle = "{{" + $prop.Name + "}}"
+            if ($phKeys -notcontains $prop.Name) { continue }
+            $replacedAny = $false
+            foreach ($ws in @($wb.Worksheets)) {
+                try {
+                    $scope = $ws.UsedRange
+                    $null = $scope.Replace($needle, [string]$prop.Value)
+                    $replacedAny = $true
+                } catch { } # 单表失败不拦（空表 UsedRange Replace 会炸——如实跳过）
+            }
+            if ($replacedAny) { $filled += @{ anchor = $prop.Name; via = 'placeholder' } }
+            else { $missing += $prop.Name }
+        }
+        try { if ($null -ne $da0) { $excel.DisplayAlerts = $da0 } } catch {}
+
+        # SaveAs（同名拒绝已前置；ReadOnly 打开的模板不会写坏源文件）
+        try { $wb.SaveAs($outputPath) } catch {
+            Output-Json @{ success = $false; error = "SaveAs 失败: $(Get-CallError $_)"; data = @{ filled = $filled; missing = $missing } }
+            try { $wb.Close($false) } catch {}
+            return
+        }
+        try { $wb.Close($false) } catch {}
+        $verified = $false; $size = 0
+        try { if (Test-Path $outputPath) { $size = (Get-Item $outputPath).Length; $verified = ($size -gt 0) } } catch {}
+        if (-not $verified) {
+            Output-Json @{ success = $false; error = "渲染完成但落盘校验失败: $outputPath"; data = @{ filled = $filled; missing = $missing } }
+            return
+        }
+        $warns = @()
+        if (@($missing).Count -gt 0) {
+            $warns += @{ step = 'renderTemplateXlsx'; message = "以下锚点在模板里存在但 data 未提供值，保留原文未替换：" + (($missing | Select-Object -Unique) -join '、') }
+        }
+        Output-Json @{ success = $true; data = @{ outputPath = $outputPath; size = $size; filled = $filled; skipped = @($missing | Select-Object -Unique); filledCount = @($filled).Count }; warnings = $warns }
+    }
+
     "getTextBoxes" {
         $ppt = Get-WpsPpt
         if ($null -eq $ppt) { Output-Json @{ success = $false; error = "WPS PPT not running" }; return }

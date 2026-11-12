@@ -26,6 +26,7 @@ export const renderTemplateDefinition: ToolDefinition = {
       templatePath: { type: 'string', description: '模板文件路径（docx）' },
       data: { type: 'object', description: '锚点名 → 值（JSON 对象）' },
       outputPath: { type: 'string', description: '渲染产物路径（已存在则拒绝）' },
+      format: { type: 'string', enum: ['auto', 'docx', 'pptx', 'xlsx'], description: '模板格式，auto 缺省按扩展名分发（docx/pptx/xlsx 三路）' },
     },
     required: ['templatePath', 'data', 'outputPath'],
   },
@@ -34,10 +35,11 @@ export const renderTemplateDefinition: ToolDefinition = {
 export const renderTemplateHandler: ToolHandler = async (
   args: Record<string, unknown>
 ): Promise<ToolCallResult> => {
-  const { templatePath, data, outputPath } = args as {
+  const { templatePath, data, outputPath, format = 'auto' } = args as {
     templatePath?: string;
     data?: Record<string, unknown>;
     outputPath?: string;
+    format?: 'auto' | 'docx' | 'pptx' | 'xlsx';
   };
   if (!templatePath) return fail(errText('templatePath 必填', { error: 'templatePath required' }));
   if (!outputPath) return fail(errText('outputPath 必填', { error: 'outputPath required' }));
@@ -48,6 +50,32 @@ export const renderTemplateHandler: ToolHandler = async (
     return fail(errText('data 为空对象——至少给一个锚点值', { error: 'data empty' }));
   }
   // R2 教训防复发：Windows host 路径入口归一（/ → \）
+  // format 分发（提质三格式卡）：auto 缺省按扩展名（docx/pptx/xlsx 三路）；docx 路径行为不变
+  const ext = (templatePath.split('.').pop() || '').toLowerCase();
+  const fmt = format === 'auto' ? (ext === 'pptx' ? 'pptx' : ext === 'xlsx' ? 'xlsx' : 'docx') : format;
+  if (fmt === 'pptx' || fmt === 'xlsx') {
+    const action = fmt === 'pptx' ? 'renderTemplatePpt' : 'renderTemplateXlsx';
+    const pptApp = fmt === 'pptx' ? 'ppt' : 'excel';
+    const r = await wpsClient.executeMethod<{
+      outputPath: string;
+      size: number;
+      filled: Array<{ anchor: string; via: string }>;
+      skipped: string[];
+      filledCount: number;
+    }>(action, {
+      templatePath: normalizeWinPath(templatePath),
+      outputPath: normalizeWinPath(outputPath),
+      data,
+    }, pptApp as never);
+    if (!r.success || !r.data) return fail(errText('模板渲染失败', r), r.error);
+    const pd = r.data;
+    const plines = [
+      `模板渲染完成（${fmt}）：${pd.outputPath}（${pd.size}B）`,
+      `填充 ${pd.filledCount} 个锚点`,
+      pd.skipped && pd.skipped.length ? `未替换锚点（data 缺值，保留原文）：${pd.skipped.join('、')}` : '锚点全部填充',
+    ];
+    return ok(plines.join('\n'), r.warnings);
+  }
   const r = await wpsClient.executeMethod<{
     outputPath: string;
     size: number;

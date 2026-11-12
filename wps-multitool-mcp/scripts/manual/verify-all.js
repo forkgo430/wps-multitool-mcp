@@ -65,6 +65,7 @@ const FAST = [
   ['starter-assets-verify.js', '模板层大卡 D：starter 三件在仓+files 字段+OOXML 锚点预置解包验证'],
   ['template-gate-verify.js', '模板层 gate：R 类教训防复发（归一/慢档/空文本/text 主载体/schema 短描述）+ 双宿主台账标记'],
   ['dual-host-verify.js', '模板层大卡：双宿主真机渲染/提取产物在案 + 台账双宿主证据（live PASS 固化锚）'],
+  ['render-ppt-xlsx-verify.js', '模板三格式补全卡：ppt 组合递归/Replace 两参/xlsx Areas 枚举/缺 key 列全/导图像素'],
   ['word-target-verify.js', 'word target 参数链路（mock COM）'],
   ['tool-groups-test.js', '工具组加载'],
   ['intent-test.js', '意图识别词表'],
