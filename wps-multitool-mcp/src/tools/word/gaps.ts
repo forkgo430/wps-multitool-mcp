@@ -1,36 +1,12 @@
 /**
  * Input: Word 深水区工具的参数（统计/批注/书签/表格读取、建关文档、超链接、表转文本）
  * Output: 各自的查询或修改结果
- * Pos: 第 5 期补齐的 Word 缺口。一旦我被修改，请更新我的头部注释，以及所属目录的md。
- *
- * 这一批补的是什么
- * ----------------
- * 对着同类 WPS 自动化工具的公开能力清单逐项比对后挑出来的**真缺口**：
- * 同类 61 / 本仓 58，数量不差，差在"深水区"三批 ——
- *
- *   一、读侧太弱（模型只能盲写）。现只能插批注/建书签/插表格，
- *       读不了删不掉："文档里有几个表、表里有什么"答不上，
- *        skill 里"先读后写"的原则没有工具支撑。→ get_document_stats /
- *        get_comments / get_bookmarks / get_tables / get_table_data
- *   二、建不了新文档。PS 动作 createDocument 早就有（还修过"零等待返回空壳"的
- *       病史），但一直没有 TS 工具暴露 —— Word 建不了新文档，而 Excel 有
- *        create_workbook。→ create_document / close_document
+ * Pos: Word 缺口补齐工具。一旦我被修改，请更新我的头部注释，以及所属目录的md。
  *   三、批注管理无闭环、超链接完全没有。→ delete_comment / insert_hyperlink
  *        外加 convert_table_to_text（表格贴去别处前的常规动作）。
- *
- * 刻意不补的（对方有我也不做）：
- *   get_revisions / accept / reject —— wps_word_revisions 的 mode
  *   （list/acceptAll/rejectAll/acceptOne/rejectOne）已全覆盖，拆三个只增加模型选择负担；
- *   mail_merge / content_control —— WPS 12.1 支持度存疑或场景边缘。
- *
- * close_document 的"未保存怎么办"（设计答案，不是实现细节）
- * ------------------------------------------------------
  * COM 是 STA：关闭未保存文档会弹「另存为」模态框，弹框就把桥通道卡死。
- * PS 侧对此有确定性守卫 —— 文档从未保存过时直接报错，让调用方先 save_as，
  * 或显式 save=false。工具描述里必须把这条说给模型听。
- *
- * 真机支持度：新 PS 动作逐个探过（__probeWordCaps，在临时文档上探、探完删），
- * 见 scripts/manual/word-caps-probe.js。
  */
 
 import { v4 as uuidv4 } from 'uuid';

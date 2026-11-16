@@ -2,14 +2,6 @@
  * Input: PPT 幻灯片操作参数
  * Output: 幻灯片操作结果
  * Pos: PPT 幻灯片工具实现。一旦我被修改，请更新我的头部注释，以及所属文件夹的md。
- * PPT幻灯片Tools - 幻灯片管理模块
- * 处理幻灯片的添加、美化、字体统一等操作
- *
- * 包含：
- * - wps_ppt_add_slide: 添加新幻灯片
- * - wps_ppt_beautify: 美化幻灯片（核心功能）
- * - wps_ppt_unify_font: 统一字体
- * - wps_ppt_set_font_color: 设置文字颜色
  * - wps_ppt_align_objects: 已转别名指向 align_shapes（2026-11-04 大项②裁决砍值）
  */
 
@@ -22,10 +14,6 @@ import {
 } from '../../types/tools';
 import { call, ok, fail, errText } from './helpers';
 
-/**
- * 添加新幻灯片
- * 可以指定布局、位置、标题和内容
- */
 export const addSlideDefinition: ToolDefinition = {
   name: 'wps_ppt_add_slide',
   description: `添加新幻灯片到演示文稿。
@@ -96,10 +84,6 @@ export const addSlideHandler: ToolHandler = async (
   );
 };
 
-/**
- * 美化幻灯片
- * 一键优化排版、配色、字体和间距
- */
 export const beautifyDefinition: ToolDefinition = {
   name: 'wps_ppt_beautify',
   description: `美化幻灯片（合并轮后是美化族的唯一入口；op 三分支，覆盖原 beautify / auto_beautify_slide / beautify_all_slides 三工具）。
@@ -283,10 +267,6 @@ export const beautifyHandler: ToolHandler = async (
   return ok(output, r.warnings);
 };
 
-/**
- * 统一字体
- * 整个演示文稿的字体统一是PPT美观的基础
- */
 export const unifyFontDefinition: ToolDefinition = {
   name: 'wps_ppt_unify_font',
   description: `统一演示文稿中所有幻灯片的字体。
@@ -356,10 +336,6 @@ export const unifyFontHandler: ToolHandler = async (
   );
 };
 
-/**
- * 设置文字颜色
- * 修改幻灯片中指定形状的文字颜色
- */
 export const setFontColorDefinition: ToolDefinition = {
   name: 'wps_ppt_set_font_color',
   description: `设置幻灯片中指定形状的文字颜色。
@@ -399,7 +375,7 @@ export const setFontColorHandler: ToolHandler = async (
   };
 
   const r = await call(
-    // 第 1 期第 2 章第 2 轮：这句原为「仅Windows支持」，是假注释 —— 该动作曾长期不存在于 ps1。第 6 轮已补 case，现在 Windows 上真能用。
+    // 早期 ps1 缺 case 时曾误标「仅Windows支持」；现已真实可用。
     'setFontColor',
     { slideIndex, shapeIndex, color }
   );
@@ -415,9 +391,6 @@ export const setFontColorHandler: ToolHandler = async (
 // ps1 alignShapes 的 alignMap 只有 6 个对齐值，未知值兜底成左对齐（真机：success 但坐标零变化）。
 // 转别名后老调用传 distribute_h/v 会拿到清晰的 enum 校验错误；分布需求用 wps_ppt_distribute_shapes。
 
-/**
- * 导出所有幻灯片相关的Tools
- */
 export const slideTools: RegisteredTool[] = [
   { definition: addSlideDefinition, handler: addSlideHandler },
   { definition: beautifyDefinition, handler: beautifyHandler },

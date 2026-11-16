@@ -15,9 +15,6 @@ import {
 import { wpsClient } from '../../client/wps-client';
 import { WpsAppType } from '../../types/wps';
 
-/**
- * 自动筛选
- */
 export const autoFilterDefinition: ToolDefinition = {
   name: 'wps_excel_auto_filter',
   description: '对Excel指定范围应用自动筛选。',
@@ -140,9 +137,6 @@ export const pasteRangeHandler: ToolHandler = async (
   }
 };
 
-/**
- * 填充序列
- */
 export const fillSeriesDefinition: ToolDefinition = {
   name: 'wps_excel_fill_series',
   description: '自动填充序列数据。',
@@ -182,9 +176,6 @@ export const fillSeriesHandler: ToolHandler = async (
   }
 };
 
-/**
- * 转置数据
- */
 export const transposeDefinition: ToolDefinition = {
   name: 'wps_excel_transpose',
   description: '转置数据（行列互换）。',
@@ -222,9 +213,6 @@ export const transposeHandler: ToolHandler = async (
   }
 };
 
-/**
- * 分列
- */
 export const textToColumnsDefinition: ToolDefinition = {
   name: 'wps_excel_text_to_columns',
   description: '将文本按分隔符拆分到多列。',
@@ -262,9 +250,6 @@ export const textToColumnsHandler: ToolHandler = async (
   }
 };
 
-/**
- * 分类汇总
- */
 export const subtotalDefinition: ToolDefinition = {
   name: 'wps_excel_subtotal',
   description: '创建分类汇总。',
@@ -308,9 +293,6 @@ export const subtotalHandler: ToolHandler = async (
   }
 };
 
-/**
- * 导出所有高级数据处理相关的Tools
- */
 export const dataAdvancedTools: RegisteredTool[] = [
   { definition: autoFilterDefinition, handler: autoFilterHandler },
   { definition: copyRangeDefinition, handler: copyRangeHandler },

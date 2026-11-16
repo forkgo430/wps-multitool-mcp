@@ -2,8 +2,6 @@
  * Input: Tool 定义与调用请求
  * Output: Tool 执行结果
  * Pos: MCP Tool 注册与调度中心。一旦我被修改，请更新我的头部注释，以及所属文件夹的md。
- * Tool注册管理 - Tool 管理系统
- * 所有Tool都得在这儿注册，不注册的Tool就是野鸡Tool
  * 这个设计遵循OCP原则：扩展开放，修改关闭
  */
 
@@ -457,7 +455,7 @@ export class ToolRegistry {
     //   - live 的比 static 的更可信
     // 原来只按 name 字母序，于是 static、未列入的工具会和 listed+live 的混排，
     // 模型看到的前几条反而是不该首选的那批。
-    // 口径复用现成判定：isListed() 与 isLiveVerified()，不另写一套。
+    // 口径复用现成函数：isListed() 与 isLiveVerified()，不另写一套。
     return out
       .sort(
         (a, b) =>
@@ -609,13 +607,13 @@ export class ToolRegistry {
         const app = appOfToolName(name);
         const preWarnings = writeClassified ? await collabGuardCheckBefore(app) : [];
         const res = await withAutoSnapshot(name, () => tool.handler(callArgs));
-        // 意图自适应回流（体验修复轮 A）：若本会话刚有未命中的 route_intent，
+        // 意图自适应回流：若本会话刚有未命中的 route_intent，
         // 把这次实际调用的工具名与那句未命中话术配对（一次配对即清，无未命中则零开销）
         noteToolUse(name);
         if (writeClassified) await collabGuardNoteAfter(app);
         if (preWarnings.length) {
           res.warnings = [
-            // 协作提醒是 info 级（体验修复轮 B）：不影响本次操作结果，不该挂"部分成功"头
+            // 协作提醒是 info 级：不影响本次操作结果，不该挂"部分成功"头
             ...preWarnings.map((message) => ({ step: '协作检测', message, severity: 'info' as const })),
             ...(res.warnings ?? []),
           ];
@@ -733,10 +731,6 @@ export class ToolRegistry {
 // 导出单例
 export const toolRegistry = ToolRegistry.getInstance();
 
-/**
- * 装饰器：注册Tool
- * 用法：@RegisterTool(definition)
- */
 export function RegisterTool(definition: ToolDefinition) {
   return function (
     _target: unknown,

@@ -2,16 +2,8 @@
  * Input: 本机已存在的 MCP 客户端配置目录 + 当前安装路径
  * Output: 把 wps-multitool-mcp 的启动项写进各客户端配置（写前备份、写后回读校验）
  * Pos: `wps-multitool-mcp install` 子命令。一旦我被修改，请更新我的头部注释，以及所属目录的md。
- *
- * 为什么要有它
- * ------------
  * README 原来教用户手抄一段 JSON，还要自己解释"路径里出现两次 wps-multitool-mcp 是正常的"——
- * 需要解释的设计就是坏设计。这里让程序自己找到 dist/index.js 并写对。
- *
  * 三条安全约束（写别人的配置文件，最怕的是把人家的配置弄坏）
- * ------------------------------------------------------
- *   1) 只写【已存在的客户端目录】。目录都不存在还硬建一个，等于在用户机器上乱拉屎；
- *      认不出的就打印片段，让人自己粘。
  *   2) 写前备份 <file>.bak-<时间戳>，写后回读校验；校验失败立刻用备份还原。
  *   3) 合并而不是覆盖：mcpServers 里别人的服务一个都不能少（这是最容易出事故的地方）。
  */
@@ -69,7 +61,7 @@ export function detectClients(): ClientTarget[] {
     { id: 'claude-settings', label: 'Claude Code (settings)', kind: 'json', file: path.join(h, '.claude', 'settings.json') },
     { id: 'cursor', label: 'Cursor', kind: 'json', file: path.join(h, '.cursor', 'mcp.json') },
   ];
-  // 判定"这个客户端装过没有"：配置文件在，或者它专属的目录在。
+  // 判断"这个客户端装过没有"：配置文件在，或者它专属的目录在。
   // 注意不能只看 dirname —— ~/.claude.json 的 dirname 就是用户主目录，永远存在，
   // 那样会给每个机器都建一个 .claude.json（典型的"以为在帮忙"）。
   const present = (file: string) => {

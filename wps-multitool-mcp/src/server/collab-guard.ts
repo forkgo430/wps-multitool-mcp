@@ -4,26 +4,13 @@
  * Output: warnings 字符串数组（空 = 没有协作提醒；只提醒、不阻断）
  * Pos: 用户与 AI 协作同一份文档时的安全网（2026-10-29 所有者批准的三件协作增强之一，
  *      决策者亲自实现）。原理：记住每份文档"上次 AI 操作后"的指纹
- *      （getActiveDocumentState 新增的 editProbe 字段，ps1 三型各一种廉价探针），
  *      下一个写入类工具执行前重新探测——指纹变了 = 期间有人工编辑，
  *      往 warnings 写一条提醒（不阻断写入）。
- *
- * 两条铁的教训写进了实现：
  *   1. 探测失败必须静默降级——CI 的 Linux 没有 WPS，快照 getActiveState 在那里
- *      抛过一次异常把 CI 炸红（2026-10-28）；这里任何异常都吞掉，绝不外抛。
  *   2. 写入完成后必须再探测一次存档——否则 AI 自己的修改会被下一次检查
- *      误报成"人工编辑"。误报比没有更毁信任。
- *
- * 第三条教训（体验修复轮 B，2026-11-03）：存档键必须是【文档级】而不是应用级——
- *   原来键是 app、指纹却是"活动文档"的：save_as 另存/切换文档后，新文档的指纹
- *   对比旧文档的存档 → 必然不等 → 必误报"人工编辑"（所有者 140 次实测踩中）。
- *   修法（决策者预备报告预裁）：键改 app+文档身份；换了文档 = 没有"上次"可比，
+ * 第三条教训：存档键必须是【文档级】而不是应用级——
  *   静默重建档不提醒；提醒文案带上/本两侧指纹，误报可自查。
- *
- * 指纹口径（诚实声明，都有漏报，这是提醒不是保证）：
  *   word = 正文流末位（插入/删除会动，纯排版不动）
- *   excel = UsedRange 地址+行列数（结构性增删会动，改单元格值不动）
- *   ppt = 页数（增删页会动，改页内文字不动）
  */
 import { wpsClient } from '../client/wps-client';
 
@@ -51,7 +38,7 @@ export function appOfToolName(name: string): string {
 }
 
 /** 存档键：应用 + 文档身份（fullName 优先，其次 name；都拿不到退回 app——老行为兜底）。
- *  键必须是文档级：同应用开多份文档时，各存各的指纹互不误伤（体验修复轮 B）。 */
+ *  键必须是文档级：同应用开多份文档时，各存各的指纹互不误伤。 */
 function probeKey(app: string, fullName?: string, name?: string): string {
   const doc = fullName || name;
   return doc ? `${app}|${doc}` : app;
@@ -81,7 +68,7 @@ async function probeNow(app: string): Promise<{ probe: string | null; name: stri
 /**
  * 写入类工具执行前调：与【本文档】上次存档的指纹比对，变了就给协作提醒。
  * 没有存档（本会话第一次动这份文档，或刚从别的文档切过来）→ 静默重建档、
- * 不提醒——没有"上次"可比（体验修复轮 B：这正是 save_as 误报的修复点）。
+ * 不提醒——没有"上次"可比（这正是 save_as 误报的修复点）。
  */
 export async function collabGuardCheckBefore(app: string): Promise<string[]> {
   const warnings: string[] = [];

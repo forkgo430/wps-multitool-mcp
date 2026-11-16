@@ -1,21 +1,15 @@
 /**
- * Input: DocSpec（文档质量声明，自有 schema——字段名刻意不与外部引擎同源，deckkit 先例）
+ * Input: DocSpec（文档质量声明，自有 schema——字段名刻意不与外部引擎同源）
  * Output: wps_word_build_document 工具：纯函数展开成既有 word 工具调用序列（callTool 真入口）+
  *         生成后校验（页数/段落/空段三路）——deckkit 同构（L1 优秀档，INTENT-DESIGN §4.3）
  * Pos: M2 wordkit 文档质量引擎（主线一 B 段 2026-11-06）。一旦我被修改，请更新我的头部注释，以及所属目录的md。
- *
- * 架构（INTENT-DESIGN §4.3-L1）：布局与纪律计算全部在 TS 层（可 mock、可门禁）；
  *   展开成的是既有 word 工具（add_heading/insert_text/insert_table/insert_image/add_list/
  *   insert_page_break），逐动作经 toolRegistry.callTool 走真入口——每个子动作各自的
  *   快照/协作/注解护栏生效。ps1 零改动。
- *
  * 密度纪律（WORDKIT_TYPO，自创数值，须真机复核）：正文字号下限、每 doc 段落上限——
  *   超出直接拒绝（不静默截断），与 DECK_TYPO 同范式。
- *
  * 生成后校验（deckkit 溢出检查范式）：展开执行完回读 get_document_stats + get_paragraphs——
  *   ①段落数回读（与展开步数对账）②空段落检出 ③校验通道不可用 → 降级记一条不失败。
- *
- * 数据契约：quote = 引文段落（「」包裹，视觉引用块；不走 Word Quote 样式——样式名跨版式不稳）。
  */
 import { v4 as uuidv4 } from 'uuid';
 import { ToolDefinition, ToolHandler, ToolCategory, RegisteredTool } from '../../types/tools';

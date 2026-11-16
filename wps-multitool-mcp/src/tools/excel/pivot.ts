@@ -2,14 +2,6 @@
  * Input: 透视表工具参数
  * Output: 透视表创建/更新结果
  * Pos: Excel 透视表工具实现。一旦我被修改，请更新我的头部注释，以及所属文件夹的md。
- * Excel透视表Tools - 数据分析模块
- * 透视表是数据汇总和分析的核心功能
- *
- * 包含：
- * - wps_excel_create_pivot_table: 创建透视表
- * - wps_excel_update_pivot_table: 更新透视表配置
- *
- * @date 2026-01-24
  */
 
 import { v4 as uuidv4 } from 'uuid';
@@ -63,10 +55,6 @@ interface PivotTableConfig {
   destinationSheet?: string;
 }
 
-/**
- * 创建透视表的Tool定义
- * 这个工具是数据分析的核心入口，用户说"帮我做个数据汇总"就靠它了
- */
 export const createPivotTableDefinition: ToolDefinition = {
   name: 'wps_excel_create_pivot_table',
   description: `创建Excel透视表，用于数据汇总和分析。
@@ -145,9 +133,6 @@ export const createPivotTableDefinition: ToolDefinition = {
   },
 };
 
-/**
- * 创建透视表的Handler
- */
 export const createPivotTableHandler: ToolHandler = async (
   args: Record<string, unknown>
 ): Promise<ToolCallResult> => {
@@ -278,10 +263,6 @@ export const createPivotTableHandler: ToolHandler = async (
   }
 };
 
-/**
- * 更新透视表配置的Tool定义
- * 透视表创建之后经常需要调整，这个工具负责更新配置
- */
 export const updatePivotTableDefinition: ToolDefinition = {
   name: 'wps_excel_update_pivot_table',
   description: `更新已有透视表的配置，包括添加/移除字段、修改聚合方式等。
@@ -386,9 +367,6 @@ export const updatePivotTableDefinition: ToolDefinition = {
   },
 };
 
-/**
- * 更新透视表配置的Handler
- */
 export const updatePivotTableHandler: ToolHandler = async (
   args: Record<string, unknown>
 ): Promise<ToolCallResult> => {
@@ -553,10 +531,6 @@ export const updatePivotTableHandler: ToolHandler = async (
   }
 };
 
-/**
- * 导出所有透视表相关的Tools
- * 整整齐齐，方便注册
- */
 export const pivotTools: RegisteredTool[] = [
   { definition: createPivotTableDefinition, handler: createPivotTableHandler },
   { definition: updatePivotTableDefinition, handler: updatePivotTableHandler },

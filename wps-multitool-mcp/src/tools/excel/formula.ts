@@ -2,12 +2,6 @@
  * Input: 公式类工具参数
  * Output: 公式计算与诊断结果
  * Pos: Excel 公式工具实现。一旦我被修改，请更新我的头部注释，以及所属文件夹的md。
- * Excel公式相关Tools - 公式管理模块
- * 解决用户"公式不会写"痛点的核心工具集
- *
- * 包含：
- * - wps_excel_set_formula: 设置公式到指定单元格
- * - wps_excel_generate_formula: 根据自然语言生成公式（核心功能）
  * - wps_excel_diagnose_formula: 诊断公式错误，分析原因并提供修复建议
  */
 
@@ -106,10 +100,6 @@ export const setFormulaHandler: ToolHandler = async (
   }
 };
 
-/**
- * 根据自然语言生成Excel公式
- * 核心功能：获取工作表上下文，辅助AI理解表结构后生成公式
- */
 export const generateFormulaDefinition: ToolDefinition = {
   name: 'wps_excel_generate_formula',
   description: `根据自然语言描述生成Excel公式。这是解决用户"公式不会写"痛点的核心工具。
@@ -352,7 +342,7 @@ export const evaluateFormulaHandler = async (args: Record<string, unknown>) => {
   }
 
   const response = await wpsClient.executeMethod<{ formula: string; result: unknown }>(
-    // 第 1 期第 2 章第 2 轮：动作名没变（evaluateFormula），但 ps1 里原先【没有这个 case】，
+    // 动作名没变（evaluateFormula），但 ps1 里原先【没有这个 case】，
     // 一直是 Unknown action。本轮补了 case（Application.Evaluate，**只算不写**）。
     // 原来那句 "// NOTE: 仅Windows支持" 是假的：Windows 上也不支持，压根没这个 case。
     'evaluateFormula',

@@ -2,17 +2,9 @@
  * Input: PPT 高级美化操作参数
  * Output: 高级美化操作结果
  * Pos: PPT 高级美化工具实现。一旦我被修改，请更新我的头部注释，以及所属文件夹的md。
- * PPT高级美化Tools - 高级美化模块
- * 处理配色方案、自动美化、KPI卡片、装饰元素等高级美化操作
- *
  * 包含（5 个；set_background_gradient 已并入 set_background 第 5 轮；auto_beautify_slide/beautify_all_slides 已于 2026-11-04 op-merge 进 wps_ppt_beautify 并转别名）：
- * - wps_ppt_apply_color_scheme: 应用配色方案
  * - wps_ppt_auto_beautify_slide: 已转别名指向 beautify（op:'auto'，2026-11-04 大项③）
  * - wps_ppt_beautify_all_slides: 已转别名指向 beautify（op:'style'，2026-11-04 大项③）
- * - wps_ppt_create_kpi_cards: 创建KPI指标卡片
- * - wps_ppt_create_styled_table: 创建带样式的表格
- * - wps_ppt_add_title_decoration: 添加标题装饰元素
- * - wps_ppt_add_page_indicator: 添加页码指示器
  */
 
 import {
@@ -24,10 +16,6 @@ import {
 } from '../../types/tools';
 import { call, ok, fail, errText } from './helpers';
 
-/**
- * 应用配色方案
- * 为幻灯片或全文档应用统一配色方案
- */
 export const applyColorSchemeDefinition: ToolDefinition = {
   name: 'wps_ppt_apply_color_scheme',
   description: `为幻灯片应用统一配色方案。
@@ -95,10 +83,6 @@ export const applyColorSchemeHandler: ToolHandler = async (
 // op 三分支里逐字保留（含 operations 数组兜底与风格名映射），mock 断言在 deckkit-test? 不，
 // 在 slide.ts 侧由 alias-verify 与旧调用逐项一致判据覆盖。
 
-/**
- * 创建KPI指标卡片
- * 在幻灯片上生成数据指标卡片，适合展示关键业绩数据
- */
 export const createKpiCardsDefinition: ToolDefinition = {
   name: 'wps_ppt_create_kpi_cards',
   description: `在幻灯片上创建KPI指标卡片。
@@ -170,10 +154,6 @@ export const createKpiCardsHandler: ToolHandler = async (
   return ok(output, r.warnings);
 };
 
-/**
- * 创建带样式的表格
- * 插入预设样式的精美表格
- */
 export const createStyledTableDefinition: ToolDefinition = {
   name: 'wps_ppt_create_styled_table',
   description: `在幻灯片中创建带预设样式的精美表格。
@@ -247,10 +227,6 @@ export const createStyledTableHandler: ToolHandler = async (
   );
 };
 
-/**
- * 添加标题装饰元素
- * 为幻灯片标题添加装饰性元素（下划线、色块、图标等）
- */
 export const addTitleDecorationDefinition: ToolDefinition = {
   name: 'wps_ppt_add_title_decoration',
   description: `为幻灯片标题添加装饰性元素。
@@ -307,10 +283,6 @@ export const addTitleDecorationHandler: ToolHandler = async (
   );
 };
 
-/**
- * 添加页码指示器
- * 在幻灯片上添加页码/进度指示器
- */
 export const addPageIndicatorDefinition: ToolDefinition = {
   name: 'wps_ppt_add_page_indicator',
   description: `为演示文稿添加页码指示器。
@@ -363,9 +335,6 @@ export const addPageIndicatorHandler: ToolHandler = async (
 // （target:'slide'|'all'|'master' + type:'gradient' + gradient{colors}）。
 // 旧名留作别名：它的参数 {slideIndex, gradient} 能被新工具无损接受。
 
-/**
- * 导出所有高级美化相关的Tools
- */
 export const beautifyAdvancedTools: RegisteredTool[] = [
   { definition: applyColorSchemeDefinition, handler: applyColorSchemeHandler },
   { definition: createKpiCardsDefinition, handler: createKpiCardsHandler },

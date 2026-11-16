@@ -2,13 +2,9 @@
  * Input: slideIndex + shapes[]（批量 upsert 形状：带 shapeIndex/name 即改，不带即建）
  * Output: 逐项结果数组 + 聚合 warnings——一次 ps1 往返完成 N 项（单职责原语，非 batch 多步执行器）
  * Pos: ⑤ 批量形状原语（主线一 A 段 2026-11-06；接口草案 experience-prep §三）。
- *      一旦我被修改，请更新我的头部注释，以及所属目录的md。
- *
  * 为什么单开一个 ps1 case 而不走 wps_common_batch：batch 是通用多步执行器、上限 3 步
  * （COM STA 串行、占通道易撞人工操作）；本原语一次调用在 ps1 内循环 N 项 = 一次 COM 往返，
  * 快照/部分失败语义天然干净。上限 50（超过易把通道占满，且 50 个形状已超出单页合理密度）。
- *
- * 逐项成败纪律（all-or-record 而非 all-or-nothing）：遇错不中断不重试，逐项 ok/error 记录；
  * TS 侧聚合——部分失败 = success:true + 逐项 warning（severity:'warning'）；
  * 全部失败 = success:false（整体失败）。坐标口径=磅（1.0.5 全组裁定）。
  */

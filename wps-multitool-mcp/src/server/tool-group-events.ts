@@ -2,14 +2,7 @@
  * Input: 无
  * Output: "工具组已变化"的订阅/触发
  * Pos: 工具组变更事件（避免工具模块与注册表互相依赖）。一旦我被修改，请更新我的头部注释，以及所属目录的md。
- *
- * 为什么要单独一个模块
- * --------------------
  * 事件必须在【注册表】里触发（loadGroup/unloadGroup 才是唯一真相），
- * 而订阅方是 mcp-server（要发 notifications/tools/list_changed）。
- * 如果事件表写在 tools/common/toolgroups.ts 里，就会变成
- *   tool-registry → toolgroups → tool-registry 的循环依赖。
- * 所以抽成这个零依赖的小模块，两边都只依赖它。
  */
 
 export type ToolGroupsChangedListener = () => void;

@@ -1,51 +1,24 @@
 /**
- * Input: 动作名、参数、应用键、实例名（与 B0 转发点签名一致，见 wps-client.ts execWpsAction）
+ * Input: 动作名、参数、应用键、实例名（与 wps-client.ts execWpsAction 转发点签名一致）
  * Output: 动作结果（Promise<unknown>，与 Windows 通道同形）
- * Pos: Linux/macOS 加载项通道的 Node 侧服务（B2 骨架，长轮询版）。一旦我被修改，请更新我的头部注释，以及所属目录的md。
- *
- * 为什么由本模块持有服务（计划 §3.1）
- * --------------------------------
- * 桥（src/bridge/**）是 Windows 专用：spawn PowerShell、监听 \\.\pipe\，Linux 上两者都不存在。
+ * Pos: Linux/macOS 加载项通道的 Node 侧服务（长轮询版）。一旦我被修改，请更新我的头部注释，以及所属目录的md。
  * 所以加载项通道由 MCP server 进程本身持有：独立端口、独立认证，与面板只读端口 27731
- * 物理分开（C2）——执行通道能改文档，暴露面必须小于只读通道。
- *
- * 连接方向（计划 §4.4）
- * ------------------
- * 加载项跑在 WPS 进程内的 webview 里，主动【出站】连 Node；Node 不去连 WPS
+ * 物理分开——执行通道能改文档，暴露面必须小于只读通道。
  * （让 WPS 监听端口要动防火墙，且嵌入式 webview 未必能监听）。
- *
- * 三型同端口 + 握手声明型别（计划 §12.1，B2 定案）
- * ---------------------------------------------
- * S1 实测三型对象模型互相看不见（wps 只有 Documents / et 只有 Workbooks / wpp 只有
+ * 三型同端口 + 握手声明型别
+ * Linux 实测三型对象模型互相看不见（wps 只有 Documents / et 只有 Workbooks / wpp 只有
  * Presentations），Linux 侧必须部署三个加载项，各自连到同一个端口，靠握手 body 的
  * type 字段记会话。同型后来者覆盖前者（WPS 重启后加载项重连的场景）。
- *
- * 传输：长轮询（计划 §4.6）
- * ----------------------
- * 加载项 GET /poll 取任务（无任务挂起到 10s）、POST /result 交结果。
- * 轮询的已知风险照记：WPS 最小化/省电时 webview 定时器可能被节流到分钟级——
- * 不报错、不掉线、只是慢（R6）。spike 用轮询，上线按 §4.6 评估换 WS；
+ * 不报错、不掉线、只是慢。spike 用轮询，上线评估后可换 WS；
  * 协议帧与 Windows 管道同构（{ id, action, params, app }，ps-daemon.ts:150），
  * 换 transport 不改动作层、不用重测覆盖率。
- *
  * 失败语义（红线，照抄 ps-daemon.ts:24-28 的契约）
- * ---------------------------------------------
  *   AddonUnavailableError 只能表示【请求从未送出】（无该型会话 / 会话在途忙 /
  *   未被取走的任务被顶替）。调用方可安全重试或降级。
  *   任务已被 /poll 的响应送达加载项之后出的任何错（超时、无回包），都可能已经在
  *   WPS 里执行了一半 —— 绝不自动重放，一律如实抛普通 Error。
- *   "已送出"的边界 = /poll 的 HTTP 响应写出到 socket；poll 请求在写出前断开，
  *   任务退回轮询池。写出失败无法回退，由超时兜底（不重放）。
- *
- * 排队（计划 §4.5 / 任务卡 §0）
- * --------------------------
  * 每会话同时只挂 1 个待执行任务（与桥"STA 在途恒为 1"对齐）：
- *   - 轮询池里已有未取走任务，新调用到达 → 旧任务从未送出，判 AddonUnavailableError，新任务顶上；
- *   - 已有任务在途（已送达加载项未回）→ 新请求从未送出，判 AddonUnavailableError（不排队堆积）。
- *
- * instance 参数：v1 轮询版忽略。S1 实测 Linux WPS 单实例（R15），Windows 的实例池隔离
- * 不存在，多目标语义由动作层"同实例内按名钉文档"承接。
- *
  * 本模块由谁启动：MCP server 进程按需调用 start()；测试可传 { port, token } 随机端口自起自停。
  */
 
@@ -53,7 +26,7 @@ import * as http from 'http';
 import { AddressInfo } from 'net';
 import { v4 as uuidv4 } from 'uuid';
 
-/** 执行通道端口（C2：与面板只读端口 27731 物理分开）。只 bind 127.0.0.1。 */
+/** 执行通道端口（与面板只读端口 27731 物理分开——执行通道能写文档，暴露面必须更小）。只 bind 127.0.0.1。 */
 export const ADDON_PORT = (() => {
   const v = parseInt(process.env.WPS_ADDON_PORT || '27740', 10);
   return Number.isFinite(v) && v > 0 ? v : 27740;
@@ -82,7 +55,7 @@ const ADDON_TYPES: readonly AddonType[] = ['wps', 'et', 'wpp'];
 /**
  * 动作路由（任务卡 §0 拍死的 v1 简化）：word→wps 会话、excel→et、ppt→wpp、common→wps。
  * common 挂在文字型上是 v1 的简化 —— Windows 侧 common 动作多是进程级（quitWps/wpsStatus 等），
- * B3 动作层实现时若发现需要按动作名细分会话，改这里一个函数就够。
+ * 动作层若需按动作名细分会话，改这里一个函数就够。
  */
 function sessionTypeOf(app: string): AddonType {
   switch (app) {
@@ -228,7 +201,7 @@ function readBody(req: http.IncomingMessage): Promise<string> {
 }
 
 function sendJson(res: http.ServerResponse, status: number, body: Record<string, unknown>): void {
-  // 刻意不带 CORS 头（C2）：面板只读通道的宽松策略不许套到能写文档的执行通道上
+  // 刻意不带 CORS 头：面板只读通道的宽松策略不许套到能写文档的执行通道上
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
   res.end(JSON.stringify(body));
 }
@@ -365,7 +338,7 @@ async function route(req: http.IncomingMessage, res: http.ServerResponse): Promi
       return;
     }
     if (req.method === 'OPTIONS') {
-      // 执行通道不做 CORS（C2）：预检一律拒绝
+      // 执行通道不做 CORS：预检一律拒绝
       sendJson(res, 405, { error: '执行通道不做 CORS，浏览器来源请走 27731 只读面板' });
       return;
     }
@@ -483,17 +456,13 @@ export function sessionCounters(type: AddonType): { pending: number; inflight: n
   return { pending: s && s.pending ? 1 : 0, inflight: s && s.inflight ? 1 : 0 };
 }
 
-/**
- * 加载项通道的动作入口（B0 转发点签名：wps-client.ts:280-283）。
- * 全程不排队：轮询池单任务位，顶替/在途忙一律判"从未送出"。
- */
 export function call(
   action: string,
   params: Record<string, unknown> = {},
   app: string = 'common',
   instance: string = 'user'
 ): Promise<unknown> {
-  void instance; // v1 忽略：Linux 单实例（S1 R15），多目标由动作层按名钉文档承接
+  void instance; // v1 忽略：Linux 单实例，多目标由动作层按名钉文档承接
   const type = sessionTypeOf(String(app));
   const s = sessions.get(type);
   if (!s) {

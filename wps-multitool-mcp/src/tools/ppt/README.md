@@ -1,4 +1,4 @@
-index.ts, presentation.ts, slide-ops.ts, slide.ts, table.ts, textbox.ts, shape-basic.ts, image.ts, page-effects.ts, page-info.ts, animation.ts, chart-flow.ts, data-viz.ts, beautify-advanced.ts, misc.ts, deckkit.ts, helpers.ts
+index.ts, presentation.ts, slide-ops.ts, slide.ts, table.ts, textbox.ts, shape-basic.ts, shape-style.ts, image.ts, page-effects.ts, page-info.ts, animation.ts, chart-flow.ts, data-viz.ts, beautify-advanced.ts, misc.ts, deckkit.ts, helpers.ts
 PPT 工具定义与处理器目录，含幻灯片页操作/形状/文本框/演示文稿管理/页面信息/页面效果/表格/图表/美化/杂项模块。
 一旦这里的结构发生变化，请务必更新我。
 

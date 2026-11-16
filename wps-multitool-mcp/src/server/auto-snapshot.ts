@@ -2,33 +2,19 @@
  * Input: 工具名（规范名）+ 一次执行体
  * Output: 执行结果（可能在前面自动建了一份快照，失败时附 warnings）
  * Pos: 单工具写入的"可退"保险 —— 挂在 toolRegistry.callTool 这个唯一入口上。
- *      一旦我被修改，请更新我的头部注释，以及所属目录的md。
- *
- * 为什么要有这一层
- * --------------
  * 以前只有 wps_common_batch 会在执行前存快照。用户直接调一个破坏性工具
  * （删页、覆盖样式、原地转格式）时没有任何保险 —— 而 COM 没有撤销，
  * 删掉就是删掉了。快照是唯一的补偿手段，它不该只在"批量"这条路上存在。
- *
  * 为什么挂在注册表而不是每个 handler 里
- * ----------------------------------
  * 296 个工具逐个加一遍，等于 296 个地方都可能漏。注册表是所有工具调用的唯一入口
  * （batch 的子调用也走它），挂在这里是唯一不会漏的位置。
- *
  * 判据（沿用 batch 的口径，别另发明）
- * ------------------------------
  *   只读（readOnlyHint）        → 不建。快照是保险，不是每次调用的仪式。
- *   破坏性（destructiveHint）    → 建。
  *   非幂等（idempotentHint === false）→ 建。
  *   其余写入（幂等的普通写入）    → 不建。重复执行结果一致，改坏了再写一次就行。
  * 每个写入都建会让用户一天攒几百份快照，最后等于没存（还会触发保留策略把有用的挤掉）。
- *
  * 为什么用 AsyncLocalStorage 防重，而不是一个深度计数器
- * ------------------------------------------------
- * MCP server 里 callTool 是**并发可达**的（stdio 上多个请求可以交错），batch 内部还会
- * 嵌套调子工具。全局 depth 计数会把两条独立调用链的层级算到一起 ——
  * A 链的 batch 跑着的时候，B 链的一次删除会以为自己也是子调用，于是**该保命时没保**。
- * ALS 跟着各自的调用链走，天然隔离；同一个理由在 gen-tool-annotations.js 里也用过。
  * 防重是必须的：batch 3 步会各自走一遍注册表，不防重就是 4 份快照（batch 1 + 3 步）。
  */
 
@@ -63,7 +49,7 @@ const chain = new AsyncLocalStorage<{ depth: number }>();
  *   wps_common_snapshot_*   —— 快照/恢复工具本身：给"建快照"再建一份快照没有意义。
  */
 const SELF_MANAGED = new Set([
-  // deckkit 引擎（E2）：build_ppt_deck 的每个展开步骤都经 callTool 各自过快照护栏，
+  // deckkit 引擎：build_ppt_deck 的每个展开步骤都经 callTool 各自过快照护栏，
   //  入口再建一份是重复快照垃圾（与 batch 同理）。
   'wps_ppt_build_deck',
   'wps_common_batch',
@@ -125,7 +111,7 @@ export async function withAutoSnapshot<T extends { warnings?: ToolWarning[] }>(
         snapWarnings = [
           {
             step: 'snapshot.dirty',
-            // info 级（体验修复轮 B）：回滚保险还在（磁盘版快照），这是"怎么保得更全"的提醒
+            // info 级：回滚保险还在（磁盘版快照），这是"怎么保得更全"的提醒
             severity: 'info' as const,
             message:
               '这次改动前已自动存快照，但快照取自磁盘、不含未保存改动；要连未保存内容一起保命，先 wps_common_save 再重做',

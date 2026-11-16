@@ -2,15 +2,6 @@
  * Input: Word 格式化参数
  * Output: 样式与字体设置结果
  * Pos: Word 格式化工具实现。一旦我被修改，请更新我的头部注释，以及所属文件夹的md。
- * Word格式化Tools - 排版格式化模块
- * 处理文档样式、字体、目录等格式化需求
- *
- * 包含：
- * - wps_word_apply_style: 应用样式到选中区域
- * - wps_word_set_font: 设置字体格式
- * - wps_word_generate_toc: 生成目录
- * - wps_word_insert_bookmark: 插入书签
- * - wps_word_set_page_setup: 设置页面布局
  */
 
 import {
@@ -81,9 +72,6 @@ export const applyStyleHandler: ToolHandler = async (
   return ok(`样式应用成功！\n样式: ${style_name}\n影响的文本: ${r.data?.affectedText}`, r.warnings);
 };
 
-/**
- * 设置字体格式
- */
 export const setFontDefinition: ToolDefinition = {
   name: 'wps_word_set_font',
   description: `设置字体格式，包括字体名称、字号、加粗、斜体、颜色等。
@@ -173,10 +161,6 @@ export const setFontHandler: ToolHandler = async (
   return ok(`字体格式设置成功！\n${settingStr}`, r.warnings);
 };
 
-/**
- * 生成目录
- * 自动根据文档中的标题样式生成目录
- */
 export const generateTocDefinition: ToolDefinition = {
   name: 'wps_word_generate_toc',
   description: `根据文档中的标题样式自动生成目录。
@@ -233,10 +217,6 @@ export const generateTocHandler: ToolHandler = async (
   );
 };
 
-/**
- * 插入书签
- * 在当前光标位置插入书签，方便交叉引用和导航
- */
 export const insertBookmarkDefinition: ToolDefinition = {
   name: 'wps_word_insert_bookmark',
   description: `在当前光标位置或选中区域插入书签。
@@ -273,10 +253,6 @@ export const insertBookmarkHandler: ToolHandler = async (
   return ok(`书签插入成功！\n书签名称: ${name}`, r.warnings);
 };
 
-/**
- * 设置页面布局
- * 调整页面方向、边距等页面设置
- */
 export const setPageSetupDefinition: ToolDefinition = {
   name: 'wps_word_set_page_setup',
   description: `设置文档页面布局，包括页面方向和边距。
@@ -347,9 +323,6 @@ export const setPageSetupHandler: ToolHandler = async (
   return ok(`页面布局设置成功！\n${desc}`, r.warnings);
 };
 
-/**
- * 导出所有格式化相关的Tools
- */
 export const formatTools: RegisteredTool[] = [
   { definition: applyStyleDefinition, handler: applyStyleHandler },
   { definition: setFontDefinition, handler: setFontHandler },

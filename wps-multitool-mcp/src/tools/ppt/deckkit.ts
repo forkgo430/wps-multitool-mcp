@@ -2,36 +2,22 @@
  * Input: DeckSpec（JSON 页面描述，自有 schema，字段名自定）——见 DeckSpec/各页型注释；theme 主题名（缺省学术蓝）
  * Output: build_ppt_deck 工具（逐动作落成真 PPT）+ wps_ppt_get_textbox_metrics 工具（文本框排版度量，
  *         生成后溢出检查的读回通道，也可独立做排版诊断）——都走 toolRegistry.callTool 真入口
- * Pos: deckkit 引擎骨架（第 3 期 E2）+ 主题三套与生成后溢出检查（第 3 期 E3，方案 docs/agents/BORROW-PLAN.md §2.5 第三步）。
- *      一旦我被修改，请更新我的头部注释，以及所属目录的md。
- *
- * 架构（方案 §2.2）：布局计算（坐标/字号/密度）全部在本 TS 层——可 mock、可进门禁；
+ * Pos: deckkit 引擎（含主题三套与生成后溢出检查）。
  *   本模块【不碰 ps1】：展开成的是既有 ppt 动作（add_textbox/add_shape/set_shape_gradient/…），
  *   逐动作经 toolRegistry.callTool 走真入口——快照护栏照常（红线），性能优化归 E3。
- *
  * shapeIndex 约定（重要）：每页从空白页（layout=blank，0 形状）开始，展开序列里
  *   add_shape / add_textbox / insert_ppt_chart 每个都 +1；引用型动作
  *   （set_font_color / set_shape_gradient / set_ppt_chart_data）用【字面序号】——
  *   因为每页型的形状序列是静态可数的，字面值比运行时计数更可断言（mock 单测逐个钉）。
- *
  * 素材路线（§2.2/第一步探针）：COM 原生形状优先、零新增依赖——
- *   渐变横幅 = set_shape_gradient（TwoColorGradient，探针 seg1 可用）；
- *   表格 = 矩形拼（第一步探针坑 5：AddTable 边框不可靠，禁走真表格）；
  *   行高系数 = 1.2（探针 seg3 本机标定——【改动前须真机复核】，勿抄别处数值）。
- *
- * 主题（E3）：学术蓝 / 政务红 / 商务灰——配色、字体对、间距整套在 DECK_THEMES；
- *   数值【全部自创（2026-10-29），未搬任何现成模板——改动前须真机复核】；字体只用 Windows/WPS 必有字体。
- *
  * 溢出检查（E3，探针 seg2 证过 BoundHeight 可判溢出）：每页铺完自动量一遍（wps_ppt_get_textbox_metrics
  *   读回 boundHeight vs 帧高）；超框 → 写 warnings + 缩字一档（不低于正文字号下限）重排复测一次，
  *   仍超只警告不强改。量不了（旧桥缺 bound 字段 / 读回失败）→ 如实降级记一条，不算失败——页已生成成功，
  *   检查是诊断不是闸门；fail-fast 只管写入步骤。
- *
  * 数据约定（chart 页）：insert_ppt_chart 的 data 参数不生效（chart-flow.ts 头注），必须
  *   insert → set_ppt_chart_data 两段式；chartIndex = 页内形状序号（图表追加在最后）。
- *
  * schema 是自研的（防抄态势 BORROW-PLAN §4.4）：字段名 kind/heading/points/milestones 等
- *   与任何外部引擎不同源；页型命名体系自定。
  */
 
 import { v4 as uuidv4 } from 'uuid';
@@ -466,7 +452,7 @@ export const getTextboxMetricsHandler: ToolHandler = async (args) => {
 // ============================================================================
 
 /** 每页的文本框静态记录（shapeIndex 按 SHAPE_CREATING_TOOLS 次序数出，与 COM Shapes 序号同空间）。
- *  【大项②判定缺陷修复 2026-11-04】图片步旧名 insert_ppt_image 已转别名，deckkit 同步改发
+ *  图片步旧名 insert_ppt_image 已转别名，deckkit 同步改发
  *  wps_ppt_insert_image——本表没跟着换，导致 imageText 页图片步不被计数、其后的文本框
  *  shapeIndex 少算一格、溢出检查测错形状。 */
 const SHAPE_CREATING_TOOLS = new Set([
@@ -563,7 +549,7 @@ async function checkPageOverflow(slide: number, steps: DeckStep[]): Promise<{ is
   const issues: DeckOverflowIssue[] = [];
   const warnings: string[] = [];
   const shrinking: Array<{ rec: DeckTextBoxRecord; m: TextBoxMetric; target: number }> = [];
-  // "读不到"≠"没超"（体验修复轮 A）：桥回传 boundHeight 为 null 的块不计入溢出判定，
+  // "读不到"≠"没超"：桥回传 boundHeight 为 null 的块不计入溢出判断，
   // 但必须按页如实说一声，不许静默漏过
   let unmeasurable = 0;
   for (const rec of records) {

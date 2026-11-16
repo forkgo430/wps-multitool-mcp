@@ -2,18 +2,7 @@
  * Input: 幻灯片页操作参数
  * Output: 幻灯片页操作结果
  * Pos: PPT 幻灯片页操作工具实现。一旦我被修改，请更新我的头部注释，以及所属文件夹的md。
- * PPT幻灯片页操作Tools（风格统一+拆分轮后本文件只留"页"这一群，见 ppt-audit §三之二）：
- *
- * 包含（8 个；形状/文本框 6 个迁 shape-basic.ts，动画/背景/切换/备注迁 page-effects.ts，
- * insert_image 迁 image.ts）：
  * - wps_ppt_delete_slide: 删除指定幻灯片
- * - wps_ppt_move_slide: 移动幻灯片到指定位置
- * - wps_ppt_get_slide_count: 获取幻灯片总数
- * - wps_ppt_get_slide_info: 获取指定幻灯片的详细信息
- * - wps_ppt_switch_slide: 切换到指定幻灯片
- * - wps_ppt_set_slide_layout: 设置幻灯片版式布局
- * - wps_ppt_get_slide_notes: 获取幻灯片备注内容
- * - wps_ppt_set_slide_size: 设置幻灯片尺寸
  */
 
 import {
@@ -392,7 +381,7 @@ export const setSlideSizeHandler: ToolHandler = async (
   };
 
   const r = await call(
-    // 第 1 期第 2 章第 2 轮：这句原为「仅Windows支持」，是假注释 —— 该动作曾长期不存在于 ps1。第 6 轮已补 case，现在 Windows 上真能用。
+    // 早期 ps1 缺 case 时曾误标「仅Windows支持」；现已真实可用。
     // v1.0.5 起单位为磅（ps1 的 ×0.75 换算已按所有者裁定移除），schema 描述已同步。
     'setSlideSize',
     { width, height }

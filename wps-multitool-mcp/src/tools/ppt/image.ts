@@ -2,16 +2,9 @@
  * Input: PPT 图片操作参数（插入、删除、样式设置、幻灯片导出为图片）
  * Output: 图片操作结果
  * Pos: PPT 图片工具实现。一旦我被修改，请更新我的头部注释，以及所属文件夹的md。
- * PPT图片Tools - 图片管理模块
  * 处理图片的插入、删除、样式设置以及幻灯片导出为位图操作
- *
- * 包含（5 个；insert_image 自 slide-ops.ts 迁入——风格统一+拆分轮，见 ppt-audit §三之二）：
- * - wps_ppt_insert_image: 在幻灯片中插入图片（canonical，参数最全：path + width/height）
  * - wps_ppt_insert_ppt_image: 已转别名指向 insert_image（2026-11-03 大项②，见 tool-aliases.json）
  * - wps_ppt_delete_ppt_image: 删除幻灯片中的图片
- * - wps_ppt_set_image_style: 设置图片样式
- * - wps_ppt_export_slide_as_image: 将指定幻灯片导出为位图图片（PNG/JPG/GIF/BMP）
- * - wps_ppt_replace_ppt_image: 原位替换图片
  */
 
 import { v4 as uuidv4 } from 'uuid';
@@ -328,7 +321,7 @@ export const exportSlideAsImageHandler: ToolHandler = async (
     `尺寸: ${finalWidth} x ${finalHeight}\n` +
     `输出路径: ${outputPath}`;
 
-  // 图像内联（2026-10-26 对标）：把导出的图作为工具结果一并返回，AI 能直接"看到"效果自查。
+  // 图像内联：把导出的图作为工具结果一并返回，AI 能直接"看到"效果自查。
   // inline 开关（体验修复轮 B）：默认 true 保持现状；1.5MB 上限逻辑不变。
   const content: ToolContent[] = [{ type: 'text' as const, text }];
   if (inline) {
@@ -417,9 +410,6 @@ export const replacePptImageHandler: ToolHandler = async (
   );
 };
 
-/**
- * 导出所有图片相关的Tools
- */
 export const imageTools: RegisteredTool[] = [
   { definition: insertImageDefinition, handler: insertImageHandler },
   { definition: deletePptImageDefinition, handler: deletePptImageHandler },

@@ -2,18 +2,9 @@
  * Input: 行列操作工具参数
  * Output: 行列插入/删除/隐藏/分组结果
  * Pos: Excel 行列操作工具实现。一旦我被修改，请更新我的头部注释，以及所属文件夹的md。
- * Excel行列操作Tools - 行列管理模块
  * 处理行列的插入、删除、隐藏、显示、分组等操作
- *
- * 包含：
- * - wps_excel_insert_rows: 插入多行
- * - wps_excel_insert_columns: 插入多列
  * - wps_excel_delete_rows: 删除多行
  * - wps_excel_delete_columns: 删除多列
- * - wps_excel_hide_rows: 隐藏行
- * - wps_excel_show_rows: 显示行
- * - wps_excel_show_columns: 显示列
- * - wps_excel_group_rows: 分组行
  */
 
 import { v4 as uuidv4 } from 'uuid';
@@ -27,9 +18,6 @@ import {
 import { wpsClient } from '../../client/wps-client';
 import { WpsAppType } from '../../types/wps';
 
-/**
- * 插入多行
- */
 export const insertRowsDefinition: ToolDefinition = {
   name: 'wps_excel_insert_rows',
   description: '在Excel中指定位置插入一行或多行。',
@@ -66,9 +54,6 @@ export const insertRowsHandler: ToolHandler = async (
   }
 };
 
-/**
- * 插入多列
- */
 export const insertColumnsDefinition: ToolDefinition = {
   name: 'wps_excel_insert_columns',
   description: '在Excel中指定位置插入一列或多列。',
@@ -183,9 +168,6 @@ export const deleteColumnsHandler: ToolHandler = async (
   }
 };
 
-/**
- * 隐藏行
- */
 export const hideRowsDefinition: ToolDefinition = {
   name: 'wps_excel_hide_rows',
   description: '隐藏Excel中指定范围的行。',
@@ -221,9 +203,6 @@ export const hideRowsHandler: ToolHandler = async (
   }
 };
 
-/**
- * 显示行
- */
 export const showRowsDefinition: ToolDefinition = {
   name: 'wps_excel_show_rows',
   description: '显示Excel中已隐藏的行。',
@@ -259,9 +238,6 @@ export const showRowsHandler: ToolHandler = async (
   }
 };
 
-/**
- * 显示列
- */
 export const showColumnsDefinition: ToolDefinition = {
   name: 'wps_excel_show_columns',
   description: '显示Excel中已隐藏的列。',
@@ -297,9 +273,6 @@ export const showColumnsHandler: ToolHandler = async (
   }
 };
 
-/**
- * 分组行
- */
 export const groupRowsDefinition: ToolDefinition = {
   name: 'wps_excel_group_rows',
   description: '对Excel中指定范围的行进行分组，便于折叠/展开管理。',
@@ -335,9 +308,6 @@ export const groupRowsHandler: ToolHandler = async (
   }
 };
 
-/**
- * 导出所有行列操作相关的Tools
- */
 export const rowColumnTools: RegisteredTool[] = [
   { definition: insertRowsDefinition, handler: insertRowsHandler },
   { definition: insertColumnsDefinition, handler: insertColumnsHandler },

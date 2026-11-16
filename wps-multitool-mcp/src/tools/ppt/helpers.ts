@@ -3,13 +3,10 @@
  * Output: 统一的 ToolCallResult 构造 + 带警告透传的 executeMethod 封装
  * Pos: PPT 工具收尾风格的统一出口（ppt-audit-2026-10-30 §一：102 个工具 0 个用助手 → 收口到这一套；
  *      范式照搬 word/helpers.ts，默认 app 为 PRESENTATION）。
- *      一旦我被修改，请更新我的头部注释，以及所属目录的md。
- *
  * 为什么以 word/gaps→helpers 的那套为基准：warnings 必须到模型眼前（A9 教训）——
  * 老样板会把 PS 侧特意准备的 warnings 丢掉（ppt 组 102 个 handler 此前无一透传）。
  * 迁移纪律：纯机械替换，不改任何行为——工具名/动作名/参数键/成功与校验文案逐字保留；
  * uuid 生成收敛到 ok/fail 各一处（callTool 会用请求 id 覆盖它，handler 里反复生成是纯浪费）；
- * 老样板的 try/catch 撤掉，异常统一由 toolRegistry.callTool 兜底（与 word 轮 03a534e 同一裁决）。
  */
 
 import { v4 as uuidv4 } from 'uuid';

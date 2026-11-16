@@ -2,22 +2,10 @@
  * Input: 数据处理工具参数
  * Output: 读写/清洗结果
  * Pos: Excel 数据处理工具实现。一旦我被修改，请更新我的头部注释，以及所属文件夹的md。
- * Excel数据处理Tools - 数据读写与清洗模块
  * 处理数据的读取、写入、去重、去空格、格式统一等操作
- *
- * 包含：
  * - wps_excel_read_range: 读取指定范围数据
  * - wps_excel_write_range: 写入数据到指定范围
- * - wps_excel_clean_data: 数据清洗（核心功能）
  * - wps_excel_remove_duplicates: 删除重复行
- * - wps_excel_sort_range: 对选定区域排序
- * - wps_excel_find_replace: 查找并替换内容
- * - wps_excel_insert_row: 插入行
- * - wps_excel_add_comment: 给单元格添加批注
- * - wps_excel_protect_sheet: 保护/取消保护工作表
- * - wps_excel_set_conditional_format: 设置条件格式
- * - wps_excel_protect_workbook: 保护/取消保护工作簿
- * - wps_excel_set_zoom: 设置工作表缩放比例
  */
 
 import { v4 as uuidv4 } from 'uuid';
@@ -214,10 +202,6 @@ export const writeRangeHandler: ToolHandler = async (
   }
 };
 
-/**
- * 数据清洗工具
- * 一键处理脏数据，支持多种清洗操作组合
- */
 export const cleanDataDefinition: ToolDefinition = {
   name: 'wps_excel_clean_data',
   description: `数据清洗工具，支持多种清洗操作的组合。
@@ -428,9 +412,6 @@ export const removeDuplicatesHandler: ToolHandler = async (
   }
 };
 
-/**
- * 对选定区域排序
- */
 export const sortRangeDefinition: ToolDefinition = {
   name: 'wps_excel_sort_range',
   description: '对Excel选定区域按指定列排序。',
@@ -472,9 +453,6 @@ export const sortRangeHandler: ToolHandler = async (
   }
 };
 
-/**
- * 查找并替换内容
- */
 export const findReplaceDefinition: ToolDefinition = {
   name: 'wps_excel_find_replace',
   description: '在Excel中查找并替换内容。',
@@ -515,9 +493,6 @@ export const findReplaceHandler: ToolHandler = async (
   }
 };
 
-/**
- * 给单元格添加批注
- */
 export const addCommentDefinition: ToolDefinition = {
   name: 'wps_excel_add_comment',
   description:
@@ -564,9 +539,6 @@ export const addCommentHandler: ToolHandler = async (
   }
 };
 
-/**
- * 保护/取消保护工作表
- */
 export const protectSheetDefinition: ToolDefinition = {
   name: 'wps_excel_protect_sheet',
   description: '保护或取消保护工作表。',
@@ -602,9 +574,6 @@ export const protectSheetHandler: ToolHandler = async (
   }
 };
 
-/**
- * 设置条件格式
- */
 export const setConditionalFormatDefinition: ToolDefinition = {
   name: 'wps_excel_set_conditional_format',
   description: '设置条件格式。',
@@ -640,9 +609,6 @@ export const setConditionalFormatHandler: ToolHandler = async (
   }
 };
 
-/**
- * 保护/取消保护工作簿
- */
 export const protectWorkbookDefinition: ToolDefinition = {
   name: 'wps_excel_protect_workbook',
   description: '保护或取消保护工作簿，防止结构被修改（如添加/删除工作表）。',
@@ -677,9 +643,6 @@ export const protectWorkbookHandler: ToolHandler = async (
   }
 };
 
-/**
- * 设置工作表缩放比例
- */
 export const setZoomDefinition: ToolDefinition = {
   name: 'wps_excel_set_zoom',
   description:
@@ -713,7 +676,7 @@ export const setZoomHandler: ToolHandler = async (
   }
   try {
     const response = await wpsClient.executeMethod<{ zoom?: number; requested?: number }>(
-      // 第 1 期第 2 章第 2 轮：动作名没变（setZoom），ps1 里原先【没有这个 case】→ 一直 Unknown action。
+      // 动作名没变（setZoom），ps1 里原先【没有这个 case】→ 一直 Unknown action。
       // 本轮补了 case（ActiveWindow.Zoom）。注意它与 ps1 里 PageSetup.Zoom 是两回事（打印缩放）。
       // 原来那句 "// NOTE: 仅Windows支持" 是假的：Windows 上也不支持，压根没这个 case。
       'setZoom',
@@ -734,9 +697,6 @@ export const setZoomHandler: ToolHandler = async (
   }
 };
 
-/**
- * 导出所有数据处理相关的Tools
- */
 export const dataTools: RegisteredTool[] = [
   { definition: readRangeDefinition, handler: readRangeHandler },
   { definition: writeRangeDefinition, handler: writeRangeHandler },

@@ -3,16 +3,10 @@
  * Output: 动画查询/删除结果
  * Pos: PPT 动画工具实现。一旦我被修改，请更新我的头部注释，以及所属文件夹的md。
  * PPT动画Tools - 动画查询与删除模块
- *
  * 只留两个不能合并的工具：
  * - wps_ppt_get_animations: 查询动画列表（只读，没东西可并入别的工具）
  * - wps_ppt_remove_animation: 删除单个动画（破坏性，混进"设置"工具会污染注解）
- *
  * 第 8 轮合并掉了本文件原先的 7 个工具，它们都是别名，能力没丢：
- * - wps_ppt_add_animation / add_animation_preset / add_emphasis_animation / set_animation_order
- *   → wps_ppt_set_animation（op: 'add' | 'reorder'，现居 page-effects.ts）
- * - wps_ppt_set_slide_transition / apply_transition_to_all / remove_slide_transition
- *   → wps_ppt_set_transition（target: 'slide' | 'all'，effect: 'none' 即取消切换，现居 page-effects.ts）
  * 旧名走 scripts/manual/tool-aliases.json 的别名表调用，参数映射也在那张表里。
  */
 
@@ -40,10 +34,6 @@ const EFFECT_ID_NAME_MAP: Record<number, string> = {
 
 // ==================== 1. 移除动画效果 ====================
 
-/**
- * 移除动画效果
- * 从指定幻灯片中移除指定的动画
- */
 export const removeAnimationDefinition: ToolDefinition = {
   name: 'wps_ppt_remove_animation',
   description: `移除幻灯片中指定的动画效果。
@@ -86,10 +76,6 @@ export const removeAnimationHandler: ToolHandler = async (
 
 // ==================== 2. 获取动画列表 ====================
 
-/**
- * 获取动画列表
- * 查看指定幻灯片上所有动画效果
- */
 export const getAnimationsDefinition: ToolDefinition = {
   name: 'wps_ppt_get_animations',
   description: `获取幻灯片上所有动画效果的列表。

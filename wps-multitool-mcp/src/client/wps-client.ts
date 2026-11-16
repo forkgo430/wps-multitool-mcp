@@ -1,6 +1,7 @@
 /**
  * Input: 平台信息与WPS调用参数
  * Output: WPS API 调用结果
+ * Pos: WPS 通信客户端实现（仅 Windows）。一旦我被修改，请更新我的头部注释，以及所属目录的md。
  * WPS通信客户端 - 仅 Windows
  * 通过 PowerShell 调用 WPS 的 COM 接口；优先走常驻桥，桥起不来退回直跑。
  */
@@ -75,7 +76,7 @@ let daemonBroken = false;
  * 本轮【只拆结构、不加实现】：'addon' 是给 Linux 侧留的插入点，
  * 现在没有任何地方会返回它。等真的要做 Linux 后端时，
  * 只要往 pickTransport 里加一个判断、往 runTransport 里加一个 case，
- * Windows 那两个分支一个字都不用碰（对应计划的约束 C1）。
+ * Windows 那两个分支一个字都不用碰。
  */
 type TransportKind = 'daemon' | 'direct' | 'addon';
 
@@ -274,8 +275,8 @@ async function execWpsAction(
   app: AppKey = 'common',
   instance: string = 'user'
 ): Promise<unknown> {
-  // Linux/macOS 分流（计划 §4.2 的"唯一改动"）：判定模块内缓存一次，Windows 上
-  // 恒为 com、这两行分支永远不进（C4 零开销）。addon 通道本体属 B2，这里只留转发点。
+  // Linux/macOS 分流：识别结果模块内缓存一次，Windows 上
+  // 恒为 com、这两行分支永远不进。addon 通道本体在加载项通道，这里只留转发点。
   const decision = backendDecision();
   if (decision.backend === 'addon') {
     const addonChannel = require('./addon-channel') as { call: Function };
@@ -488,11 +489,11 @@ export class WpsClient {
     }
     // 会话级 target 只在【本次调用没有显式 target.doc】时兜底注入。
     // 否则会出现：用户每个调用都写了 target.doc，却被 switch_document 记下的会话文档接管
-    // —— 而且完全不报错（真机 A1/A3 就是这么假的）。
+    // —— 而且完全不报错（真机实测就出过这种假象）。
     // 只要本次调用【给了 target】（哪怕只有 instance、没有 doc），就不继承会话文档。
     // 为什么：会话 target 是"上一次 switch/create 落在哪个实例"的记忆，它是【跨实例全局】的；
     // 一个发往 sandbox 的调用如果继承了 user 实例的文档名，PS 会在沙箱里找不到那份文档
-    // 直接报错（A4 的预热就是这么被卡死的：get_open_documents 都被注入了一个 user 侧文档名）。
+    // 直接报错（实测预热就被卡死过：get_open_documents 都被注入了一个 user 侧文档名）。
     // 注意：target 可能在 **ALS** 里而不在 finalParams 里 —— 67 个 handler 都不转发 args.target。
     // 只看 finalParams 会让守卫永远为 false（第一版就是这么继续注入的）。
     const alsTarget = currentTarget();
@@ -511,7 +512,7 @@ export class WpsClient {
       finalParams = { ...finalParams, workbookName: excelTargetName };
     }
 
-    // ==================== target（第 3 章轮 1：只做 word）====================
+    // ==================== target（只做 word）====================
     // 三件事在这里一次做完，下游（daemon/bridge/ps1）只认"instance"这一个路由键：
     //   ① target.doc 合流进现成的 documentName（不新造第二个名字，否则两套必然漂）
     //   ② target 形状校验（错形状必须在这里就报，别等到 PS 里被静默忽略）
@@ -538,7 +539,7 @@ export class WpsClient {
 
       // 实例级动作（退出/显示/选区）在路由表里落 common，但**必须和写入走同一个子进程**：
       // 沙箱句柄是"每进程一份"的，common 子进程自己去 New-Object 会开出第二个沙箱实例 ——
-      // 于是 quitWps 退掉的不是刚才写文档的那个实例（A6 会假通过）。
+      // 于是 quitWps 退掉的不是刚才写文档的那个实例（验证会假通过）。
       // 只在 instance != user 时改道：user 下 quitWps 仍要退全部应用（旧行为）。
       if (instance !== 'user' && INSTANCE_SCOPED_ACTIONS.has(method)) {
         appForCall = 'word';

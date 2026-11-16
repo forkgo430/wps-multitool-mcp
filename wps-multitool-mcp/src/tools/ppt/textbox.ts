@@ -243,9 +243,6 @@ export const setSlideContentHandler: ToolHandler = async (
   return ok(`第${slideIndex}页正文内容已设置`, r.warnings);
 };
 
-/**
- * 导出所有文本框相关的Tools
- */
 export const textboxTools: RegisteredTool[] = [
   { definition: deleteTextboxDefinition, handler: deleteTextboxHandler },
   { definition: getTextboxesDefinition, handler: getTextboxesHandler },

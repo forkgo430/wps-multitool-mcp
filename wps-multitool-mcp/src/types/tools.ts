@@ -2,13 +2,9 @@
  * Input: MCP Tool 类型与Schema
  * Output: Tool 类型定义
  * Pos: MCP Tool 类型定义模块。一旦我被修改，请更新我的头部注释，以及所属文件夹的md。
- * Tool类型定义
  * 定义MCP Tool的所有相关类型，别tm乱改
  */
 
-/**
- * Tool参数的JSON Schema类型定义
- */
 export interface ToolParameterSchema {
   type: 'string' | 'number' | 'boolean' | 'object' | 'array';
   description?: string;
@@ -27,9 +23,6 @@ export interface ToolParameterSchema {
   maxItems?: number;
 }
 
-/**
- * Tool输入Schema定义
- */
 export interface ToolInputSchema {
   type: 'object';
   properties: Record<string, ToolParameterSchema>;
@@ -106,9 +99,6 @@ export enum ToolCategory {
   COMMON = 'common',
 }
 
-/**
- * Tool调用请求
- */
 export interface ToolCallRequest {
   /** 请求ID，用于追踪 */
   id: string;
@@ -168,9 +158,6 @@ export interface ToolCallResult {
   warnings?: ToolWarning[];
 }
 
-/**
- * Tool返回内容类型
- */
 export interface ToolContent {
   type: 'text' | 'image' | 'resource';
   text?: string;
@@ -178,31 +165,19 @@ export interface ToolContent {
   mimeType?: string;
 }
 
-/**
- * Tool处理函数类型
- */
 export type ToolHandler = (
   args: Record<string, unknown>
 ) => Promise<ToolCallResult>;
 
-/**
- * 注册的Tool完整信息
- */
 export interface RegisteredTool {
   definition: ToolDefinition;
   handler: ToolHandler;
 }
 
-/**
- * Tool列表响应
- */
 export interface ListToolsResponse {
   tools: ToolDefinition[];
 }
 
-/**
- * Tool调用响应
- */
 export interface CallToolResponse {
   content: ToolContent[];
   isError?: boolean;

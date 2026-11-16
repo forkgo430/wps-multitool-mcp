@@ -2,33 +2,19 @@
  * Input: 应用键（excel / word / ppt / common）与动作名、参数
  * Output: 该动作的 COM 结果（{ success, data?, error? }）
  * Pos: 桥进程内部的 PowerShell 子进程管理器 —— 一个应用一个实例。一旦我被修改，请更新我的头部注释，以及所属目录的md。
- *
- * 为什么按应用拆进程（per-app 隔离）
- * ----------------------------------
  * COM 是 STA：一个进程同一时刻只能跑一个动作。改造前所有应用共用一个 powershell，
  * 于是"WPS 文字卡在一个慢动作上"会把"表格"的调用一起堵死。
  * 拆成一应用一进程后，某一路卡死只影响它自己；桥还能【只杀那一路】并重建，
- * 另外两路完全不受影响。对标 JulianPoleszczuk/office-mcp 的 per-app 连接模型。
- *
  * 超时语义
- * --------
- * 超时即判定【该应用的这一路已死】：杀掉该子进程、拒绝它在途的请求，下次调用重建。
+ * 超时即视为【该应用的这一路已死】：杀掉该子进程、拒绝它在途的请求，下次调用重建。
  * 绝不能"超时了还继续往这个进程塞请求"。
  * 另外：超时后【不自动重放】—— 写动作（保存/导出）可能已经执行了一半，
  * 重放会变成执行两次。由调用方决定怎么办。
- *
- * 子进程生命周期
- * --------------
- * wps-comd.ps1 自带父进程看门狗，本进程（桥）一死，子进程会自己走 —— 不需要额外清理。
- *
- * PowerShell 宿主
- * ---------------
  * 优先 PowerShell 7（pwsh），未安装自动回退 Windows PowerShell 5.1；WPS_PWSH_PATH
  * 可强制指定（完整路径或裸命令名，写 'powershell' 即强制回 5.1）。
  * 为什么要切 pwsh：5.1 读无 BOM 的 UTF-8 脚本会把中文解码成乱码（wps-comd.ps1 头部
  * 的 BOM 说明就是为它写的），PS7 默认 UTF-8，这一类坑整个消失。
  * COM 是 STA：5.1 默认就是 STA，pwsh 在 Windows 上默认也是，但这里显式传 -STA，不赌默认值。
- * 回退会往 stderr 记一行宿主是谁，不是无声的。
  */
 
 import { ChildProcess, spawn } from 'child_process';
@@ -74,7 +60,7 @@ const READY_TIMEOUT_MS = 30000;
  * 单次动作上限。COM 动作可能很慢（大文档导出、首次插图表要拉起 Excel），默认 120 秒。
  * 每次调用时重读环境变量，便于按场景临时收紧/放宽，不用重启桥。
  *
- * 第 1 期第 2 章第 4 轮：按【动作性质】分级（见 docs/agents/TIMEOUT-120S.md §4.1）。
+ * 按【动作性质】分级（见 docs/agents/TIMEOUT-120S.md §4.1）。
  * 原来是一刀切：读一个单元格和导出一张图，上限都是 120 秒。
  * 后果是"快动作卡死"要等满 120 秒才恢复。
  * 现在：慢动作仍 120 秒，其余 30 秒 —— 卡死恢复时间从 120 秒降到 30 秒。
@@ -121,14 +107,14 @@ const DEFAULT_SLOW_ACTIONS = [
   'findReplace',
   'insertSlidesFromFile',
   'convertTableToText',
-  // ⑤ R4（提质合并卡 2026-11-11）：插图与保存——实地报告 R4 实测干净态也会超 30s 快超时
+  // ⑤ 插图与保存：实测干净态也会超 30s 快超时
   //    （首次插图触发图像管线 / saveAs 首次落盘），误杀后整路重建代价远大于慢等。
   'insertPptImage',
   'insertExcelImage',
   'insertImage',
   'save',
   'saveAs',
-  // ⑥ 模板层（第 5 期模板大卡）：渲染/提取涉及开模板+批量替换+另存——大模板超 30s
+  // ⑥ 模板渲染/提取：开模板+批量替换+另存——大模板超 30s
   'renderTemplate',
   'extractTemplate',
   'renderTemplatePpt',

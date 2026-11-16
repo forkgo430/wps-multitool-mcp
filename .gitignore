@@ -1,5 +1,5 @@
 # ============================================
-# WPS-Claude-Skills Git 忽略配置
+# wps-skills Git 忽略配置
 # ============================================
 
 # ============================================
@@ -166,7 +166,7 @@ credentials.json
 secrets.json
 api-keys.json
 
-# Claude 配置 (如果包含敏感信息)
+# AI 助手本地配置目录（如包含敏感信息）
 # .claude/
 
 # ============================================
@@ -205,7 +205,7 @@ venv/
 wps-multitool-mcp/*.log
 wps-multitool-mcp/*.err
 
-# 其他 Claude 相关文件
+# 其他 AI 助手本地文件
 CLAUDE.md
 # 包内 CHANGELOG 由 changesets 生成，属发版产物，要进库；
 # 仓库根的 CHANGELOG.md 是早期手写的本地存档，继续保持忽略（不给它开例外）。

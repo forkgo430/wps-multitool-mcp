@@ -3,16 +3,7 @@
  * Output: 文档操作结果
  * Pos: Word 文档管理工具实现。一旦我被修改，请更新我的头部注释，以及所属文件夹的md。
  * Word文档管理Tools（2026-10-30 收尾风格统一到 helpers，warnings 一路透传）
- *
- * 包含：
- * - wps_word_get_open_documents: 获取所有已打开的文档列表
- * - wps_word_switch_document: 切换到指定文档
  * - wps_word_open_document: 打开指定路径的文档
- * - wps_word_get_document_text: 获取文档文本内容
- * - wps_word_insert_header: 设置页眉内容
- * - wps_word_insert_footer: 设置页脚内容
- * - wps_word_insert_section_break: 插入分节符
- * - wps_word_set_line_spacing: 设置行距
  */
 
 import {
@@ -26,9 +17,6 @@ import { setWordTarget } from '../../client/wps-client';
 import { WORD_TARGET_PROPERTY } from './target';
 import { call, ok, fail } from './helpers';
 
-/**
- * 获取所有已打开的文档列表
- */
 export const getOpenDocumentsDefinition: ToolDefinition = {
   name: 'wps_word_get_open_documents',
   description: `获取当前WPS Writer中所有已打开的文档列表。
@@ -55,7 +43,7 @@ export const getOpenDocumentsHandler: ToolHandler = async (
 
   const docs = r.data?.documents;
   if (!docs || docs.length === 0) {
-    // 第 1 期第 2 章第 4 轮（A9）：把 PS 侧的 warnings 传出去。
+    // 把 PS 侧的 warnings 传出去。
     // 以前这个 handler 只看 data，warnings 被整个丢掉 —— 于是 PS 特意提示的
     // "这可能是 ROT 重注册窗口，别据此判断文档没了"根本到不了模型眼前。
     // warnings 与 success 正交：success 仍为 true，但调用方必须念给用户听。
@@ -69,9 +57,6 @@ export const getOpenDocumentsHandler: ToolHandler = async (
   return ok(`已打开的文档列表 (共${docs.length}个):\n${docList}`, r.warnings);
 };
 
-/**
- * 切换到指定文档
- */
 export const switchDocumentDefinition: ToolDefinition = {
   name: 'wps_word_switch_document',
   description: `切换到指定名称的文档。
@@ -151,9 +136,6 @@ export const openDocumentHandler: ToolHandler = async (
   return ok(`文档打开成功！\n文件: ${r.data?.documentName || filePath}`, r.warnings);
 };
 
-/**
- * 获取文档文本内容
- */
 export const getDocumentTextDefinition: ToolDefinition = {
   name: 'wps_word_get_document_text',
   description: `获取当前Word文档的文本内容。
@@ -200,9 +182,6 @@ export const getDocumentTextHandler: ToolHandler = async (
   return ok(`文档文本内容 (${r.data?.length}字符)${rangeInfo}:\n\n${r.data?.text}`, r.warnings);
 };
 
-/**
- * 设置页眉内容
- */
 export const insertHeaderDefinition: ToolDefinition = {
   name: 'wps_word_insert_header',
   description: `设置页眉内容。
@@ -244,9 +223,6 @@ export const insertHeaderHandler: ToolHandler = async (
   return ok(`页眉已设置: "${text}" (第${section}节)`, r.warnings);
 };
 
-/**
- * 设置页脚内容
- */
 export const insertFooterDefinition: ToolDefinition = {
   name: 'wps_word_insert_footer',
   description: `设置页脚内容。
@@ -288,9 +264,6 @@ export const insertFooterHandler: ToolHandler = async (
   return ok(`页脚已设置: "${text}" (第${section}节)`, r.warnings);
 };
 
-/**
- * 插入分节符
- */
 export const insertSectionBreakDefinition: ToolDefinition = {
   name: 'wps_word_insert_section_break',
   description: `在光标处插入分节符，把文档分成不同的节（各节可以有不同的页边距/纸张/页眉页脚）。
@@ -342,7 +315,7 @@ export const insertSectionBreakHandler: ToolHandler = async (
     return fail(`[勿重试·先改参数] 不认识的分节符类型「${breakType}」。可用：nextPage / continuous / evenPage / oddPage`, 'breakType 非法');
   }
 
-  // 第 1 期第 2 章第 2 轮修：原先调 'insertSectionBreak'，ps1 里【没有这个动作】（零命中）
+  // 原先调 'insertSectionBreak'，ps1 里【没有这个动作】（零命中）
   // → 每次 Unknown action，工具从未生效。insertPageBreak 本来就支持分节（type=section/
   // sectionContinuous），本轮又给它补了 evenPage/oddPage 两个映射值，所以四种都能落。
   // 原来那句 "// NOTE: 仅Windows支持" 是假的：Windows 上也不支持，压根没这个 case。
@@ -351,9 +324,6 @@ export const insertSectionBreakHandler: ToolHandler = async (
   return ok(`分节符已插入（类型: ${breakType}，WPS 断点码: ${r.data?.code ?? psType}）`, r.warnings);
 };
 
-/**
- * 设置行距
- */
 export const setLineSpacingDefinition: ToolDefinition = {
   name: 'wps_word_set_line_spacing',
   description: `设置段落行距。
@@ -395,7 +365,7 @@ export const setLineSpacingHandler: ToolHandler = async (
     return fail('行距值必须为正数！', '行距值无效');
   }
 
-  // 第 1 期第 2 章第 1 轮修：原先调 'setLineSpacing'，而 wps-com.ps1 里【没有这个动作】
+  // 原先调 'setLineSpacing'，而 wps-com.ps1 里【没有这个动作】
   // （零命中）→ 每次调用都落到分发器的 default 分支报 Unknown action，工具等于从未生效。
   // 能力本来就在 setParagraph 上（wps-com.ps1:3907），且参数名 lineSpacing 两边一致，
   // 所以只改动作名，PS 侧一行都不动。
@@ -405,9 +375,6 @@ export const setLineSpacingHandler: ToolHandler = async (
   return ok(`行距已设置为 ${lineSpacing} 倍（${target}）`, r.warnings);
 };
 
-/**
- * 导出所有文档管理相关的Tools
- */
 export const documentTools: RegisteredTool[] = [
   { definition: getOpenDocumentsDefinition, handler: getOpenDocumentsHandler },
   { definition: switchDocumentDefinition, handler: switchDocumentHandler },

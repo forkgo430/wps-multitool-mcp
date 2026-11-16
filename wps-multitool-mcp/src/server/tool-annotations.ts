@@ -2,20 +2,12 @@
  * Input: MCP 工具名
  * Output: MCP 标准工具注解（readOnlyHint / destructiveHint / idempotentHint / openWorldHint）
  * Pos: 让客户端【从 tools/list 直接读到】每个工具的读写属性，而不是让模型靠描述去猜。
- *      一旦我被修改，请更新我的头部注释，以及所属目录的md。
- *
  * 为什么必须是注解，不能靠文档教
- * ------------------------------
- * 实测：几百个工具里，靠名字能一眼确认只读的只有一小部分（见 cancellable.ts 的判定逻辑），
+ * 实测：几百个工具里，靠名字能一眼确认只读的只有一小部分（见 cancellable.ts 的写入判别逻辑），
  * 其余是写入或判不出。指望模型读描述去判断"这个能不能动我的文档"，
  * 就是让它在大量模糊项里赌。注解是机器可读的，客户端可以据此决定要不要弹确认、
  * 要不要允许自动执行 —— 这比在 skill 里写一句"注意只读"可靠得多。
- *
- * 数据来源
- * --------
- * 动作名映射由 scripts/manual/gen-tool-annotations.js 运行时观测生成：
- * 把 wpsClient 的出口换成假实现，逐个跑 handler 记下它发出的动作名。
- * 注解本身在这里【运行时算】，不写死进生成文件 —— 判定规则改了不必重新生成。
+ * 注解本身在这里【运行时算】，不写死进生成文件 —— 规则改了不必重新生成。
  */
 
 import {
@@ -60,7 +52,7 @@ const cache = new Map<string, ToolAnnotations | undefined>();
  *   非只读、破坏性、非幂等。名字推断在这里不是"保守"，是"猜错了"。
  */
 const EXTRA_ANNOTATIONS: Record<string, ToolAnnotations> = {
-  // deckkit 引擎（E2）：无 ps1 action 的编排工具——自身不直接调 COM，逐动作经 callTool
+  // deckkit 引擎：无 ps1 action 的编排工具——自身不直接调 COM，逐动作经 callTool
   //  走真入口（每个子动作各自的注解/快照护栏生效）。入口本身按最坏情况给：非只读、非幂等
   //  （中途失败会留下半成品文稿）；破坏性与 wps_common_batch 同口径：不标（子动作各自定）。
   wps_ppt_build_deck: {
@@ -96,7 +88,7 @@ const EXTRA_ANNOTATIONS: Record<string, ToolAnnotations> = {
     idempotentHint: false,
     openWorldHint: false,
   },
-  // 第 5 期模板层（2026-11-11）：渲染写类非幂等（同 outputPath 二次渲染被入口拒，但换路径会
+  // 渲染写类非幂等（同 outputPath 二次渲染被入口拒，但换路径会
   //  再落盘）；提取非幂等（占位序号递增）。破坏性不标（不删不改既有文件——outputPath 已存在
   //  时入口明确拒绝）。
   wps_render_template: {
@@ -149,10 +141,10 @@ const EXTRA_ANNOTATIONS: Record<string, ToolAnnotations> = {
     openWorldHint: false,
   },
   /**
-   * 【四】动作名带点，观测器按"合法标识符"判定把它归成 unresolved，推不出来。
+   * 【四】动作名带点，观测器按"合法标识符"规则把它归成 unresolved，推不出来。
    *   wps_ppt_unify_font 调的是 slide.unifyFont（带点的动作名），注解生成器的
    *   /^[A-Za-z_][A-Za-z0-9_]*$/ 不收它 → 只能手写。
-   *   值是人工判定的：它把一页/整份文稿里所有文本框的字体名改掉 —— 写入、原地改格式，
+   *   值是人工核定的：它把一页/整份文稿里所有文本框的字体名改掉 —— 写入、原地改格式，
    *   但不改内容、不删东西（非破坏），重复执行结果一致（幂等），只碰本机（openWorld=false）。
    */
   wps_ppt_unify_font: {
@@ -168,7 +160,7 @@ const EXTRA_ANNOTATIONS: Record<string, ToolAnnotations> = {
    *   wps_search_tools / wps_route_intent 只做字符串匹配；
    *   wps_word_proofread_basic 是纯本地正则（描述里就写着"无需 API 调用"）。
    *   按工具名推断会推出 cacheData / searchTools / proofreadBasic 这类名字，
-   *   而它们在 wps-com.ps1 里一个 case 都没有 —— 那不是"保守"，是拿假输入做安全判定。
+   *   而它们在 wps-com.ps1 里一个 case 都没有 —— 那不是"保守"，是拿假输入做安全判别。
    */
   wps_cache_data: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   wps_get_cached_data: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -188,7 +180,7 @@ const EXTRA_ANNOTATIONS: Record<string, ToolAnnotations> = {
    * wps_ppt_set_active_target 会锁定后续所有 PPT 操作的目标文稿：它不改文档，
    * 但决定了后面每一次写入落在哪份文件上。判成只读会让客户端跳过确认。
    *
-   * 第 1 期第 2 章第 1 轮移出：wps_word_set_text_color / wps_word_set_line_spacing
+   * 曾特判过的 wps_word_set_text_color / wps_word_set_line_spacing
    * 原先也在这张表里，原因是它们调的动作名在 ps1 里查不到（setTextColor / setLineSpacing，
    * 实测零命中）—— 动作缺失是另一条 bug，已单列修掉。动作名修对之后（setFont / setParagraph），
    * 它们的注解由真动作名算出来，分类与原来手写的【逐字段相同】

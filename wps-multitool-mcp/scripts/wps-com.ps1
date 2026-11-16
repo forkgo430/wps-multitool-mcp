@@ -5,7 +5,7 @@
 # Full implementation for Excel, Word, PPT, and common conversions
 # Usage: powershell -File wps-com.ps1 -Action <action> -Params <json>
 #
-# Host 维度（Office 支持一期 2026-11-07）：本脚本按 host 驱动 WPS 或 MS Office——
+# Host 维度：本脚本按 host 驱动 WPS 或 MS Office——
 #   $env:WPS_OFFICE = on | off | auto（缺省 auto）
 #   auto = 解析 Word.Application 链到实际服务器二进制再归类（LocalServer32 指向
 #   wps.exe → wps；WINWORD.EXE → office）。ProgID 存在性/CoCreate 成败/Name 自报
@@ -15,7 +15,7 @@
 param(
     [string]$Action,
     [string]$Params = "{}",
-    # 第 1 期第 3 章轮 1：实例标识。user = 用户正在用的 WPS（GetActiveObject）；
+    # 实例标识。user = 用户正在用的 WPS（GetActiveObject）；
     # sandbox-N = 本进程自己 New-Object 出来的隔离实例（句柄缓存在脚本作用域，常驻复用）。
     [string]$Instance = 'user',
     # 本进程负责哪个应用（word / excel / ppt / common）。word 才做文档寻址前置检查。
@@ -37,7 +37,7 @@ $script:SandboxWordApp = $null
 $script:SandboxWordPids = @()
 $script:LastResolvedDoc = $null
 
-# ==================== F1 · COM 消息过滤器（体验修复轮 B/环境病根治轮 2026-11-06）====================
+# ==================== COM 消息过滤器 ====================
 # 0x80010001（被呼叫方拒绝）的经典成因是 WPS 忙碌（弹窗/首页/对话框阻塞消息循环）。
 # 标准解法 = STA 线程注册 IMessageFilter：RetryRejectedCall 对 SERVERCALL_RETRYLATER
 # 退避重试（250ms × 8 ≈ 2 秒），超时才让调用以明确错误失败。
@@ -99,7 +99,7 @@ namespace WpsCom {
     }
 }
 
-# F1 等价物 · call 层忙重试（对 MTA 线程/直跑模式兜底）：0x80010001 退避 250ms × 8。
+# call 层忙重试（消息过滤器只对 STA 线程生效，此处对 MTA 线程/直跑模式兜底）：0x80010001 退避 250ms × 8。
 # 只重试"被拒绝的调用"——拒绝发生在 COM 调用进入服务端之前，重放不会执行两次。
 # 2 秒后放弃并原样抛出（明确超时，不静默吞）。
 function Test-BusyReject([string]$message) {
@@ -166,7 +166,7 @@ function Remove-OwnSandboxProcs {
 
 # ==================== ROT 附着（PowerShell 7 兼容 · 2026-10-25） ====================
 # 恶例复盘：pwsh7(.NET Core) 没有 Marshal::GetActiveObject，6 处调用点全体必抛 →
-# 每个动作都走 New-Object 回落 → 每动作新建一个 WPS，几分钟堆出 30+ 进程（执行者轮 7 铁证）。
+# 每个动作都走 New-Object 回落 → 每动作新建一个 WPS，几分钟堆出 30+ 进程（历史实测教训）。
 # 这里用 ole32/oleaut32 的 P/Invoke 实现同语义附着：Marshal 内部就是这条路，5.1 与 7 通用。
 if (-not ('WpsRot' -as [type])) {
     Add-Type -TypeDefinition @'
@@ -207,10 +207,10 @@ $script:UserWordApp = $null
 $script:UserExcelApp = $null
 $script:UserPptApp = $null
 $script:UserCreatedPids = @()
-# F3'（环境病根治轮 2026-11-06）：会话级"当前工作演示文稿"记账——Get-TargetPres 的
+# 会话级"当前工作演示文稿"记账——Get-TargetPres 的
 # 第一优先解析源（存活校验通过才返回），createPresentation/openPresentation/解析成功即记账。
 $script:LastResolvedPres = $null
-# F5（环境病根治轮）：动作失败标记实例可疑——下次 Get-Wps* 跳过 ROT 附着（病态实例常从这里进来），
+# 动作失败标记实例可疑——下次 Get-Wps* 跳过 ROT 附着（病态实例常从这里进来），
 # 直接走缓存探活→新建；任何 getter 返回健康实例即清标记。
 $script:InstanceSuspect = @{}
 
@@ -275,7 +275,7 @@ function Remove-OwnCreatedProcs {
 # host 解析（进程级缓存一次）：
 #   $env:WPS_OFFICE = on | off | auto（缺省 auto）
 #   auto = 解析 Word.Application 链到【实际服务器二进制】再归类。
-#   实测（2026-11-07 卡面"判定阶段情报"）：WPS 独装机会顶名应答 Office ProgID——
+#   实测：WPS 独装机会顶名应答 Office ProgID——
 #   CoCreate 成功、Name 自报 'Microsoft Word'，ProgID 存在性/CoCreate/Name 全不可信；
 #   唯一可靠判据 = CLSID → LocalServer32 指向的 exe 真身（wps.exe→wps；WINWORD.EXE→office）。
 #   解析不出/断链 → 保守按 wps（现任主通道），不猜、不静默假装 office 可用。
@@ -289,8 +289,8 @@ $script:HostProcNames = @{
     office = @{ word = @('WINWORD'); excel = @('EXCEL'); ppt = @('POWERPNT'); all = @('WINWORD', 'EXCEL', 'POWERPNT') }
 }
 
-# R2（提质合并卡 2026-11-11）：Windows host 路径归一——正斜杠在 Slide.Export/
-# Shapes.AddPicture 等 COM API 上炸（实地报告 R2："PowerPoint 无法将 ^0 保存到 ^1"，
+# Windows host 路径归一——正斜杠在 Slide.Export/
+# Shapes.AddPicture 等 COM API 上炸（实测报错："PowerPoint 无法将 ^0 保存到 ^1"，
 # 未替换占位符同款）。TS/ps1 入口统一 / → \。
 function Normalize-WinPath([string]$p) {
     if (-not $p) { return $p }
@@ -335,7 +335,7 @@ function Resolve-ProgidHost([string]$progId) {
     return ''
 }
 
-# host 解析入口（缓存）。判定结果进程级不变——COM 服务器注册不会在会话中途换。
+# host 解析入口（缓存）。识别结果进程级不变——COM 服务器注册不会在会话中途换。
 function Get-HostKind {
     if ($script:HostKind) { return $script:HostKind }
     $envKind = if ($env:WPS_OFFICE) { $env:WPS_OFFICE.Trim().ToLower() } else { '' }
@@ -377,15 +377,15 @@ function Test-AppIdentity($app) {
     return ($pth -match 'Microsoft Office')                    # 读到了且不匹配 = 确定的 wrong host
 }
 
-# ==================== Janitor 看门狗（第 5 期主线甲 2026-11-12）====================
+# ==================== 启动清扫看门狗 ====================
 # 灰区关闭：COM 拉起的 WPS/Office 实例此前无常驻看门狗——本块补完四件：
 #   A · PID 台账常驻化：New-TrackedWpsInstance 的 PID 差集落盘 spawn-journal.jsonl
 #      （行格式 {pid, exe, startTime, spawnedBy, ts}；startTime = PID 复用免疫的第二把钥匙）
-#   B · 启动清扫：守护启动时按 journal 判定收走 headless 孤儿（四条件全命中才杀，
+#   B · 启动清扫：守护启动时按 journal 收走 headless 孤儿（四条件全命中才杀，
 #      UI 实例有窗口标题一律不动——最高红线）
 #   C · 心跳对账：wpsStatus/守护启动时顺带销账死 PID + journal 滚动上限（10MB 截断留尾）
-#   D · FAST 门禁：Get-JournalSweepPlan 决策/执行分离，纯函数可注入测试
-# 实现取舍（报告写明）：ps1 直接 Append journal（不走 Output-Json 回传 TS 落盘）——
+#   D · 门禁：Get-JournalSweepPlan 决策/执行分离，纯函数可注入测试
+# 实现取舍：ps1 直接 Append journal（不走 Output-Json 回传 TS 落盘）——
 #   少一层跨进程序列化，ps1 侧记账点与 PID 差集采集在同一处，不会漏。
 function Get-JournalPath {
     $homeDir = if ($env:USERPROFILE) { $env:USERPROFILE } elseif ($env:HOME) { $env:HOME } else { [System.Environment]::GetFolderPath('UserProfile') }
@@ -459,7 +459,7 @@ function Invoke-JanitorSweep {
     $journalPath = Get-JournalPath
     if (-not (Test-Path $journalPath)) { return $result }
     try {
-        # C：滚动上限——超 10MB 截断留尾（保留后 5MB，oplog 先例）
+        # C：滚动上限——超 10MB 截断留尾（保留后 5MB）
         if ((Get-Item $journalPath).Length -gt 10MB) {
             $bytes = [System.IO.File]::ReadAllBytes($journalPath)
             $tail = [System.Text.Encoding]::UTF8.GetString($bytes[($bytes.Length - 5MB)..($bytes.Length - 1)])
@@ -509,7 +509,7 @@ function Invoke-JanitorSweep {
     return $result
 }
 
-# ==================== AI 撤销分组（逐步撤销，对标 per-action undo） ====================
+# ==================== AI 撤销分组（逐步撤销，按操作粒度回退） ====================
 # AI 的每个破坏性动作包进一个自定义撤销记录：用户 Ctrl+Z 一次退回一整个动作，
 # 而不是跟自己的编辑混在一起。仅 Word 侧有 UndoRecord；拿不到时静默返回 $null——
 # 没有分组只是撤销粒度变粗，不是功能失败。
@@ -533,19 +533,19 @@ function Stop-AiUndoRecord {
 # ==================== COM Object Getters ====================
 
 function Get-WpsExcel {
-    # 第 1 期第 2 章第 4 轮（A9）：Fresh 标记"这次取到的实例是不是【新建】的"。
+    # Fresh 标记"这次取到的实例是不是【新建】的"。
     # 新建的实例一定是空的 —— 用它读列表会得到"0 份"，而文档其实还在（ROT 重注册窗口）。
     $script:WpsExcelFresh = $false
     $suspect = $script:InstanceSuspect['excel']
     # ① 会话缓存探活通过即优先复用（Office 收口合并卡 A 段：同会话同 app 绑定一致性——
     #    ROT 多实例抽签可能让每次调用绑不同实例；缓存优先 = 会话内稳定绑定）。
-    #    F5 探活语义不变：缓存句柄死了才清缓存，落到 ROT/新建。
+    #    探活语义不变：缓存句柄死了才清缓存，落到 ROT/新建。
     if ($null -ne $script:UserExcelApp -and -not $suspect) {
         try { $null = $script:UserExcelApp.Workbooks.Count; Clear-InstanceSuspect 'excel'; return $script:UserExcelApp } catch { $script:UserExcelApp = $null }
     }
-    # ② ROT 附着（缓存空/失效时——首个调用或缓存实例死亡）：用户优先 + F5 探活 + 身份校验
+    # ② ROT 附着（缓存空/失效时——首个调用或缓存实例死亡）：用户优先 + 探活 + 身份校验
     #    （防双装机器上 WPS 动态类工厂顶着 Office ProgID 出现在 ROT——Test-AppIdentity 一行不动）。
-    #    F5 可疑态 → 跳过 ROT 一轮（给新建让路）。
+    #    可疑态 → 跳过 ROT 一轮（给新建让路）。
     $rot = Get-RotObject (Get-ProgidForApp 'excel')
     if ($null -ne $rot -and -not $suspect -and (Test-AppIdentity $rot)) {
         if (Test-AppAlive $rot 'excel') { $script:UserExcelApp = $rot; Clear-InstanceSuspect 'excel'; return $rot }
@@ -558,7 +558,7 @@ function Get-WpsExcel {
 }
 
 function Get-WpsWord {
-    # 第 1 期第 3 章轮 1：沙箱实例走自己的句柄，绝不碰用户的 WPS。
+    # 沙箱实例走自己的句柄，绝不碰用户的 WPS。
     #
     # 为什么必须缓存：New-Object 每次都新开一个 WPS 进程（实测 +2 进程），
     # 一个常驻进程如果每请求都 New-Object，几分钟就能堆出几十个进程。
@@ -608,17 +608,17 @@ function Get-WpsWord {
         $script:SandboxWordApp = $app
         return $app
     }
-    # 第 1 期第 2 章第 4 轮（A9）：Fresh 标记"这次取到的实例是不是【新建】的"。
+    # Fresh 标记"这次取到的实例是不是【新建】的"。
     $script:WpsWordFresh = $false
     # ① 会话缓存探活通过即优先复用（Office 收口合并卡 A 段：同会话同 app 绑定一致性）。
-    # F5 可疑态保真（判定阶段修正 2026-11-07）：可疑时连缓存一起跳过（病态实例可能已被缓存），
+    # 可疑态保真：可疑时连缓存一起跳过（病态实例可能已被缓存），
     # 直接走 ③ 新建——「跳过一次给健康实例让路」的语义在缓存优先取序下依然成立。
     $suspect = $script:InstanceSuspect['word']
     if ($null -ne $script:UserWordApp -and -not $suspect) {
         try { $null = $script:UserWordApp.Documents.Count; Clear-InstanceSuspect 'word'; return $script:UserWordApp } catch { $script:UserWordApp = $null }
     }
     # ② ROT 附着（缓存空/失效时）：用户优先 + F5 探活 + 身份校验（防 WPS 顶名实例混入——
-    #    Test-AppIdentity 一行不动）。F5 可疑态 → 跳过 ROT 一轮。
+    #    Test-AppIdentity 一行不动）。可疑态 → 跳过 ROT 一轮。
     $rot = Get-RotObject (Get-ProgidForApp 'word')
     if ($null -ne $rot -and -not $suspect -and (Test-AppIdentity $rot)) {
         if (Test-AppAlive $rot 'word') { $script:UserWordApp = $rot; Clear-InstanceSuspect 'word'; return $rot }
@@ -631,22 +631,22 @@ function Get-WpsWord {
 
 # 只从 ROT（Running Object Table）取正在跑的那个实例，【不新建】。
 #
-# 为什么需要它（第 1 期第 2 章第 4 轮 · A9）：
+# 为什么需要它：
 # Get-WpsWord 在 ROT 取不到时会新建一个【新的空实例】。
 # 而 WPS 退出/重启之后要重新注册 ROT，那几秒里正好取不到 ——
 # 于是"暂时看不见文档"被说成了"没有文档"。
 # 列表读回必须能区分这两件事，所以给它一条"只取不建"的路。
 function Get-WpsWordFromRot {
-    # 会话绑定优先（判定阶段修正 2026-11-07）：列表读回与 Get-WpsWord 同视图——
+    # 会话绑定优先：列表读回与 Get-WpsWord 同视图——
     # 缓存健康即返回缓存，否则 ROT。否则 create 后 getOpenDocuments 会绕过会话绑定
-    # 重新抽签（11-07 判定实证：create 后 getOpen 附着 0 文档实例）。
+    # 重新抽签（实测：create 后 getOpen 附着 0 文档实例）。
     if ($null -ne $script:UserWordApp) {
         try { $null = $script:UserWordApp.Documents.Count; return $script:UserWordApp } catch { $script:UserWordApp = $null }
     }
     return Get-RotObject (Get-ProgidForApp 'word')
 }
 function Get-WpsExcelFromRot {
-    # 会话绑定优先（判定阶段修正 2026-11-07）：同 WordFromRot。
+    # 会话绑定优先：同 WordFromRot。
     if ($null -ne $script:UserExcelApp) {
         try { $null = $script:UserExcelApp.Workbooks.Count; return $script:UserExcelApp } catch { $script:UserExcelApp = $null }
     }
@@ -734,7 +734,7 @@ function Set-LastResolvedPres($pres, [string]$by) {
     $script:LastResolvedPres = @{ name = $nm; path = $pth; by = $by }
 }
 
-# F5（环境病根治轮）：轻量探活——对应应用的 Count 属性可读即认为句柄活着。
+# 轻量探活——对应应用的 Count 属性可读即认为句柄活着。
 # ROT 附着/缓存命中统一过这里：病态实例（0x80010001/空壳）在这里现形即弃。
 function Test-AppAlive($app, [string]$kind) {
     if ($null -eq $app) { return $false }
@@ -800,7 +800,7 @@ function Resolve-Pres($ppt, $p) {
         if ($d) { Set-LastResolvedPres $d 'presentationName'; return $d }
         return $null
     }
-    # F3'（环境病根治轮）：会话记账实例——上次解析/新建的那份，存活校验通过即复用。
+    # 会话记账实例——上次解析/新建的那份，存活校验通过即复用。
     # 会话连续性优先于 Active*：headless/首页态下 Active 恒 null/空壳，记账实例是唯一稳定锚。
     $prev = $script:LastResolvedPres
     if ($prev) {
@@ -824,7 +824,7 @@ function Resolve-Pres($ppt, $p) {
 # 未提供则回退到当前活动文稿；提供了但找不到则返回 $null（让调用方报明确错误，而不是误改其它文稿）。
 # 微轮（2026-11-05）：实现体收敛到 Resolve-Pres（Active 过健康检查 + 空壳遍历）——
 # 全组用 Get-TargetPres 的 PPT 工具自动获得去 Active 化后的解析。
-# F3'（环境病根治轮 2026-11-06）：解析链第一级加会话记账实例（存活校验）——
+# 解析链第一级加会话记账实例（存活校验）——
 # headless/首页态下 Active\* 恒 null/空壳，记账实例是唯一稳定锚。
 function Get-TargetPres($ppt, $p) {
     if ($null -eq $ppt) { return $null }
@@ -946,7 +946,7 @@ function Resolve-Doc($app, $p) {
         return $null
     }
     # Office 支持二期（2026-11-07）：记账对称化——记账此前只写不读（Set-LastResolvedDoc 在
-    # 各解析点都在记，但本函数从不消费），补上消费层（卡面第 5 项，只补接线不动原有语义）。
+    # 各解析点都在记，但本函数从不消费），补上消费层（只补接线不动原有语义）。
     # 顺序：显式名（上面）> 记账（存活校验）> Active > 遍历——与 Resolve-Pres/Resolve-Book 同范式。
     $prev = $script:LastResolvedDoc
     if ($prev) {
@@ -967,9 +967,9 @@ function Resolve-Doc($app, $p) {
     return $null
 }
 
-# Office 试点轮（2026-11-07）：会话级"当前工作簿"记账——镜像 ppt 侧 F3' 范式
+# 会话级"当前工作簿"记账——镜像 ppt 侧会话记账范式
 # （Resolve-Pres 的记账层）。Resolve-Book 原先裸奔（名字→ActiveWorkbook→遍历），
-# 双簿场景（用户自己的簿 + 我们新建的簿并存）目标会漂移：试点 E8 实测
+# 双簿场景（用户自己的簿 + 我们新建的簿并存）目标会漂移：实测
 # 图表 SetSourceData 跨簿引用抛 "Index was outside the bounds of the array"。
 $script:LastResolvedBook = $null
 function Set-LastResolvedBook($book, [string]$by) {
@@ -1239,7 +1239,7 @@ function Output-Json($obj) {
     # 直跑模式 $script:WpsReqId 为空，不注入，输出与改造前逐字节一致。
     if ($script:WpsReqId -and ($obj -is [hashtable])) { $obj['id'] = $script:WpsReqId }
 
-    # 第 1 期第 3 章轮 1：把"实际改的是哪一份"带回给调用方。
+    # 把"实际改的是哪一份"带回给调用方。
     # 为什么挂在统一出口：67 个 word 工具的 case 各自 Output-Json，逐个加必漏；
     # 而"改错了地方"恰恰最难自己发现 —— 只看 success: true 是看不出来的。
     # 只在成功响应上带：失败时文档可能根本没解析到，附一份空壳只会误导。
@@ -1255,7 +1255,7 @@ function Output-Json($obj) {
     # 那比不带更坏 —— 它会让调用方确信自己改的是另一份。
     $script:LastResolvedDoc = $null
 
-    # F3'（环境病根治轮 2026-11-06）：PPT 同款溯源——__pres 带回"实际落到哪份演示文稿"。
+    # PPT 同款溯源——__pres 带回"实际落到哪份演示文稿"。
     # 与 __target 同款纪律：只在成功响应上带、每条响应只带一次。
     if ($null -ne $script:LastResolvedPres -and ($obj -is [hashtable]) -and $obj['success'] -and -not $obj.ContainsKey('__pres')) {
         $obj['__pres'] = @{
@@ -1553,7 +1553,7 @@ if ($null -ne $p -and $p -is [psobject]) {
     }
 }
 
-# ==================== 目标钉住的前置检查（第 1 期第 3 章轮 1）====================
+# ==================== 目标钉住的前置检查 ====================
 # 传了 documentName 就【必须】能找到，找不到直接报错并列出所有打开的文档。
 #
 # 为什么放在这里而不是各 case 里：
@@ -2024,7 +2024,7 @@ switch ($Action) {
             $killed = @()
             if ($null -ne $app) {
                 try { $app.DisplayAlerts = 0 } catch {} # 吞错有据：抑制弹窗失败不影响退出，残留由 PID 收尾兜底
-                # 第 2 期第 2 章轮 2 真机实测：沙箱里有未保存文档时，$app.Quit() 会卡在
+                # 真机实测：沙箱里有未保存文档时，$app.Quit() 会卡在
                 # 「是否保存」对话框上（无人值守 = 挂死，实测 300 秒超时，而且桥会因此
                 # 杀掉整个 word 子进程）。沙箱里的文档本来就是可丢的，先逐个标 Saved 再关。
                 try {
@@ -2157,7 +2157,7 @@ switch ($Action) {
     }
 
     "getSelectedText" {
-        # 第 1 期第 3 章轮 1：选区是【全局焦点】，钉不住。
+        # 选区是【全局焦点】，钉不住。
         # 带 target 或沙箱实例时显式拒绝 —— 宁可报错，也不许静默读到别人那份的选区。
         if (Test-SandboxInstance) {
             Output-Json @{ success = $false; error = "[勿重试·先改参数] 选区（Selection）依赖全局焦点，沙箱实例里钉不住。要在沙箱里取文本，请用 getDocumentText / getParagraphs 这类按文档寻址的动作。" }
@@ -2464,7 +2464,7 @@ switch ($Action) {
         # Activate 物化窗口，从源头杀幽灵；Activate 失败进 warnings 不阻断。
         $actWarn = $null
         try { $pres.Activate() } catch { $actWarn = "新演示文稿窗口物化失败（Activate）：" + $_.Exception.Message }
-        # F3'（环境病根治轮）：新建即记账——后续无 presentationName 的调用解析到这份
+        # 新建即记账——后续无 presentationName 的调用解析到这份
         Set-LastResolvedPres $pres 'created'
         # 必须回 data：Node 侧的 handler 判的是 success && data，
         # 只回 success 会被当成失败（"新建演示文稿失败: undefined" —— 实测踩过）
@@ -2588,7 +2588,7 @@ switch ($Action) {
         # 改走 Resolve-Sheet（int/名字/缺省 ActiveSheet 全兜住），与 setRangeData 同口径。
         $sheet = $(Resolve-Sheet $excel $p)
         if ($null -eq $sheet) { Output-Json @{ success = $false; error = "No active sheet" }; return }
-        # 第 1 期第 2 章第 4 轮（B1）：与 setRangeData 同一个雷 —— 原样 `.Value2 = $p.value`
+        # 与 setRangeData 同一个雷 —— 原样 `.Value2 = $p.value`
         # 在 daemon 里会抛 "无法将类型为 System.Int32 的对象强制转换为类型 System.String"。
         # 同一个分派：数字写数字、文本按文本格式写（保住 "007" 这类形状）、布尔写布尔、null 清空。
         $cell = $sheet.Cells.Item([int]$p.row, [int]$p.col)
@@ -2628,7 +2628,7 @@ switch ($Action) {
     "setRangeData" {
         $excel = Get-WpsExcel
         if ($null -eq $excel) { Output-Json @{ success = $false; error = "WPS Excel not running" }; return }
-        # 第 1 期第 2 章第 2 轮：两句分支完全相同 + 没给 sheet 时 Sheets.Item($null) 会抛。
+        # 两句分支完全相同 + 没给 sheet 时 Sheets.Item($null) 会抛。
         # wps_excel_evaluate_formula 的"写回单元格"要复用这个动作（它没有 sheet 参数），所以先修这层。
         $sheet = $(Resolve-Sheet $excel $p)
         if ($null -eq $sheet) { Output-Json @{ success = $false; error = "No active sheet" }; return }
@@ -2637,7 +2637,7 @@ switch ($Action) {
             for ($c = 0; $c -lt $p.data[$r].Count; $c++) {
                 $cell = $range.Cells.Item($r + 1, $c + 1)
                 $v = $p.data[$r][$c]
-                # 第 1 期第 2 章第 4 轮（B1）：写数字必失败，报
+                # 写数字必失败，报
                 #   "无法将类型为 System.Int32 的对象强制转换为类型 System.String"
                 # 根因不是"值是数字"，是【值的来源】：daemon 里 $p 来自 ConvertFrom-Json，
                 # 取出来的元素是 PSObject 包着的，COM 绑定器接不住这种包装，
@@ -2884,7 +2884,7 @@ switch ($Action) {
     "setFormula" {
         $excel = Get-WpsExcel
         if ($null -eq $excel) { Output-Json @{ success = $false; error = "WPS Excel not running" }; return }
-        # 第 1 期第 2 章第 2 轮：原来两句分支完全相同（`if ($p.sheet -is [int])` 两边都写
+        # 原来两句分支完全相同（`if ($p.sheet -is [int])` 两边都写
         # `$wb.Sheets.Item($p.sheet)`），而且没给 sheet 时是 `Sheets.Item($null)` —— 会抛。
         # wps_excel_auto_sum 要映射到这个动作（它没有 sheet 参数），所以必须先修好这层解析。
         $sheet = $(Resolve-Sheet $excel $p)
@@ -2907,7 +2907,7 @@ switch ($Action) {
         Output-Json @{ success = $true; data = @{ range = [string]$p.range; formula = $formula; value = $value } }
     }
 
-    # 第 1 期第 2 章第 2 轮新增：wps_excel_evaluate_formula 一直调 evaluateFormula，
+    # wps_excel_evaluate_formula 一直调 evaluateFormula，
     # 而 ps1 里没有这个 case → 每次都是 Unknown action（这工具从上线起就没成功过）。
     # 能力就是 Excel 的 Application.Evaluate：只算不写；给了 cell 才把结果落格。
     # 与 setFormula 的分工：setFormula 是【把公式写进单元格（落盘）】，本动作是【算一个值出来（不落盘）】。
@@ -2936,7 +2936,7 @@ switch ($Action) {
         Output-Json @{ success = $true; data = @{ formula = $formula; result = $result } }
     }
 
-    # 第 1 期第 2 章第 2 轮新增：wps_excel_set_zoom 一直调 setZoom，ps1 里没有 → Unknown action。
+    # wps_excel_set_zoom 一直调 setZoom，ps1 里没有 → Unknown action。
     # 这是【窗口缩放】（ActiveWindow.Zoom，10-400），不是【打印缩放】（PageSetup.Zoom）——
     # ps1 里 2706 行那个 $ps.Zoom 是 PageSetup 的，属于打印设置，两回事。
     "setZoom" {
@@ -3597,7 +3597,7 @@ switch ($Action) {
         Output-Json @{ success = $true; data = @{ sheets = $sheets; count = $sheets.Count; activeSheet = $excel.ActiveSheet.Name } }
     }
 
-    # ===== 第 4 期补齐（常见高频缺口：表内查找 / 图表删除 / 透视表 / 页面设置）=====
+    # ===== 常见高频缺口补齐（表内查找 / 图表删除 / 透视表 / 页面设置）=====
     # 逐条说明"为什么缺它会真的卡住"，不是凑数。
     # 真机支持情况见 __probeCaps 的对应项；未验的一律走 warnings，不假装成功。
 
@@ -4016,7 +4016,7 @@ switch ($Action) {
             }
         } catch { }
 
-        # ---- 第 4 期新增接口 ----
+        # ---- 能力探测接口（表格/图表/透视表/页面设置）----
         $caps["sheet.usedRange"]    = { $u = $wb.Worksheets.Item(1).UsedRange
                                           if ($u.Rows.Count -lt 1) { throw "UsedRange 为空，探测无意义" } }
         $caps["sheet.autoFitColumn"] = { $col = $wb.Worksheets.Item(1).Columns.Item(1); $w0 = $col.ColumnWidth
@@ -4672,11 +4672,11 @@ switch ($Action) {
     "getOpenWorkbooks" {
         $excel = Get-WpsExcel
         if ($null -eq $excel) { Output-Json @{ success = $false; error = "WPS Excel not running" }; return }
-        # 第 1 期第 2 章第 4 轮（A9）：空列表【不能直接信】。
+        # 空列表【不能直接信】。
         # quit 之后 WPS 要重新注册到 ROT（Running Object Table），那几秒里
         # GetActiveObject 要么取不到（于是 Get-WpsWord 新建一个空的实例），
         # 要么取到一个刚重启、文档还没恢复的实例 —— 两种都表现为"列表 0 份"，
-        # 可文档其实还在（真机 A9 实测：连续 4 次 × 1.5s 读到 0 份，同一时刻按名读内容 6/6 可读）。
+        # 可文档其实还在（实测：连续 4 次 × 1.5s 读到 0 份，同一时刻按名读内容 6/6 可读）。
         # 后果是模型据此判断"文档没了"，会误判。
         #
         # 所以：读到空列表时，重新【只从 ROT 取】再取一次，最多 3 次 × 400ms，取到非空就停。
@@ -4801,7 +4801,7 @@ switch ($Action) {
     "getOpenDocuments" {
         $word = Get-WpsWord
         if ($null -eq $word) { Output-Json @{ success = $false; error = "WPS Word not running" }; return }
-        # 第 1 期第 2 章第 4 轮（A9）：空列表【不能直接信】。
+        # 空列表【不能直接信】。
         # quit 之后 WPS 要重新注册到 ROT（Running Object Table），那几秒里
         # GetActiveObject 要么取不到（于是 Get-WpsWord 新建一个空的实例），
         # 要么取到一个刚重启、文档还没恢复的实例 —— 两种都表现为"列表 0 份"，
@@ -4880,7 +4880,7 @@ switch ($Action) {
             $hasPath = $false
             try { $hasPath = -not [string]::IsNullOrEmpty([string]$docItem.Path) } catch {} # 吞错有据：读不到 Path 按"从未保存"处理（保守方向，护栏会拦）
             if (-not $hasPath) {
-                # 第 1 期第 2 章第 4 轮（B3）：提示里原来写的是 saveChanges=false —— 那是【PS 动作】的
+                # 提示里原来写的是 saveChanges=false —— 那是【PS 动作】的
                 # 参数名，不是【工具】的。wps_word_close_document 的公开 schema 参数叫 save；
                 # 照提示传 saveChanges 的话工具收不到 → save 仍是 undefined → TS 兜成 saveChanges=true
                 # → 护栏照样触发 → 用户卡死在同一个错误里出不来。
@@ -4894,7 +4894,7 @@ switch ($Action) {
         Output-Json @{ success = $true; data = @{ closed = $name } }
     }
 
-    # ==================== Word 深水区补齐（第 5 期） ====================
+    # ==================== Word 深水区补齐 ====================
     # 补的是"读侧太弱、模型只能盲写"那批：统计/批注/书签/表格都只能写不能读，
     # 加上 create/close_document（PS 动作早有，一直没有 TS 工具暴露）。
     # 真机支持度由 __probeWordCaps 逐个验（在临时文档上探，探完删，不碰用户文档）。
@@ -5117,7 +5117,7 @@ switch ($Action) {
     }
 
     "__probeWordCaps" {
-        # Word 侧真机能力探测（第 5 期新增接口）。
+        # Word 侧真机能力探测。
         # 与 __probeCaps 的区别：那个探【用户当前文档】上的既有能力；
         # 这个在【临时文档】上探新接口，探完原样关闭（不保存），不碰用户任何文档。
         $word = Get-WpsWord
@@ -5138,9 +5138,9 @@ switch ($Action) {
                     return
                 }
 
-                # 空壳对象判定（BACKLOG 顺手项 2026-10-27 补）：Documents.Add 可能返回
-                # 非 null 但不健康的空壳（B3 线门禁"Documents.Count 0→0"的根因）——
-                # 只判 null 捕不住它，这里升级为健康判定，同样显式失败。
+                # 空壳对象防御：Documents.Add 可能返回
+                # 非 null 但不健康的空壳（曾致"Documents.Count 0→0"门禁红灯）——
+                # 只判 null 捕不住它，这里升级为健康检查，同样显式失败。
                 if (-not (Test-DocHealthy $doc)) {
                     Output-Json @{ success = $false; error = "探测失败：临时文档为空壳（非 null 但不健康），等待 3 秒仍不可用" }
                     return
@@ -5204,7 +5204,7 @@ switch ($Action) {
         $doc = $(Resolve-Doc $word $p)
         if ($null -eq $doc) { Output-Json @{ success = $false; error = "No active document" }; return }
         $position = if ($p.position) { $p.position } else { "cursor" }
-        # 第 2 期第 2 章轮 2：钉住文档（documentName 有值）时**绝不能**走 Selection。
+        # 钉住文档（documentName 有值）时**绝不能**走 Selection。
         # Selection 是【全局焦点】：target.doc=A、而 B 恰好是活动文档时，文字会写进 B，
         # 而且返回 success —— 这正是 A1/A2 要抓的"静默改错"。
         # 钉住时 cursor 没有意义（光标属于活动文档），退化成"追加到目标文档末尾"。
@@ -5238,7 +5238,7 @@ switch ($Action) {
         $word = Get-WpsWord
         if ($null -eq $word) { Output-Json @{ success = $false; error = "WPS Word not running" }; return }
         $doc = $(Resolve-Doc $word $p)
-        # 第 2 期第 2 章轮 2：钉住文档 + 非 all 范围 = 用的是【活动文档的选区】，会改错地方。
+        # 钉住文档 + 非 all 范围 = 用的是【活动文档的选区】，会改错地方。
         # 与 getSelectedText/setSelectedText 同一条理由：选区钉不住，宁可报错。
         if ($p.documentName -and $p.range -ne "all") {
             Output-Json @{ success = $false; error = '[勿重试·先改参数] 钉住文档（documentName）时不能用选区范围改字体：选区属于活动文档，会改到别人身上。请改传 range=all（作用于整份目标文档）。' }
@@ -5355,7 +5355,7 @@ switch ($Action) {
         if ($null -eq $word) { Output-Json @{ success = $false; error = "WPS Word not running" }; return }
         $doc = $(Resolve-Doc $word $p)
         $breakType = if ($p.type) { $p.type } else { "page" }
-        # 第 1 期第 2 章第 2 轮：补 evenPage/oddPage（wdSectionBreakEvenPage=4 / OddPage=5）。
+        # 补 evenPage/oddPage（wdSectionBreakEvenPage=4 / OddPage=5）。
         # 之前 wps_word_insert_section_break 走的是另一个不存在的动作，而要接住它的四种类型
         # 就得让这个映射表认识这四个值 —— 否则 evenPage/oddPage 会静默退化成【分页符】，
         # 用户以为分了节，其实只是换页（后面按节设页边距会全部落到同一节上）。
@@ -5729,7 +5729,7 @@ switch ($Action) {
         if ($null -eq $ppt) { Output-Json @{ success = $false; error = "WPS PPT not running" }; return }
         if (-not $p.path) { Output-Json @{ success = $false; error = "path required" }; return }
         $pres = $ppt.Presentations.Open($p.path)
-        # F3'（环境病根治轮）：打开即记账
+        # 打开即记账
         Set-LastResolvedPres $pres 'opened'
         Output-Json @{ success = $true; data = @{ name = $pres.Name; path = $pres.FullName; slideCount = $pres.Slides.Count } }
     }
@@ -6102,11 +6102,11 @@ switch ($Action) {
         Output-Json @{ success = $true; data = @{ deleted = $(if ($p.name) { $p.name } else { $p.shapeIndex }) } }
     }
 
-    # ==================== 模板三格式补全（第 5 期 · pptx/xlsx 渲染路径）====================
-    # R2/R4 教训全延续：路径归一（Normalize-WinPath）、DisplayAlerts 护栏、outputPath 已存在
+    # ==================== 模板三格式补全（pptx/xlsx 渲染路径）====================
+    # 既有纪律全延续：路径归一（Normalize-WinPath）、DisplayAlerts 护栏、outputPath 已存在
     # 拒绝、缺 key 列全、慢档（ps-child DEFAULT_SLOW_ACTIONS 已补 renderTemplatePpt/Xlsx）。
     # ppt 无书签等价物——{{key}} 占位单轨；xlsx 走 Range.Replace 标量两参（Find 对象参数在
-    # daemon 会话态不稳定——findInSheet B1 先例），多区域 Areas 枚举同款防线。
+    # daemon 会话态不稳定——查找动作的既有教训），多区域 Areas 枚举同款防线。
     "renderTemplatePpt" {
         $ppt = Get-WpsPpt
         if ($null -eq $ppt) { Output-Json @{ success = $false; error = "WPS PPT not running" }; return }
@@ -6120,11 +6120,11 @@ switch ($Action) {
         if ($dataProps.Count -eq 0) { Output-Json @{ success = $false; error = "data 为空对象——至少给一个锚点值" }; return }
         if (Test-Path $outputPath) { Output-Json @{ success = $false; error = "[勿重试·先改参数] outputPath 已存在: $outputPath（不静默覆盖，请换路径或先删除）" }; return }
 
-        # B1 同款防线（模板三格式卡）：pwsh7 daemon STA 上 Close 后再 Open/替换 会话态绑定
+        # pwsh7 daemon STA 上 Close 后再 Open/替换 会话态绑定
         # 不稳（null/固定集合炸）——渲染核心交 PowerShell 5.1 子进程（附着 ROT PPT 宿主，
         # 5.1 绑定干净）。探针实测：独立 pwsh7 全绿、daemon 会话态必炸。
         $f51Params = @{ templatePath = $templatePath; outputPath = $outputPath; data = $p.data; progId = (Get-ProgidForApp 'ppt') } | ConvertTo-Json -Compress -Depth 4
-        # 判定阶段修正（2026-11-12）：JSON 串直过命令行会被 CommandLineToArgvW 折叠 \ 转义与引号
+        # JSON 串直过命令行会被 CommandLineToArgvW 折叠 \ 转义与引号
         # （实测子进程 ConvertFrom-Json 必坏 → data required）——base64 过命令行，ASCII 安全免疫
         $f51b64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($f51Params))
         $out51 = & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'wps-render-ppt51.ps1') -Params $f51b64 2>$null
@@ -6143,7 +6143,7 @@ switch ($Action) {
         if ($null -eq $pres) {
             # WPS PPT 空集合 ReadOnly 无窗 Open 返回 null（两态病，与 Presentations.Add null 同款
             # 家族——实测锚：closePresentation 后集合空时必现）。修法 = 先 Add 空演示撑起集合
-            # 再 Open（一期收口先例）。
+            # 再 Open（既有做法）。
             try { $null = $ppt.Presentations.Add(1) } catch { }
             $pres = $ppt.Presentations.Open($templatePath, $true, $false, $false)
         }
@@ -6175,7 +6175,7 @@ switch ($Action) {
             if ($phKeys -notcontains $m.Groups[1].Value) { $phKeys += $m.Groups[1].Value }
         }
 
-        # 替换：TextRange.Replace(FindWhat, ReplaceWhat) 标量两参——对象参数在 daemon 会话态不稳（B1 先例）
+        # 替换：TextRange.Replace(FindWhat, ReplaceWhat) 标量两参——对象参数在 daemon 会话态不稳（查找动作同款教训）
         $filled = @()
         $missing = @()
         foreach ($prop in $dataProps) {
@@ -6235,7 +6235,7 @@ switch ($Action) {
         $wb = $excel.Workbooks.Open($templatePath, $null, $true)   # ReadOnly 打开模板
         if ($null -eq $wb) { Output-Json @{ success = $false; error = "模板打开失败: $templatePath" }; return }
 
-        # 先收集 {{key}} 集合（UsedRange.Value2 多区域枚举 + GetValue——B1 findInSheet 同款防线）
+        # 先收集 {{key}} 集合（UsedRange.Value2 多区域枚举 + GetValue——查找动作同款防线）
         $phKeys = @()
         foreach ($ws in @($wb.Worksheets)) {
             try {
@@ -6267,7 +6267,7 @@ switch ($Action) {
             } catch { }
         }
 
-        # 替换：Range.Replace(What, Replacement) 标量两参（Find/FindNext 对象参数会话态不稳——B1 先例）
+        # 替换：Range.Replace(What, Replacement) 标量两参（Find/FindNext 对象参数会话态不稳——查找动作同款教训）
         $filled = @()
         $missing = @()
         $da0 = $null
@@ -6315,7 +6315,7 @@ switch ($Action) {
         $pres = Get-TargetPres $ppt $p
         $slideIndex = if ($p.slideIndex) { $p.slideIndex } else { 1 }
         $slide = $pres.Slides.Item([int]$slideIndex)
-        # R6（提质合并卡 2026-11-11）：raw=true 时追加 isPlaceholder 标记（形状是占位符还是
+        # raw=true 时追加 isPlaceholder 标记（形状是占位符还是
         # 自绘文本框）——机器可结构化判读；缺省回包格式一字不变（老调用方零破坏）。
         $raw = if ($null -ne $p.raw) { [bool]$p.raw } else { $false }
         $textBoxes = @()
@@ -6324,7 +6324,7 @@ switch ($Action) {
             if ($shape.HasTextFrame) {
                 $text = ""
                 try { $text = $shape.TextFrame.TextRange.Text } catch {}
-                # E3 增补（deckkit 生成后溢出检查的读回依据，引擎探针 seg2 证过 BoundHeight 可判溢出）：
+                # deckkit 生成后溢出检查的读回依据（引擎探针实测过 BoundHeight 可判溢出）：
                 # boundWidth/boundHeight = 文字实际包围盒（超框判据），fontSize = 当前字号（缩字档位基准）。
                 # 取不到时回 null——调用方按字段缺失降级，勿当硬失败。老桥没有这几行。
                 $bw = $null; $bh = $null; $fs = $null
@@ -6615,7 +6615,7 @@ switch ($Action) {
             return
         }
         if (-not $shape.TextFrame.HasText) {
-            # R1（提质合并卡 2026-11-11）：deckkit table 页收尾上色步按序号定位，Office 宿主
+            # deckkit table 页收尾上色步按序号定位，Office 宿主
             # 序号漂移时落到空文本形状——原报错会让整个 build_deck 中止（实地 13/23 步）。
             # 改为跳过 + warning（生成引擎语境下"没东西可上色"不是失败）；直接调用方语义
             # 变化（报错→成功+warning）已记交付。
@@ -9093,7 +9093,7 @@ switch ($Action) {
         # ①b SEQ 活域兜底（2026-10-28 主线 ps1 增补轮）：__probeCaptionSeq 真机实测
         #    Fields.Add(rng, -1, "SEQ <label> \* ARABIC", false) 插入成功且编号为活域，
         #    TablesOfFigures.Add(…, label) 更新后实际收集 1 条（探针 collectedEntries=1）——
-  # 任务卡判定标准：读回 TOF 实际收集条目数 ≥1 → 链条通。
+  # 验收标准：读回 TOF 实际收集条目数 ≥1 → 链条通。
         #    这层插的是真编号域，图表目录能自动收集；仍失败才落到纯文本。
         if ($null -eq $mode) {
             try {
@@ -9329,8 +9329,8 @@ switch ($Action) {
         Output-Json @{ success = $true; data = @{ received = $p; keys = $keys; ptype = $p.GetType().FullName } }
     }
 
-    # 【B5-T3 主线 · 目标 A+B1】题注 SEQ 端到端 + Bibliography 探针（word 宿主，临时文档探完即关）。
-    # 链路判定标准（任务卡）：TOF 实际收集条目数 ≥1 = 链通（不许只看调用成功）。
+    # 题注 SEQ 端到端 + Bibliography 探针（word 宿主，临时文档探完即关）。
+    # 链路验收标准：TOF 实际收集条目数 ≥1 = 链通（不许只看调用成功）。
     # SEQ 域参考 ps1 既有范式：Fields.Add(rng, -1, 域代码, false)（PAGE/STYLEREF/REF 同款）。
     "__probeCaptionSeq" {
         $out = @{}
@@ -9367,7 +9367,7 @@ switch ($Action) {
             } catch { $seq.formB_err = $_.Exception.Message }
             $out.seqField = $seq
 
-            # ---- TOF 收集（链路判定核心）：带标签"图"的图表目录，更新后读回收集条目 ----
+            # ---- TOF 收集（链路验证核心）：带标签"图"的图表目录，更新后读回收集条目 ----
             try {
                 $rng2 = $doc.Content; $rng2.Collapse(0)
                 $tof = $doc.TablesOfFigures.Add($rng2, "图")
@@ -9406,7 +9406,7 @@ switch ($Action) {
 
     # 【B5 引擎探针 · deckkit 第一步】BORROW-PLAN §4.3 的 COM 调用面 + 七坑真机复核（对账卡目标 A/B）。
     # 一次调用跑完全部分段（每段独立 try/catch，一段炸不影响其余），分段 JSON 原样回传——
-    # 判定归决策者，探针只交证据。临时演示/文档探完即关（不保存）；产物落 %TEMP%\wps-deckkit\。
+    # 探针只交证据。临时演示/文档探完即关（不保存）；产物落 %TEMP%\wps-deckkit\。
     # 火力分配（任务卡）：渐变（素材路线生死）最高优先；溢出可测性；行高标定；UserPicture+SaveAs32；
     # SVG；Bibliography/Fields（word 侧）；七坑 #1/#2/#3/#5/#6 真机段。
     "__probeDeckkit" {
@@ -9431,7 +9431,7 @@ switch ($Action) {
             try { $slide = $pres.Slides.Add(1, 12) } catch { $out.slideErr = $_.Exception.Message }
         }
 
-        # ---- seg1 形状渐变填充（素材路线生死判定）----
+        # ---- seg1 形状渐变填充（素材路线可用性验证）----
         try {
             $g = @{}
             $sh = $slide.Shapes.AddShape(1, 10, 10, 200, 60)
@@ -9512,12 +9512,12 @@ switch ($Action) {
         # ---- seg7 七坑真机段：#1 Adjustments / #2 Bold=False / #3 WordWrap+居中 / #5 AddTable 边框 / #6 SaveAs 校验 ----
         try {
             $s7 = @{}
-            # 坑1 Adjustments.Item(1) = 赋值（PowerShell 语法实测——B3 预判：pywin32 专属坑，ps1 天然安全）
+            # 坑1 Adjustments.Item(1) = 赋值（PowerShell 语法实测；pywin32 专属坑，ps1 天然安全）
             try {
                 $sh = $slide.Shapes.AddShape(1, 10, 300, 120, 80)
                 try { $sh.Adjustments.Item(1) = 0.3; $s7.pit1_adjustments = "ok, value=" + [string]$sh.Adjustments.Item(1) } catch { $s7.pit1_adjustmentsErr = $_.Exception.Message }
                 try { $sh.Delete() } catch {}
-                # B5-T3 主线目标 B2：圆角矩（AutoShapeType=5）复测——矩形(1)写 0.3 读回 1，疑"矩形无调节点"
+                # 圆角矩（AutoShapeType=5）复测——矩形(1)写 0.3 读回 1，疑"矩形无调节点"
                 try {
                     $r5 = $slide.Shapes.AddShape(5, 150, 300, 120, 80)
                     try { $r5.Adjustments.Item(1) = 0.3; $s7.pit1_roundRect = "ok, readback=" + [string]$r5.Adjustments.Item(1) } catch { $s7.pit1_roundRectErr = $_.Exception.Message }
@@ -9676,7 +9676,7 @@ switch ($Action) {
         $caps["mailMerge"]            = { $null = $doc.MailMerge.State }
         $caps["exportPdf"]            = { $null = $doc.ExportAsFixedFormat }
 
-        # ---- 对照锚点：这三个是我【曾经】判定为"不支持"的接口。
+        # ---- 对照锚点：这三个曾被标为"不支持"的接口。
         #      放进同一张表是为了让探针自己回答"当初的归因对不对"。
         #
         #      ⚠️ 重要教训（第二轮探测才暴露的）：判据不能只看"有没有抛异常"。
@@ -10270,7 +10270,7 @@ switch ($Action) {
         }
     }
 
-    # 修订模式开关（对标 word-mcp-live 的 native tracked changes）：
+    # 修订模式开关（参照 word-mcp-live 的原生 tracked changes）：
     # 开启后 AI 的所有写入自动带修订留痕，用户逐条审阅、可接受可拒绝。会话级状态。
     "reviewMode" {
         $word = Get-WpsWord
@@ -10292,7 +10292,7 @@ switch ($Action) {
         Output-Json @{ success = $true; data = @{ reviewMode = $enabled; doc = [string]$doc.Name } }
     }
 
-    # 逐步撤销（对标 per-action undo）：按步撤销最近的编辑。
+    # 逐步撤销（按操作粒度回退）：按步撤销最近的编辑。
     # 配合 Start/Stop-AiUndoRecord 的分组，AI 的一个动作 = 用户的一次 Ctrl+Z。
     "undoSteps" {
         $word = Get-WpsWord
@@ -10352,7 +10352,7 @@ switch ($Action) {
         }
     }
 
-    # ==================== 模板层（第 5 期主线 · 数据模板 + 模板提取）====================
+    # ==================== 模板层（数据模板 + 模板提取）====================
     # R2 教训防复发：路径参数入口归一（/ → \）；render 走慢档（ps-child DEFAULT_SLOW_ACTIONS 已补）。
     "renderTemplate" {
         $word = Get-WpsWord
@@ -10430,7 +10430,7 @@ switch ($Action) {
             if ($dataKeys -notcontains $k -and -not ($filled | Where-Object { $_.anchor -eq $k })) { $missing += $k }
         }
 
-        # ---- saveAs + 落盘校验（saveAs 先例：DisplayAlerts 护栏 + 读回 verified + 大小>0）----
+        # ---- saveAs + 落盘校验（既有做法：DisplayAlerts 护栏 + 读回 verified + 大小>0）----
         $da0 = $null
         try { $da0 = $word.DisplayAlerts } catch {}
         try { $word.DisplayAlerts = $false } catch {}
@@ -10529,7 +10529,7 @@ if ($env:WPS_COM_DAEMON -eq '1') {
 }
 
 if ($env:WPS_COM_DAEMON -ne '1') {
-    # F1（环境病根治轮）：直跑模式也是 STA（powershell.exe 默认 STA）——注册消息过滤器；
+    # 直跑模式也是 STA（powershell.exe 默认 STA）——注册消息过滤器；
     # 注册失败静默，忙态兜底由 Invoke-WpsActionWithBusyRetry 承担。
     Register-ComMessageFilter
     try { $p = $Params | ConvertFrom-Json } catch { $p = @{} }

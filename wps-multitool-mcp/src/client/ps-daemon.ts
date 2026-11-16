@@ -2,27 +2,11 @@
  * Input: 动作名、参数、应用键
  * Output: 动作结果（与直跑模式同形：{ success, data?, error? }）
  * Pos: 常驻桥进程的客户端（MCP server 侧）。一旦我被修改，请更新我的头部注释，以及所属目录的md。
- *
  * 这一版和上一版的区别（①A -> ①B）
- * -------------------------------
- * ①A：MCP server 自己 spawn 一个常驻 powershell，进程随 server 一起生灭。
- * ①B：改成一个【独立、常驻】的桥进程（dist/bridge/index.js），server 只是它的客户端。
- *      桥里再按应用（excel / word / ppt / common）各持一个常驻 powershell。
- *
- * 换来什么
- * --------
  *   - MCP server 被客户端重启（改配置/切会话/崩溃重拉）时，COM 连接与已打开的文档不受打扰
  *   - 一应用一进程：WPS 文字卡死不会堵住表格；桥只重建那一路
- *   - 不同应用可并发（同一连接上多请求并行，各走各的子进程）
- *
- * 谁负责收尾
- * ----------
  * 桥自己按空闲超时退出（默认 10 分钟无客户端），子进程由 wps-comd.ps1 的父进程看门狗兜底。
- * 所以本客户端 dispose() 【只断连接，不杀桥】—— 让桥的存活不依赖 server 的存活，这正是它的意义。
- * 需要"server 一退桥就退"的场合（例如自动化测试）设 WPS_BRIDGE_EPHEMERAL=1。
- *
  * 失败语义（红线）
- * --------------
  *   DaemonUnavailableError 只能表示【请求从未送出】（连不上桥、桥起不来）—— 调用方可安全退回直跑。
  *   请求已经写进管道之后出的任何错（超时、桥挂了），都可能已经在 WPS 里执行了一半，
  *   绝不能自动重放，一律如实抛出。
@@ -156,7 +140,7 @@ export class PsDaemon {
     return new Promise<unknown>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(id);
-        // 卡住就判定这条连接死了：断开重连（下次调用重建桥连接），但不重放本请求
+        // 卡住就视为这条连接死了：断开重连（下次调用重建桥连接），但不重放本请求
         log.error('桥动作超时，断开连接', undefined, { action, app, id, timeoutMs });
         this.dropSocket(new Error('桥连接因超时被断开'));
         reject(

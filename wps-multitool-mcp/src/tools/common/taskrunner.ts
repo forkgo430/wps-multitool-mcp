@@ -3,18 +3,7 @@
  * Output: 服务端一次执行整包，只回最终摘要（中间结果不出服务端）
  * Pos: 任务引擎的工具壳（wps_run_task）。引擎本体在 src/server/task-engine.ts——
  *      本文件只做 definition + 参数转发 + 回包包装（与全组 call/ok/fail 风格一致）。
- *      决策者 2026-11-05 亲自实现（设计：docs/agents/INTENT-DESIGN-2026-11-04.md §4.2）。
- *
- * 与 route_intent 的分工
- * ------------
- * route_intent 是"发现"：一句话 → 该用什么（direct / task_package 清单 / 组）。
- * wps_run_task 是"执行"：execute:'server' 的包在这里一次跑完。
- * 清单型（execute:'model'，v1 行为）的包不归本工具——仍由模型按 steps 逐步执行。
- * 发现 → 执行的完整链路：route_intent 命中 server 包时，nextStep 指向本工具
- * （由 intent.ts 改造时接线；本文件不反向依赖 intent.ts）。
- *
  * 台账口径
- * ------------
  * wps_run_task 目前 static（mock 断言 + 引擎单测；真机证据待 PPT 定位微轮修复后补）。
  */
 

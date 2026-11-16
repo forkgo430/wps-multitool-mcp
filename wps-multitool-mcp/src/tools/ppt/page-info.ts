@@ -2,15 +2,6 @@
  * Input: 页码/页脚/日期时间、形状复制与层级操作参数
  * Output: 页面信息与形状操作结果
  * Pos: PPT 页面信息工具实现。一旦我被修改，请更新我的头部注释，以及所属文件夹的md。
- * PPT页面信息Tools - 页码/页脚/日期时间、形状复制与层级模块
- * 【原名 background.ts，风格统一+拆分轮改名 page-info.ts（决策者预批）】——
- * 背景族 6→1 已并入 page-effects.ts 的 set_background（第 5 轮），本文件里没有任何背景工具。
- *
- * 包含（5 个）：
- * - wps_ppt_set_slide_number: 设置幻灯片页码显示
- * - wps_ppt_set_ppt_footer: 设置PPT页脚
- * - wps_ppt_set_ppt_date_time: 设置PPT日期时间
- * - wps_ppt_duplicate_shape: 复制形状
  * - wps_ppt_set_shape_z_order: 设置形状层级顺序
  */
 
@@ -27,10 +18,6 @@ import { call, ok, fail, errText } from './helpers';
 // set_background_gradient / set_master_background 的能力现在都在 page-effects.ts 的
 // wps_ppt_set_background（target + type 两个维度）；旧名走 tool-aliases.json 别名。
 
-/**
- * 设置幻灯片页码显示
- * 控制页码的显示/隐藏和起始编号
- */
 export const setSlideNumberDefinition: ToolDefinition = {
   name: 'wps_ppt_set_slide_number',
   description: `设置幻灯片页码的显示状态和起始编号。
@@ -74,10 +61,6 @@ export const setSlideNumberHandler: ToolHandler = async (
   return ok(text, r.warnings);
 };
 
-/**
- * 设置PPT页脚
- * 控制页脚文本的显示/隐藏
- */
 export const setPptFooterDefinition: ToolDefinition = {
   name: 'wps_ppt_set_ppt_footer',
   description: `设置演示文稿页脚文本。
@@ -116,10 +99,6 @@ export const setPptFooterHandler: ToolHandler = async (
   return ok(`页脚设置成功！\n页脚文本: ${text}\n显示状态: ${show !== false ? '显示' : '隐藏'}`, r.warnings);
 };
 
-/**
- * 设置PPT日期时间
- * 控制日期时间占位符的显示和格式
- */
 export const setPptDateTimeDefinition: ToolDefinition = {
   name: 'wps_ppt_set_ppt_date_time',
   description: `设置演示文稿日期时间显示。
@@ -179,10 +158,6 @@ export const setPptDateTimeHandler: ToolHandler = async (
 
 // ==================== 高级形状 (2) ====================
 
-/**
- * 复制形状
- * 在同一幻灯片内复制指定形状
- */
 export const duplicateShapeDefinition: ToolDefinition = {
   name: 'wps_ppt_duplicate_shape',
   description: `复制幻灯片中的指定形状。
@@ -290,9 +265,6 @@ export const setShapeZOrderHandler: ToolHandler = async (
   );
 };
 
-/**
- * 导出所有页面信息相关的Tools
- */
 export const pageInfoTools: RegisteredTool[] = [
   { definition: setSlideNumberDefinition, handler: setSlideNumberHandler },
   { definition: setPptFooterDefinition, handler: setPptFooterHandler },

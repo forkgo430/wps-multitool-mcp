@@ -2,13 +2,10 @@
  * Input: 各 word 工具 handler 的收尾调用
  * Output: 统一的 ToolCallResult 构造 + 带警告透传的 executeMethod 封装
  * Pos: Word 工具收尾风格的统一出口（word-audit-2026-10-29 §一：三套风格并存 → 收口到这一套）。
- *      一旦我被修改，请更新我的头部注释，以及所属目录的md。
- *
  * 为什么以 gaps/professional 的那套为基准：它是 A9 轮"warnings 必须到模型眼前"教训的产物，
  * 老样板（content/format/document/proofread）会把 PS 侧特意准备的 warnings 丢掉。
  * 迁移纪律：纯机械替换，不改任何行为——uuid 生成删掉（callTool 会用请求 id 覆盖它，
  * handler 里生成是纯浪费），PS warnings 一路带回。
- *
  * 迁移进度（word-audit 执行顺序）：proofread ✓ / format ✓ / content ▢ / document ▢
  */
 

@@ -2,17 +2,8 @@
  * Input: 演示文稿管理工具参数
  * Output: 演示文稿操作结果
  * Pos: PPT 演示文稿管理工具实现。一旦我被修改，请更新我的头部注释，以及所属文件夹的md。
- *
- * 包含：
- * - wps_ppt_create_presentation: 新建空白演示文稿
  * - wps_ppt_open_presentation: 打开指定路径的演示文稿
- * - wps_ppt_close_presentation: 关闭演示文稿
- * - wps_ppt_get_open_presentations: 获取所有已打开的演示文稿列表
- * - wps_ppt_switch_presentation: 切换到指定演示文稿
- * - wps_ppt_set_slide_theme: 设置演示文稿主题
- * - wps_ppt_copy_slide: 复制幻灯片
  * - wps_ppt_insert_slide_image: 已转别名指向 insert_image（2026-11-03 大项②，见 tool-aliases.json）
- * - wps_ppt_insert_slides_from_file: 从其它演示文稿导入整页幻灯片
  * - wps_ppt_set_active_target: 锁定后续 PPT 操作的目标演示文稿
  */
 
@@ -27,9 +18,6 @@ import { wpsClient, setPptTarget } from '../../client/wps-client';
 import { WpsAppType } from '../../types/wps';
 import { call, ok, fail, errText } from './helpers';
 
-/**
- * 新建空白演示文稿
- */
 export const createPresentationDefinition: ToolDefinition = {
   name: 'wps_ppt_create_presentation',
   description: `新建空白演示文稿。
@@ -111,9 +99,6 @@ export const openPresentationHandler: ToolHandler = async (
   );
 };
 
-/**
- * 关闭演示文稿
- */
 export const closePresentationDefinition: ToolDefinition = {
   name: 'wps_ppt_close_presentation',
   description: `关闭演示文稿。可指定文稿名称，不指定则关闭当前活动文稿。
@@ -161,9 +146,6 @@ export const closePresentationHandler: ToolHandler = async (
   return ok(`演示文稿已关闭！\n名称: ${r.data.name}\n保存状态: ${saveStatus}`, r.warnings);
 };
 
-/**
- * 获取所有已打开的演示文稿列表
- */
 export const getOpenPresentationsDefinition: ToolDefinition = {
   name: 'wps_ppt_get_open_presentations',
   description: `获取当前所有已打开的演示文稿列表。
@@ -209,9 +191,6 @@ export const getOpenPresentationsHandler: ToolHandler = async (
   return ok(output, r.warnings);
 };
 
-/**
- * 切换到指定演示文稿
- */
 export const switchPresentationDefinition: ToolDefinition = {
   name: 'wps_ppt_switch_presentation',
   description: `切换到指定名称的演示文稿。
@@ -245,9 +224,6 @@ export const switchPresentationHandler: ToolHandler = async (
   return ok(`已切换到演示文稿: ${r.data.name}`, r.warnings);
 };
 
-/**
- * 设置演示文稿主题
- */
 export const setSlideThemeDefinition: ToolDefinition = {
   name: 'wps_ppt_set_slide_theme',
   description: `应用主题模板（换整套配色/字体/版式）。
@@ -283,7 +259,7 @@ export const setSlideThemeHandler: ToolHandler = async (
   const { theme } = args as { theme: string };
 
   const r = await call(
-    // 第 1 期第 2 章第 2 轮：这句原为「仅Windows支持」，是假注释 —— 该动作曾长期不存在于 ps1。第 6 轮已补 case，现在 Windows 上真能用。
+    // 早期 ps1 缺 case 时曾误标「仅Windows支持」；现已真实可用。
     'setSlideTheme',
     { theme }
   );
@@ -291,9 +267,6 @@ export const setSlideThemeHandler: ToolHandler = async (
   return ok(`主题已设置为: ${theme}`, r.warnings);
 };
 
-/**
- * 复制幻灯片
- */
 export const copySlideDefinition: ToolDefinition = {
   name: 'wps_ppt_copy_slide',
   description: `复制幻灯片到指定位置。
@@ -336,9 +309,6 @@ export const copySlideHandler: ToolHandler = async (
 // （同 insertPptImage 动作，rename: imagePath→path），旧定义删除；历史教训保留：
 // 动作必须是 PPT 段的 insertPptImage，不能是 Word 段的 insertImage（后者拿不到 $doc 必炸）。
 
-/**
- * 从其它演示文稿导入整页幻灯片（跨PPT整合，保留来源格式）
- */
 export const insertSlidesFromFileDefinition: ToolDefinition = {
   name: 'wps_ppt_insert_slides_from_file',
   description: `从另一个 PPT 文件把整页幻灯片插入到【当前活动演示文稿】，并保留来源幻灯片的原始格式（字体/配色/版式/图片）。用于把多个 PPT 整合成一个。
@@ -465,9 +435,6 @@ export const setActiveTargetHandler: ToolHandler = async (
   }
 };
 
-/**
- * 导出所有演示文稿管理相关的Tools
- */
 export const presentationTools: RegisteredTool[] = [
   { definition: createPresentationDefinition, handler: createPresentationHandler },
   { definition: openPresentationDefinition, handler: openPresentationHandler },

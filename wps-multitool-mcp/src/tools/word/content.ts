@@ -3,22 +3,7 @@
  * Output: 文档内容变更结果
  * Pos: Word 内容工具实现。一旦我被修改，请更新我的头部注释，以及所属文件夹的md。
  * Word内容操作Tools - 文档内容编辑模块（2026-10-30 收尾风格统一到 helpers，warnings 一路透传）
- *
- * 包含：
- * - wps_word_insert_text: 插入文本到文档
- * - wps_word_find_replace: 查找替换功能
- * - wps_word_insert_table: 插入表格
- * - wps_word_set_paragraph: 设置段落格式
- * - wps_word_insert_header: 插入页眉
- * - wps_word_insert_footer: 插入页脚
- * - wps_word_insert_page_break: 插入分页符
- * - wps_word_insert_comment: 插入批注
  * - wps_word_set_font_style: （已下线，降为别名指向 wps_word_set_font）
- * - wps_word_set_text_color: 设置文字颜色
- * - wps_word_get_paragraphs: 获取段落结构
- * - wps_word_find_in_document: 查找文本返回位置
- * - wps_word_smart_fill_field: 智能填写模板字段
- * - wps_word_replace_bookmark_content: 替换书签内容
  */
 
 import {
@@ -31,10 +16,6 @@ import {
 import { WORD_TARGET_PROPERTY } from './target';
 import { call, ok, fail, errText } from './helpers';
 
-/**
- * 插入文本到文档
- * 可以在光标位置、文档开头或结尾插入文本
- */
 export const insertTextDefinition: ToolDefinition = {
   name: 'wps_word_insert_text',
   description: `在Word文档中插入文本。
@@ -105,10 +86,6 @@ export const insertTextHandler: ToolHandler = async (
   );
 };
 
-/**
- * 查找替换功能
- * 支持全文批量查找替换文本
- */
 export const findReplaceDefinition: ToolDefinition = {
   name: 'wps_word_find_replace',
   description: `在Word文档中查找并替换文本。
@@ -215,9 +192,6 @@ export const findReplaceHandler: ToolHandler = async (
   return ok(`查找完成！\n"${find_text}" ${didReplace ? '存在并已执行替换' : '未找到可替换的内容'}`, r.warnings);
 };
 
-/**
- * 插入表格到文档光标位置
- */
 export const insertTableDefinition: ToolDefinition = {
   name: 'wps_word_insert_table',
   description: '在Word文档光标位置插入表格',
@@ -242,9 +216,6 @@ export const insertTableHandler: ToolHandler = async (
   return ok(`已插入 ${rows}×${cols} 表格`, r.warnings);
 };
 
-/**
- * 设置当前段落格式
- */
 export const setParagraphDefinition: ToolDefinition = {
   name: 'wps_word_set_paragraph',
   description: '设置当前段落格式（对齐方式、行间距等）',
@@ -268,9 +239,6 @@ export const setParagraphHandler: ToolHandler = async (
   return ok('段落格式已设置', r.warnings);
 };
 
-/**
- * 在文档中插入图片
- */
 export const insertImageDefinition: ToolDefinition = {
   name: 'wps_word_insert_image',
   description: `在Word文档中插入图片。
@@ -323,9 +291,6 @@ export const insertImageHandler: ToolHandler = async (
   );
 };
 
-/**
- * 在文档光标位置插入分页符
- */
 export const insertPageBreakDefinition: ToolDefinition = {
   name: 'wps_word_insert_page_break',
   description: '在文档光标位置插入分页符',
@@ -345,9 +310,6 @@ export const insertPageBreakHandler: ToolHandler = async (
   return ok('分页符已插入', r.warnings);
 };
 
-/**
- * 插入批注到文档选中内容
- */
 export const insertCommentDefinition: ToolDefinition = {
   name: 'wps_word_insert_comment',
   description: '在Word文档选中内容处插入批注',
@@ -374,9 +336,6 @@ export const insertCommentHandler: ToolHandler = async (
   return ok('批注已插入', r.warnings);
 };
 
-/**
- * 设置选中文字的颜色
- */
 export const setTextColorDefinition: ToolDefinition = {
   name: 'wps_word_set_text_color',
   description:
@@ -408,7 +367,7 @@ export const setTextColorHandler: ToolHandler = async (
   if (!color || color.trim() === '') {
     return fail('颜色值不能为空！', '颜色值为空');
   }
-  // 第 1 期第 2 章第 1 轮修：原先调 'setTextColor'，而 wps-com.ps1 里【没有这个动作】
+  // 原先调 'setTextColor'，而 wps-com.ps1 里【没有这个动作】
   // （零命中）→ 每次调用都落到分发器的 default 分支报 Unknown action，工具等于从未生效。
   // 能力本来就在 setFont 上（wps-com.ps1:3839），且参数名 color 两边一致，
   // 所以只改动作名，PS 侧一行都不动。
@@ -474,10 +433,6 @@ export const getParagraphsHandler: ToolHandler = async (
   );
 };
 
-/**
- * 查找文本返回位置（不替换）
- * 返回匹配文本的位置信息和上下文，供后续精确操作使用
- */
 export const findInDocumentDefinition: ToolDefinition = {
   name: 'wps_word_find_in_document',
   description: `在Word文档中查找文本并返回位置信息，不执行替换操作。
@@ -595,10 +550,6 @@ export const smartFillFieldHandler: ToolHandler = async (
   return ok(`填写完成！\n关键字: "${keyword}"\n填写值: "${value}"\n填写模式: ${fillMode}\n结果: ${result}`, r.warnings);
 };
 
-/**
- * 替换书签内容
- * 通过书签名定位并替换内容，保持书签位置格式
- */
 export const replaceBookmarkContentDefinition: ToolDefinition = {
   name: 'wps_word_replace_bookmark_content',
   description: `替换Word文档中书签的内容。通过书签名定位，替换书签范围内的文本，保持原有格式。

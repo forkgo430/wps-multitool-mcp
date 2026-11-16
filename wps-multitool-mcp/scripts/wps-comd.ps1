@@ -33,7 +33,7 @@
 #   看门狗只做一件事：父进程没了就 Environment.Exit(0)。
 
 param(
-    # 第 1 期第 3 章轮 1：实例标识。user = 用户的 WPS；sandbox-N = 本进程自己开的隔离实例。
+    # 实例标识。user = 用户的 WPS；sandbox-N = 本进程自己开的隔离实例。
     # 这不是"每次请求"的参数，是【进程级】的：一个守护进程只服务一个实例。
     [string]$Instance = 'user',
     # 本进程负责哪个应用（word / excel / ppt / common），供 wps-com.ps1 判"要不要做文档寻址前置检查"

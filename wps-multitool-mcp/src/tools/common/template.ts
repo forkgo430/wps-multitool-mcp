@@ -1,14 +1,11 @@
 /**
  * Input: 模板渲染/提取参数（templatePath/data/outputPath；path/outputPath/maxSlots）
  * Output: 渲染回包（filled/skipped/落盘校验）与提取回包（anchors/placeholderCount）
- * Pos: 模板层大卡（第 5 期主线 2026-11-11）A/B 段工具壳。一旦我被修改，请更新我的头部注释，
- *      以及所属目录的 md。
- *
+ * Pos: 数据模板渲染与模板提取的工具壳。一旦我被修改，请更新我的头部注释，
  * 锚点双轨：①书签锚点优先（WPS 开放平台正统做法）②{{key}} 文本占位兜底。
  * 缺 key 不静默：模板里有、data 没给的锚点 → warnings 列全清单。
- * 实地教训防复发（R2/R4）：路径参数 ps1 侧 Normalize-WinPath 归一；renderTemplate 进慢档
- * （ps-child DEFAULT_SLOW_ACTIONS 已补 renderTemplate/extractTemplate）。
- * schema 纪律（提质小卡先例）：参数描述按"名+类型+约束"写短。
+ * 实地教训防复发：路径参数 ps1 侧 Normalize-WinPath 归一；渲染类动作进慢档
+ * schema 纪律：参数描述按"名+类型+约束"写短。
  */
 import { ToolDefinition, ToolCategory, ToolHandler, ToolCallResult } from '../../types/tools';
 import { wpsClient } from '../../client/wps-client';

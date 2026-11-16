@@ -2,14 +2,6 @@
  * Input: 页面效果与备注操作参数（动画、背景、切换、演讲者备注）
  * Output: 页面效果操作结果
  * Pos: PPT 页面效果工具实现（风格统一+拆分轮新建，见 ppt-audit §三之二——
- *      这 4 个自 slide-ops.ts 迁入；背景族其余成员已在第 5/8 轮并入这里的两个合并工具）。
- *      一旦我被修改，请更新我的头部注释，以及所属文件夹的md。
- *
- * 包含（4 个）：
- * - wps_ppt_set_animation: 设置元素动画（第 8 轮合并了动画族 5 个工具）
- * - wps_ppt_set_background: 设置背景（第 5 轮合并了背景族 6 个工具）
- * - wps_ppt_set_transition: 设置幻灯片切换效果（第 8 轮合并了切换族 3 个工具）
- * - wps_ppt_add_speaker_notes: 添加演讲者备注
  */
 
 import { v4 as uuidv4 } from 'uuid';
@@ -579,9 +571,6 @@ export const addSpeakerNotesHandler: ToolHandler = async (
   );
 };
 
-/**
- * 导出所有页面效果相关的Tools
- */
 export const pageEffectsTools: RegisteredTool[] = [
   { definition: setAnimationDefinition, handler: setAnimationHandler },
   { definition: setBackgroundDefinition, handler: setBackgroundHandler },

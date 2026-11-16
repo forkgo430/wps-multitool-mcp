@@ -2,8 +2,6 @@
  * Input: Word 工具定义
  * Output: Word 工具注册数组
  * Pos: Word Tools 汇总入口。一旦我被修改，请更新我的头部注释，以及所属文件夹的md。
- * Word Tools入口 - Word工具汇总模块
- * 整合格式化、内容操作、文档管理和校对的所有Tools
  */
 
 import { RegisteredTool } from '../../types/tools';
@@ -26,7 +24,7 @@ import { wordkitTools } from './wordkit';
  * - 长文档Tools（academic）: add_heading, get_outline, insert_paragraph, delete_paragraph, add_caption, add_footnote, insert_table_of_figures, update_fields, set_columns, set_default_font, set_heading_numbering, add_list, format_table
  * - 专业Tools（professional）: revisions, get_cell_text, merge_cells, split_cell, table_row_col,
  *   set_cell_borders, list_styles, add_style, modify_style, delete_style, cross_reference, index, page_number
- * - 缺口Tools（gaps，第 5 期）: get_document_stats, get_comments, delete_comment, get_bookmarks,
+ * - 缺口Tools（gaps）: get_document_stats, get_comments, delete_comment, get_bookmarks,
  *   get_tables, get_table_data, create_document, close_document, insert_hyperlink, convert_table_to_text
  */
 export const wordTools: RegisteredTool[] = [

@@ -6,10 +6,10 @@
     "基线建立：2026-10-25 第五任（pwsh7 兼容与退出护栏已包含在内）。"
   ],
   "files": {
-    "src/bridge/index.ts": "e8857b7ac552165dd0d5089857d941cfb3d67ad53613014e20844f058981e42c",
-    "src/bridge/ps-child.ts": "65427876f50e7109f72c4c2d3ba9ee1a0c0f62298c646921c4a28a8b7151c0e7",
-    "src/bridge/cancellable.ts": "cca50b741574e6bbaf62f06b00a6f43ec64fe75305b8d7185af944bc5cfe64e2",
-    "src/client/ps-daemon.ts": "bcef70d62b96f17eca9cf83ec8e6ca0c204f87e38c21c09d9c1a55b73c8c9b9d",
-    "scripts/wps-comd.ps1": "2befecfec2151101f84564567493724f6a6350b9ef35040075ad9f2da07f876b"
+    "src/bridge/index.ts": "db173e85ec4687bdc41be9944b9a1e4af80afd46849554a939769058017a913a",
+    "src/bridge/ps-child.ts": "4b307fc3e418f8534d0de3e0217c070eb5776f1b5deff7e8a7911e572c5916cd",
+    "src/bridge/cancellable.ts": "b185e5da107faffdaddb434520d0ce960b743606b4f42afe87638de48710a98a",
+    "src/client/ps-daemon.ts": "5da1eafbb3772400f7bf0db492810ffd983037fe13a7dc0318e176f5d3e8eb0c",
+    "scripts/wps-comd.ps1": "3b9df2287b1329c98d0a6e49704f7c6303f93ec3348e96f1d512b4923ba2b703"
   }
 }

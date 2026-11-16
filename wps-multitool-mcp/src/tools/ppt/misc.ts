@@ -3,19 +3,8 @@
  * Output: 杂项操作结果
  * Pos: PPT 杂项工具实现。一旦我被修改，请更新我的头部注释，以及所属文件夹的md。
  * PPT杂项Tools - 母版/3D/超链接/搜索/放映模块
- *
- * 包含（11 个；set_master_background 已并入 set_background 的 target:'master'，第 5 轮）：
- * - wps_ppt_get_slide_master: 获取母版信息
- * - wps_ppt_add_master_element: 添加母版元素
- * - wps_ppt_set_3d_rotation: 设置3D旋转
- * - wps_ppt_set_3d_depth: 设置3D深度
- * - wps_ppt_set_3d_material: 设置3D材质
- * - wps_ppt_create_3d_text: 创建3D文字
  * - wps_ppt_add_ppt_hyperlink: 添加超链接
  * - wps_ppt_remove_ppt_hyperlink: 移除超链接
- * - wps_ppt_find_ppt_text: 搜索文本
- * - wps_ppt_replace_ppt_text: 替换文本
- * - wps_ppt_start_slide_show: 开始放映
  */
 
 import {
@@ -29,10 +18,6 @@ import { call, ok, fail, errText } from './helpers';
 
 // ==================== 母版操作 ====================
 
-/**
- * 获取母版信息
- * 获取当前演示文稿的母版布局信息
- */
 export const getSlideMasterDefinition: ToolDefinition = {
   name: 'wps_ppt_get_slide_master',
   description: `获取当前演示文稿的母版信息。
@@ -75,10 +60,6 @@ export const getSlideMasterHandler: ToolHandler = async (
 // 而母版语义必须带 target='master' —— 靠别名过来会变成改单页背景，属于"静默改错地方"。
 // 能力保留在新工具的 target:'master' 里，旧名直接下线。
 
-/**
- * 添加母版元素
- * 向母版中添加新的元素（文本框、形状、图片等）
- */
 export const addMasterElementDefinition: ToolDefinition = {
   name: 'wps_ppt_add_master_element',
   description: `向母版中添加新元素。
@@ -119,10 +100,6 @@ export const addMasterElementHandler: ToolHandler = async (
 
 // ==================== 3D 操作 ====================
 
-/**
- * 设置3D旋转
- * 为形状设置3D旋转效果
- */
 export const set3DRotationDefinition: ToolDefinition = {
   name: 'wps_ppt_set_3d_rotation',
   description: `设置幻灯片中形状的3D旋转效果。
@@ -171,10 +148,6 @@ export const set3DRotationHandler: ToolHandler = async (
   );
 };
 
-/**
- * 设置3D深度
- * 为形状设置3D挤出深度
- */
 export const set3DDepthDefinition: ToolDefinition = {
   name: 'wps_ppt_set_3d_depth',
   description: `设置幻灯片中形状的3D挤出深度。
@@ -223,10 +196,6 @@ export const set3DDepthHandler: ToolHandler = async (
   );
 };
 
-/**
- * 设置3D材质
- * 为形状设置3D材质效果
- */
 export const set3DMaterialDefinition: ToolDefinition = {
   name: 'wps_ppt_set_3d_material',
   description: `设置幻灯片中形状的3D材质效果。
@@ -292,10 +261,6 @@ export const set3DMaterialHandler: ToolHandler = async (
   );
 };
 
-/**
- * 创建3D文字
- * 在幻灯片中创建带有3D效果的文字
- */
 export const create3DTextDefinition: ToolDefinition = {
   name: 'wps_ppt_create_3d_text',
   description: `在幻灯片中创建带有3D效果的文字。
@@ -454,10 +419,6 @@ export const removePptHyperlinkHandler: ToolHandler = async (
 
 // ==================== 搜索操作 ====================
 
-/**
- * 搜索文本
- * 在演示文稿中搜索指定文本
- */
 export const findPptTextDefinition: ToolDefinition = {
   name: 'wps_ppt_find_ppt_text',
   description: `在演示文稿中搜索指定文本。
@@ -510,10 +471,6 @@ export const findPptTextHandler: ToolHandler = async (
   return ok(output, r.warnings);
 };
 
-/**
- * 替换文本
- * 在演示文稿中查找并替换文本
- */
 export const replacePptTextDefinition: ToolDefinition = {
   name: 'wps_ppt_replace_ppt_text',
   description: `在演示文稿中查找并替换文本。
@@ -559,10 +516,6 @@ export const replacePptTextHandler: ToolHandler = async (
 
 // ==================== 放映操作 ====================
 
-/**
- * 开始放映
- * 从指定页开始幻灯片放映
- */
 export const startSlideShowDefinition: ToolDefinition = {
   name: 'wps_ppt_start_slide_show',
   description: `开始幻灯片放映。
@@ -603,9 +556,6 @@ export const startSlideShowHandler: ToolHandler = async (
   return ok(`幻灯片放映已开始！\n起始页: 第 ${fromSlide || 1} 页`, r.warnings);
 };
 
-/**
- * 导出所有杂项Tools
- */
 export const miscTools: RegisteredTool[] = [
   // 母版操作
   { definition: getSlideMasterDefinition, handler: getSlideMasterHandler },

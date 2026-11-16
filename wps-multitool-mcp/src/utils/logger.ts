@@ -2,8 +2,6 @@
  * Input: 日志消息与上下文
  * Output: 结构化日志输出
  * Pos: MCP 日志系统模块。一旦我被修改，请更新我的头部注释，以及所属文件夹的md。
- * 日志工具
- * 写日志比写代码还规范，报错了至少知道是哪个SB搞出来的
  */
 
 import winston from 'winston';
@@ -110,14 +108,8 @@ const createLogger = (name: string): winston.Logger => {
   });
 };
 
-/**
- * 主Logger - MCP Server专用
- */
 export const logger = createLogger('wps-mcp');
 
-/**
- * 创建子Logger - 各模块用自己的
- */
 export const createChildLogger = (moduleName: string): winston.Logger => {
   return logger.child({ module: moduleName });
 };
@@ -178,9 +170,6 @@ const summarizeParams = (params?: Record<string, unknown>): Record<string, unkno
   return out;
 };
 
-/**
- * 请求日志中间件风格的函数
- */
 export const logRequest = (
   method: string,
   params?: Record<string, unknown>
@@ -192,9 +181,6 @@ export const logRequest = (
   logger.info(`[REQUEST] ${method}`, { params: summarizeParams(params) });
 };
 
-/**
- * 响应日志
- */
 export const logResponse = (
   method: string,
   success: boolean,

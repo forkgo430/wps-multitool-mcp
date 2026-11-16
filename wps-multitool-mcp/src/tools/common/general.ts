@@ -2,17 +2,7 @@
  * Input: 通用操作工具参数
  * Output: 操作结果
  * Pos: 通用操作工具实现。一旦我被修改，请更新我的头部注释，以及所属文件夹的md。
- * 通用操作Tools - 保存/连接检测/文本选取等基础模块
- *
- * 包含：
- * - wps_common_save: 保存当前文档
- * - wps_common_save_as: 另存为
  * - wps_common_wire_check: 检查通信线路
- * - wps_common_get_app_info: 获取WPS应用信息
- * - wps_common_get_selected_text: 获取选中文本
- * - wps_common_set_selected_text: 替换选中文本
- * - wps_common_show_window: 将 WPS 置于前台
- * - wps_common_quit: 结束 WPS
  */
 
 import { v4 as uuidv4 } from 'uuid';

@@ -7,7 +7,7 @@
 # 编码：必须存成 UTF-8 with BOM。
 param([string]$Params = '{}')
 
-# 判定阶段修正（2026-11-12）：参数支持 base64（调用方 base64 过命令行防引号/反斜杠折叠）；
+# 参数支持 base64（调用方 base64 过命令行防引号/反斜杠折叠）；
 # 以 '{' 开头视为裸 JSON（老调用兼容）。
 $ParamsDecoded = $Params
 try {
@@ -31,7 +31,7 @@ try {
     $dataProps = @($p.data.PSObject.Properties)
     if ($dataProps.Count -eq 0) { throw 'data 为空对象' }
 
-    # 空集合撑起（两态病先例：一期收口 Presentations.Add null）
+    # 空集合撑起（实测：Presentations 集合为空时 ReadOnly 无窗 Open 必返 null，先撑起集合再 Open）
     if ([int]$ppt.Presentations.Count -eq 0) {
         try { $null = $ppt.Presentations.Add(1) } catch { }
         try { $ppt.Presentations.Item(1).Close() } catch { }

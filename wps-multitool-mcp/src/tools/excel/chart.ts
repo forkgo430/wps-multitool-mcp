@@ -2,16 +2,6 @@
  * Input: 图表工具参数
  * Output: 图表创建/更新/导出结果
  * Pos: Excel 图表工具实现。一旦我被修改，请更新我的头部注释，以及所属文件夹的md。
- * Excel图表相关Tools - 数据可视化模块
- * 负责图表的创建、属性更新以及图表/区域导出为图片操作
- *
- * 包含：
- * - wps_excel_create_chart: 创建图表（柱状图、折线图、饼图、散点图等）
- * - wps_excel_update_chart: 更新图表属性（标题、颜色、图例等）
- * - wps_excel_export_chart_as_image: 将工作表中的图表导出为位图（Chart.Export 原生 API）
- * - wps_excel_export_range_as_image: 将指定区域导出为位图（Range.CopyPicture + 临时 ChartObject 经典做法）
- *
- * @date 2026-01-24
  */
 
 import { v4 as uuidv4 } from 'uuid';
@@ -289,10 +279,6 @@ export const createChartHandler: ToolHandler = async (
   }
 };
 
-/**
- * 更新图表属性工具
- * 支持修改标题、颜色、图例、数据标签等属性
- */
 export const updateChartDefinition: ToolDefinition = {
   name: 'wps_excel_update_chart',
   description: `更新Excel图表的属性，包括标题、颜色、图例、数据标签等。
@@ -799,9 +785,6 @@ export const exportRangeAsImageHandler: ToolHandler = async (
   }
 };
 
-/**
- * 导出所有图表相关的Tools
- */
 export const chartTools: RegisteredTool[] = [
   { definition: createChartDefinition, handler: createChartHandler },
   { definition: updateChartDefinition, handler: updateChartHandler },

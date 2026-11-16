@@ -2,18 +2,12 @@
  * Input: 各工具定义的参数（见各自 description）
  * Output: WPS 文字的动作结果
  * Pos: Word P0/P1 补齐工具（阶段 6 第二步）。一旦我被修改，请更新我的头部注释，以及所属目录的md。
- *
  * 这一批补的是之前盘点出的缺口，全部按 __probeCaps 的真机探测结果实现：
- *   - P0 修订：之前只能开/查询，没有"处理"这个出口（半个功能）
  *   - P0 表格单元格级：之前只有整表插入和样式
  *   - P1 样式 新建/修改/删除：之前只能套用现有样式
- *   - P1 交叉引用 / 索引：完全没有
  *   - P1 页码域 / 奇偶页 / 首页不同：页眉页脚只有统一那种
- *
  * 探测依据：scripts/manual/caps-probe.js 在本机 WPS 12.1 上 36/39 支持。
  * 唯一报不支持的 MarkEntry 已单独标注（见 markIndexEntry 的描述）。
- *
- * 坐标约定：表格行列一律 1-based，与 Word UI 一致。
  */
 
 import { v4 as uuidv4 } from 'uuid';
@@ -665,7 +659,7 @@ export const pageNumberHandler: ToolHandler = async (args: Args): Promise<ToolCa
 };
 
 // ============================================================================
-// 修订模式开关（对标 word-mcp-live 的 native tracked changes 卖点）：
+// 修订模式开关（参照 word-mcp-live 的原生 tracked changes）：
 // 开启后 AI 的所有写入自动带修订留痕，用户逐条审阅、可接受可拒绝。
 // 会话级状态（TrackRevisions 是文档属性，守护进程存活期间保持）。
 // ============================================================================
@@ -699,7 +693,7 @@ export const reviewModeHandler: ToolHandler = async (args) => {
 };
 
 // ============================================================================
-// 逐步撤销（对标 word-mcp-live 的 per-action undo）：
+// 逐步撤销（参照 word-mcp-live 的按操作撤销）：
 // 按步撤销最近的编辑。AI 的破坏性写入已包进撤销记录（ps1 Start/Stop-AiUndoRecord），
 // 用户或 AI 撤销时一次退回一整个动作。
 // ============================================================================
@@ -750,7 +744,7 @@ export const p01Tools: RegisteredTool[] = [
   { definition: crossRefDefinition, handler: crossRefHandler },
   { definition: indexDefinition, handler: indexHandler },
   { definition: pageNumberDefinition, handler: pageNumberHandler },
-  // 2026-10-26 对标补齐：修订模式开关 + 逐步撤销（见文件尾部的两个定义）
+  // 修订模式开关 + 逐步撤销（见文件尾部的两个定义）
   { definition: reviewModeDefinition, handler: reviewModeHandler },
   { definition: undoDefinition, handler: undoHandler },
 ];

@@ -2,21 +2,8 @@
  * Input: Word 长文档/学术排版类工具参数
  * Output: Word 工具注册数组
  * Pos: Word 长文档能力（标题层级/题注/脚注/图表目录/章节编号/分栏/列表/表格样式/刷新域/大纲）。
- *      一旦我被修改，请更新我的头部注释，以及所属文件夹的md。
- *
- * 为什么单独一组
- * --------------
  * 原有 32 个 word 工具覆盖的是"零散编辑"（插入文本、改字体、查找替换、页眉页脚…），
- * 缺的是【认真写一篇论文/报告】那条链路。对标 JulianPoleszczuk/office-mcp 的 40 个 doc_*，
- * 这里补上它多出来而我们没有的那部分：
- *   标题层级(add_heading) / 大纲(get_outline) / 段落级增删 / 列表
- *   题注(add_caption) / 脚注(add_footnote) / 图表目录(insert_table_of_figures)
- *   章节自动编号(set_heading_numbering) / 刷新域(update_fields) / 分栏(set_columns)
  *   默认字体(set_default_font) / 表格样式(format_table)
- * 已有的不重复造：导出 PDF 走 convertToPDF，页边距/纸张走 setPageSetup，字数统计走 getDocumentStats。
- *
- * 说明：本组工具全部走 WpsAppType.WRITER，桥会据此路由到 word 那一路常驻子进程。
- * 2026-10-30：收尾风格统一到 helpers（本文件的 toResult/errText 局部助手并入），
  * 并补上 warnings 透传——此前本组会把 PS 侧的警告丢掉。
  */
 

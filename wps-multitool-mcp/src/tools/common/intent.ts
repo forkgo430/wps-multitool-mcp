@@ -2,19 +2,10 @@
  * Input: 一句任务描述（可带 autoLoad）
  * Output: 该开哪些工具组 + 该先用哪些工具
  * Pos: 快速意图识别（俗称"多面手"的路由器）。一旦我被修改，请更新我的头部注释，以及所属目录的md。
- *
- * 为什么要有它
- * ------------
  * 默认只列 40 个基础工具（见 src/server/tool-tiers.ts）。当任务超出手里的工具时，
- * 模型需要知道"该去开哪个组"。如果让它自己猜，往往是先瞎调几个不存在的工具、
- * 再靠报错回退 —— 浪费好几轮。这里给一个**一次调用就能拿到答案**的入口。
- *
  * 它是规则，不是 NLP（别吹）
- * -------------------------
- * 纯关键词匹配，零依赖、零延迟（<1ms）。**会漏、会误判**。所以：
  *   - 默认只给【建议】，不自动改工具列表（自动会让列表在对话中突变，缓存和上下文都乱）
  *   - 识别为空时明确说"没识别出来"，并指向 wps_search_tools（全量搜索）
- *   - 设置 WPS_INTENT_AUTOLOAD=1 或传 autoLoad=true 才真的加载并广播 list_changed
  */
 
 import { v4 as uuidv4 } from 'uuid';
@@ -27,7 +18,7 @@ import {
 import { toolRegistry } from '../../server/tool-registry';
 import { recordMiss, topMisses, registerExitFlush } from '../../server/intent-miss-log';
 
-// 自适应回流（体验修复轮 A）：进程退出时把会话内未命中配对记录一次性落盘
+// 自适应回流：进程退出时把会话内未命中配对记录一次性落盘
 registerExitFlush();
 
 interface IntentRule {
@@ -212,7 +203,7 @@ import * as path from 'path';
 interface DirectRouteSlot {
   /** 提取出的值放进 params 的目标键（如 cell / font_size / color） */
   name: string;
-  /** 槽类型，对应 SLOT_EXTRACTORS 的提取正则（体验修复轮 A 数据化） */
+  /** 槽类型，对应 SLOT_EXTRACTORS 的提取正则 */
   type: 'cell' | 'number' | 'path' | 'color' | 'date' | 'enum';
 }
 
@@ -233,7 +224,7 @@ interface DirectRoute {
 
 const CELL_ADDR = /\b([a-z]{1,3}\d{1,7})\b/i;
 
-/** 槽位提取正则表（体验修复轮 A · 数据化）：slots[].type → 从话里提取参数值的正则与整形。
+/** 槽位提取正则表：slots[].type → 从话里提取参数值的正则与整形。
  *  新增可提取参数 = intent-routes.json 加一条 slot + 这里补一行正则，算法不动。 */
 const SLOT_EXTRACTORS: Record<string, (task: string) => unknown | undefined> = {
   cell: (task) => {
@@ -288,7 +279,7 @@ const FALLBACK_ROUTES: DirectRoute[] = [
   { match: ['连接测试', '测试连接', '检查连接'], tool: 'wps_check_connection', app: 'common', params: {}, note: '通道健康检查（合并后的规范名）', slots: [], example: '测试连接' },
 ];
 
-/** 直答路由数据化（体验修复轮 A）：intent.ts 只带兜底表，正式路由从 intent-routes.json 加载。
+/** 直答路由数据化：intent.ts 只带兜底表，正式路由从 intent-routes.json 加载。
  *  加载多候选与 task-packages 同款（tsc 不复制 json，dist 态与仓库源码态各试一个）。 */
 let directRoutesCache: DirectRoute[] | null = null;
 function loadDirectRoutes(): DirectRoute[] {
@@ -321,7 +312,7 @@ interface TaskPackage {
   task: string;
   title: string;
   match: string[];
-  /** 反例词（第 3 期学术五件套新增）：命中即排除本包——即使触发词也命中（反例优先）。缺省视为无反例 */
+  /** 反例词：命中即排除本包——即使触发词也命中（反例优先）。缺省视为无反例 */
   not_for?: string[];
   steps: Array<{ action: string; app: string; note?: string; inline?: boolean; snapshot?: boolean }>;
   confirm_before: string[];
@@ -366,7 +357,7 @@ export interface TaskPackageMatch {
   not_for: string[];
 }
 
-/** 语料文档频率：从直答路由 + 任务包的 match[] 聚合（体验修复轮 A · IDF 语料）。
+/** 语料文档频率：从直答路由 + 任务包的 match[] 聚合（IDF 语料）。
  *  缓存一次；IDF = log((N+1)/(df+1)) + 1（平滑，df=0 的词也不会除零）。 */
 let idfCache: Map<string, number> | null = null;
 function idfOf(kw: string): number {
@@ -387,7 +378,7 @@ function idfOf(kw: string): number {
 }
 
 /** 纯函数：短路口匹配（不含网络 IO，便于测试）。
- *  计分升级（体验修复轮 A）：命中词 IDF 权重求和（罕见词权重高，"冻结首行"比"加粗"稀有），
+ *  计分：命中词 IDF 权重求和（罕见词权重高，"冻结首行"比"加粗"稀有），
  *  平手退回现行口径（命中数 → 特异度）。命中的路由声明了 slots 时，按 SLOT_EXTRACTORS
  *  从话里提取参数注入（提取失败不注入——缺了才补，与 params 固定值合并）。 */
 export function matchDirectRoute(task: string): DirectMatch | null {
@@ -528,7 +519,7 @@ export const routeIntentHandler: ToolHandler = async (args) => {
   // 老调用方读 result.matches / result.needLoad 的路径不变——回归不断）。
   const confidence = matches.length ? matches[0].confidence : 0;
 
-  // 自适应回流（体验修复轮 A）：未命中/低置信 → 记下这句，等本会话下一次实际工具调用配对落盘。
+  // 自适应回流：未命中/低置信 → 记下这句，等本会话下一次实际工具调用配对落盘。
   // 只记录与提示，不改任何路由表。
   if (!direct && !pkg && (!matches.length || confidence < 0.5)) {
     recordMiss(task);

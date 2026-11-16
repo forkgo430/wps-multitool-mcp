@@ -1,29 +1,15 @@
 /**
  * Input: 工作表详情 / 自适应 / 自动换行 / 表内查找 / 图表删除 / 透视表三件 / 页面设置 / 打印标题
  * Output: 各自的查询或修改结果
- * Pos: 第 4 期补齐的高频缺口。一旦我被修改，请更新我的头部注释，以及所属目录的md。
- *
- * 这一批补的是什么
- * ----------------
- * 对着同类 WPS 自动化工具的公开能力清单逐项比对后挑出来的**高频缺口**
- * （同类 118、本仓 85，其中真缺的约 20 个，这里取最常被用到的 10 个）。
+ * Pos: Excel 高频缺口补齐工具。一旦我被修改，请更新我的头部注释，以及所属目录的md。
  * 刻意不补的：ListObject（表格对象）8 个、迷你图、goal_seek、公式审计 ——
- * 真实办公里用得极少，补了只是让模型的选择负担变大。
- *
  * 每个工具都写了"补它是因为什么会卡住"，不是凑数：
  *   get_sheet_info       以前只有表名列表，"这张表多大/用到哪/藏了哪些行"无从回答
- *   auto_fit             列宽只能手填，中文表头一换就得逐列重调（最高频重复劳动）
- *   set_wrap_text        表格排版最常碰的动作，之前完全没有
  *   find_in_sheet        以前只有 find_replace（改），没有"找"。用户问"这个数在哪"答不上
  *   delete_chart         只有 create/update，建错了删不掉 —— COM 没有撤销
- *   get/refresh/clear_pivot_tables  建完看不到、源数据变了刷不了、改错了清不掉
  *   set_sheet_page_setup 只有 set_print_area，"每页重复表头/横向打印/纸张"全做不了
- *   set_sheet_print_titles 多页表刚需
- *
- * 真机支持度：全部走标准 Excel COM 接口（WPS 为兼容 Office 而实现），
  * 但 WPS 12.1 有个别属性与 Excel 不同 —— 每个动作都做了逐属性容错，
  * 不支持的那个走 warnings 而不是整次失败。没验过的接口在能力探测里有对应项，
- * 见 scripts/manual/caps-probe.js。
  */
 
 import { v4 as uuidv4 } from 'uuid';

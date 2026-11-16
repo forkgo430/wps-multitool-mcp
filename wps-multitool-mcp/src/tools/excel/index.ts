@@ -2,8 +2,6 @@
  * Input: Excel 工具定义
  * Output: Excel 工具注册数组
  * Pos: Excel Tools 汇总入口。一旦我被修改，请更新我的头部注释，以及所属文件夹的md。
- * Excel Tools入口 - Excel工具汇总模块
- * 整合公式、数据处理、透视表、图表、工作表、格式化的所有Tools
  */
 
 import { RegisteredTool } from '../../types/tools';
@@ -12,6 +10,7 @@ import { dataTools } from './data';
 import { pivotTools } from './pivot';
 import { chartTools } from './chart';
 import { sheetTools } from './sheet';
+import { sheetAdvancedTools } from './sheet-advanced';
 import { excelFormatTools } from './format';
 import { workbookTools } from './workbook';
 import { dataAdvancedTools } from './data-advanced';
@@ -26,7 +25,7 @@ import { sheetGapsTools } from './sheet-gaps';
  * - 数据Tools: read_range, write_range, clean_data, remove_duplicates, sort_range, find_replace, insert_row, add_comment, protect_sheet, set_conditional_format
  * - 透视表Tools: create_pivot_table, update_pivot_table
  * - 图表Tools: create_chart, update_chart, export_chart_as_image, export_range_as_image
- * - 工作表Tools: create_sheet, delete_sheet, rename_sheet, copy_sheet, get_sheet_list, switch_sheet, move_sheet, get_selection, delete_row, insert_column, delete_column, freeze_panes, auto_fill, set_named_range
+ * - 工作表Tools: create_sheet, delete_sheet, rename_sheet, copy_sheet, get_sheet_list, switch_sheet, move_sheet（生命周期，sheet.ts）+ get_selection, delete_row, freeze_panes, auto_fill, set_named_range, hide_column, auto_sum, create_table, add_slicer（高级操作，sheet-advanced.ts）
  * - 格式化Tools: set_cell_format, set_cell_style, set_border, set_number_format, merge_cells, unmerge_cells, set_column_width, set_row_height
  * - 行列Tools: insert_rows, insert_columns, delete_rows, delete_columns, hide_rows, show_rows, show_columns, group_rows
  * - 批注保护Tools: delete_cell_comment, get_cell_comments, unprotect_sheet, lock_cells, set_array_formula, insert_excel_image, set_hyperlink
@@ -37,6 +36,7 @@ export const excelTools: RegisteredTool[] = [
   ...pivotTools,
   ...chartTools,
   ...sheetTools,
+  ...sheetAdvancedTools,
   ...sheetGapsTools,
   ...excelFormatTools,
   ...workbookTools,
@@ -51,6 +51,7 @@ export { dataTools } from './data';
 export { pivotTools } from './pivot';
 export { chartTools } from './chart';
 export { sheetTools } from './sheet';
+export { sheetAdvancedTools } from './sheet-advanced';
 export { sheetGapsTools } from './sheet-gaps';
 export { excelFormatTools } from './format';
 export { workbookTools } from './workbook';
@@ -130,6 +131,9 @@ export {
   switchSheetHandler,
   moveSheetDefinition,
   moveSheetHandler,
+} from './sheet';
+
+export {
   getSelectionDefinition,
   getSelectionHandler,
   deleteRowDefinition,
@@ -144,7 +148,11 @@ export {
   autoSumHandler,
   hideColumnDefinition,
   hideColumnHandler,
-} from './sheet';
+  createExcelTableDefinition,
+  createExcelTableHandler,
+  addSlicerDefinition,
+  addSlicerHandler,
+} from './sheet-advanced';
 
 export {
   setCellFormatDefinition,

@@ -2,20 +2,8 @@
  * Input: 调用参数里的 target（可选）
  * Output: 规范化后的 instance 路由键 + 已合流 documentName 的参数
  * Pos: word 类工具的"改哪一份"显式化。一旦我被修改，请更新我的头部注释，以及所属目录的md。
- *
- * 为什么要有它
- * ------------
- * 现在"改哪份文档"靠活动文档推断（wps-com.ps1 的 Resolve-Doc 三层兜底）。一次只改一份时够用，
  * 连续操作两份就会**静默改错**：改完返回 success: true，改的却是别人那份。这是本项目最贵的一类 bug。
- *
- * 口径（三条，缺一条就白做）
- * ------------------------
- *   1) 不传 target = 旧行为一字不变（否则 67 个 word 工具全要回归）
- *   2) `doc` **合流到现成的 documentName**，不新造第二个名字 —— 两个名字并存必然漂
- *   3) `instance` 只做路由，不改语义：user = 用户正在用的那个；sandbox* = 我们自己的隔离实例
- *
  * 为什么 instance 不放进 schema 的 required
- * ----------------------------------------
  * 不传就是 user（旧行为）。要求必填等于逼所有调用方加字段，模型每步都要多写一个它不关心的值。
  */
 
@@ -138,7 +126,7 @@ export function applyWordTarget(
   // （switch_document / create_document 会把当前文档记进 wordTargetName，再自动注入
   // documentName）。如果这里让位，就会出现：用户明明每个调用都写了 target.doc，
   // 实际却一直被会话文档接管 —— 而且完全不报错。
-  // 第 2 期第 2 章轮 2 的真机 A1/A3 就是这么"看起来跑通、其实全写进同一份"的。
+  // 真机实测就出现过这种"看起来跑通、其实全写进同一份"的事故。
   if (t.doc) {
     base.documentName = t.doc;
   }

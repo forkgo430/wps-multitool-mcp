@@ -63,9 +63,6 @@ export const openWorkbookHandler: ToolHandler = async (
   }
 };
 
-/**
- * 获取所有已打开的工作簿列表
- */
 export const getOpenWorkbooksDefinition: ToolDefinition = {
   name: 'wps_excel_get_open_workbooks',
   description: '获取当前所有已打开的Excel工作簿列表。',
@@ -90,7 +87,7 @@ export const getOpenWorkbooksHandler: ToolHandler = async (
       return { id: uuidv4(), success: false, content: [{ type: 'text', text: `获取工作簿列表失败: ${response.error}` }], error: response.error };
     }
     const list = response.data?.workbooks || [];
-    // 第 1 期第 2 章第 4 轮（A9）：把 PS 侧的 warnings 传出去（同 Word 侧那处）。
+    // 把 PS 侧的 warnings 传出去（同 Word 侧那处）。
     // PS 在"实例刚重建、列表可能暂时为空"时会带一条提示，不转发它就等于没提示。
     return { id: uuidv4(), success: true, content: [{ type: 'text', text: `已打开的工作簿 (${list.length}个):\n${list.join('\n') || '无'}` }], warnings: response.warnings };
   } catch (error) {
@@ -99,9 +96,6 @@ export const getOpenWorkbooksHandler: ToolHandler = async (
   }
 };
 
-/**
- * 切换到指定名称的工作簿
- */
 export const switchWorkbookDefinition: ToolDefinition = {
   name: 'wps_excel_switch_workbook',
   description: '切换到指定名称的Excel工作簿。',
@@ -144,9 +138,6 @@ export const switchWorkbookHandler: ToolHandler = async (
   }
 };
 
-/**
- * 关闭指定工作簿
- */
 export const closeWorkbookDefinition: ToolDefinition = {
   name: 'wps_excel_close_workbook',
   description:
@@ -193,9 +184,6 @@ export const closeWorkbookHandler: ToolHandler = async (
   }
 };
 
-/**
- * 新建空白工作簿
- */
 export const createWorkbookDefinition: ToolDefinition = {
   name: 'wps_excel_create_workbook',
   description: '新建一个空白Excel工作簿。',
@@ -226,9 +214,6 @@ export const createWorkbookHandler: ToolHandler = async (
   }
 };
 
-/**
- * 获取指定单元格的值
- */
 export const getCellValueDefinition: ToolDefinition = {
   name: 'wps_excel_get_cell_value',
   description: '获取Excel指定单元格的值。',
@@ -264,9 +249,6 @@ export const getCellValueHandler: ToolHandler = async (
   }
 };
 
-/**
- * 设置指定单元格的值
- */
 export const setCellValueDefinition: ToolDefinition = {
   name: 'wps_excel_set_cell_value',
   description: '设置Excel指定单元格的值。',
@@ -303,9 +285,6 @@ export const setCellValueHandler: ToolHandler = async (
   }
 };
 
-/**
- * 获取指定单元格的公式
- */
 export const getFormulaDefinition: ToolDefinition = {
   name: 'wps_excel_get_formula',
   description: '获取Excel指定单元格的公式。',
@@ -340,9 +319,6 @@ export const getFormulaHandler: ToolHandler = async (
   }
 };
 
-/**
- * 获取单元格详细信息
- */
 export const getCellInfoDefinition: ToolDefinition = {
   name: 'wps_excel_get_cell_info',
   description: '获取单元格的详细信息（值、公式、格式等）。',
@@ -420,9 +396,6 @@ export const clearRangeHandler: ToolHandler = async (
   }
 };
 
-/**
- * 导出所有工作簿管理相关的Tools
- */
 export const workbookTools: RegisteredTool[] = [
   { definition: openWorkbookDefinition, handler: openWorkbookHandler },
   { definition: getOpenWorkbooksDefinition, handler: getOpenWorkbooksHandler },

@@ -2,12 +2,6 @@
  * Input: 转换工具参数
  * Output: 文档转换结果
  * Pos: 通用文档转换工具实现。一旦我被修改，请更新我的头部注释，以及所属文件夹的md。
- * 文档转换Tools - 跨应用格式转换模块
- * 负责Word/Excel/PPT文档的格式转换操作
- *
- * 包含：
- * - wps_convert_to_pdf: 转换为PDF格式
- * - wps_convert_format: 格式互转（docx<->doc, xlsx<->xls, pptx<->ppt等）
  */
 
 import { v4 as uuidv4 } from 'uuid';
@@ -121,10 +115,6 @@ const getFormatCode = (format: string, appType: WpsAppType): number => {
   }
 };
 
-/**
- * 转换为PDF格式
- * 支持Word、Excel、PPT文档一键转PDF
- */
 export const convertToPdfDefinition: ToolDefinition = {
   name: 'wps_convert_to_pdf',
   description: `将当前文档转换为PDF格式。支持Word、Excel、PPT文档。
@@ -344,9 +334,6 @@ export const convertFormatHandler: ToolHandler = async (
   }
 };
 
-/**
- * 导出所有转换相关的Tools
- */
 export const convertTools: RegisteredTool[] = [
   { definition: convertToPdfDefinition, handler: convertToPdfHandler },
   { definition: convertFormatDefinition, handler: convertFormatHandler },

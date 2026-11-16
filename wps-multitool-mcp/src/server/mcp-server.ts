@@ -1,10 +1,9 @@
 /**
  * Input: MCP 协议请求
  * Output: Tool 调用响应
- * Pos: MCP Server 核心实现。一旦我被修改，请更新我的头部注释，以及所属文件夹的md。
+ * Pos: MCP Server 协议层核心实现（内置工具注册在 src/server/builtin-tools.ts）。一旦我被修改，请更新我的头部注释，以及所属文件夹的md。
  * MCP Server实现 - WPS 的 MCP 协议实现
  * 这是整个系统的核心，处理MCP协议通信
- * 基于stdio传输，Claude Desktop就是这么连的
  */
 
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
@@ -22,14 +21,15 @@ import {
 
 import { toolRegistry, ToolRegistry } from './tool-registry';
 import { wpsClient } from '../client/wps-client';
-import { ToolCallResult, ToolCategory, ToolContent, ToolWarning } from '../types/tools';
+import { ToolCallResult, ToolContent, ToolWarning } from '../types/tools';
 import { allTools } from '../tools';
 import { onToolGroupsChanged } from '../tools/common/toolgroups';
 import { createChildLogger } from '../utils/logger';
 import { McpError, formatWpsErrorTag, WpsErrorType } from '../utils/error';
 import { runWithCancel } from './cancel-context';
 import { getToolAnnotations } from './tool-annotations';
-// getToolMeta 已不进 tools/list（examples 剔除，提质小卡 2026-11-08）；searchTools 路径自持。
+import { registerBuiltinTools as registerBuiltinToolSet } from './builtin-tools';
+// getToolMeta 已不进 tools/list（examples 已剔除）；searchTools 路径自持。
 import { runWithProgress } from './progress-context';
 import { serverInstructions, setToolCount } from './server-info';
 import { CancelError } from '../bridge/cancellable';
@@ -38,9 +38,6 @@ import { MCP_NAME, MCP_VERSION } from '../version';
 
 const logger = createChildLogger('McpServer');
 
-/**
- * MCP Server配置
- */
 export interface McpServerConfig {
   /** 服务器名称 */
   name: string;
@@ -71,7 +68,6 @@ export class WpsMcpServer {
   /** 工具组变更通知是否已接上（避免重复订阅） */
   private groupsNotifyWired: boolean = false;
 
-  private static dataCache: Map<string, { data: unknown; timestamp: number; appType: string }> = new Map();
 
   constructor(config?: Partial<McpServerConfig>) {
     this.config = { ...DEFAULT_CONFIG, ...config };
@@ -120,7 +116,7 @@ export class WpsMcpServer {
   }
 
   /**
-   * Resources 与 Prompts（2026-10-26 对标头部 MCP 项目补齐的协议面）
+   * Resources 与 Prompts（对齐头部 MCP 项目的协议面）
    *
    * Resources：把"当前打开的文档"暴露为资源——客户端（Claude Desktop 等）可以直接浏览
    *   与读取，不必先调工具。列表实时查询三应用的打开文档；读失败的某应用在 JSON 里如实标注。
@@ -265,7 +261,7 @@ export class WpsMcpServer {
       return {
         tools: tools.map((tool) => {
           const annotations = getToolAnnotations(tool.name);
-          // examples 不进 tools/list（提质小卡 2026-11-08）：examples 是本仓自定义扩展字段
+          // examples 不进 tools/list：examples 是本仓自定义扩展字段
           // （MCP 规格无此字段），不认识的客户端纯烧 token（约 2.7KB/会话）。
           // examples 只在 wps_search_tools 返回——那是它发挥价值的地方（搜索结果需要
           // "用户怎么说"的示例），两条路径的口径差异是刻意的。
@@ -303,7 +299,7 @@ export class WpsMcpServer {
         ? () => runWithCancel({ signal, toolName: name }, runIt)
         : runIt;
 
-      // 进度通知（2026-10-26 对标）：客户端传 progressToken 时，长操作发 notifications/progress
+      // 进度通知：客户端传 progressToken 时，长操作发 notifications/progress
       const meta = (request.params as Record<string, unknown> & { _meta?: Record<string, unknown> })._meta;
       const progressToken = meta?.progressToken;
       const sendNotification = extra?.sendNotification;
@@ -364,9 +360,9 @@ export class WpsMcpServer {
         return {
           content,
           isError: !result.success,
-          // 结构化输出（2026-10-26 对标）：工具文本里如果是 JSON 对象，同步给 structuredContent
+          // 结构化输出：工具文本里如果是 JSON 对象，同步给 structuredContent
           // 让客户端拿到结构化数据而非纯文本。仅试探首块，不递归。
-          // P0 体积闸门（提质小卡 2026-11-08）：镜像只对 ≤2048 字节的小 JSON——大回包
+          // 体积闸门：镜像只对 ≤2048 字节的小 JSON——大回包
           // text+structured 双份直接翻倍响应体（getRangeData/getShapes 等读类预估 -45~50%）。
           // 超过闸门只留 text 主载体（逐字节不变，闸门只影响 structuredContent 副本）。
           ...(() => {
@@ -424,362 +420,13 @@ export class WpsMcpServer {
   /**
    * 注册内置Tools - 一些基础的WPS操作Tool
    */
+  /**
+   * 注册内置Tools - 一些基础的WPS操作Tool
+   * 实现与跨应用数据缓存已迁 src/server/builtin-tools.ts；本方法保留为兼容入口
+   * （外部调用点：scripts/manual/gen-doc-stats.js 等），注册数量与顺序不变。
+   */
   registerBuiltinTools(): void {
-    logger.info('Registering built-in tools');
-
-    // 连接状态检查Tool
-    this.registry.register(
-      {
-        name: 'wps_check_connection',
-        description: '检查WPS Office连接状态',
-        inputSchema: {
-          type: 'object',
-          properties: {},
-        },
-        category: ToolCategory.COMMON,
-      },
-      async () => {
-        const connected = await wpsClient.checkConnection();
-        const status = wpsClient.getStatus();
-
-        return {
-          id: '',
-          success: true,
-          content: [
-            {
-              type: 'text',
-              text: JSON.stringify({
-                connected,
-                status,
-              }),
-            },
-          ],
-        };
-      }
-    );
-
-    // 获取当前工作簿信息
-    this.registry.register(
-      {
-        name: 'wps_get_active_workbook',
-        description: '获取当前打开的WPS表格工作簿信息',
-        inputSchema: {
-          type: 'object',
-          properties: {},
-        },
-        category: ToolCategory.SPREADSHEET,
-      },
-      async () => {
-        const workbook = await wpsClient.getActiveWorkbook();
-
-        return {
-          id: '',
-          success: workbook !== null,
-          content: [
-            {
-              type: 'text',
-              text: workbook
-                ? JSON.stringify(workbook)
-                : '没有打开的工作簿',
-            },
-          ],
-        };
-      }
-    );
-
-    // 获取当前演示文稿信息
-    this.registry.register(
-      {
-        name: 'wps_get_active_presentation',
-        description: '获取当前打开的WPS演示文稿信息',
-        inputSchema: {
-          type: 'object',
-          properties: {},
-        },
-        category: ToolCategory.PRESENTATION,
-      },
-      async () => {
-        const presentation = await wpsClient.getActivePresentation();
-
-        return {
-          id: '',
-          success: presentation !== null,
-          content: [
-            {
-              type: 'text',
-              text: presentation
-                ? JSON.stringify(presentation)
-                : '没有打开的演示文稿',
-            },
-          ],
-        };
-      }
-    );
-
-    // 执行自定义WPS方法
-    this.registry.register(
-      {
-        name: 'wps_execute_method',
-        description: '执行自定义WPS API方法',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            method: {
-              type: 'string',
-              description: 'API方法名',
-            },
-            params: {
-              type: 'object',
-              description: '方法参数',
-            },
-            appType: {
-              type: 'string',
-              description: '应用类型：wps（文字）、et（表格）、wpp（演示）',
-              enum: ['wps', 'et', 'wpp'],
-            },
-          },
-          required: ['method'],
-        },
-        category: ToolCategory.COMMON,
-      },
-      async (args) => {
-        const method = args.method as string;
-        const params = args.params as Record<string, unknown> | undefined;
-        const appType = args.appType as string | undefined;
-
-        const response = await wpsClient.executeMethod(
-          method,
-          params,
-          appType as any
-        );
-
-        return {
-          id: '',
-          success: response.success,
-          content: [
-            {
-              type: 'text',
-              text: JSON.stringify(response),
-            },
-          ],
-        };
-      }
-    );
-
-    // ==================== 跨应用数据缓存工具 ====================
-    // Excel读取数据 → 缓存到MCP Server → PPT获取缓存 → 创建演示文稿
-
-    // 缓存数据
-    this.registry.register(
-      {
-        name: 'wps_cache_data',
-        description: '缓存数据到MCP Server，用于跨应用数据传递。例如：从Excel读取数据后缓存，然后在PPT中使用。',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            key: {
-              type: 'string',
-              description: '缓存键名，用于后续获取数据',
-            },
-            data: {
-              type: 'object',
-              description: '要缓存的数据（任意JSON对象）',
-            },
-            appType: {
-              type: 'string',
-              description: '数据来源应用类型：et（表格）、wps（文字）、wpp（演示）',
-              enum: ['et', 'wps', 'wpp'],
-            },
-          },
-          required: ['key', 'data'],
-        },
-        category: ToolCategory.COMMON,
-      },
-      async (args) => {
-        const key = args.key as string;
-        const data = args.data;
-        const appType = (args.appType as string) || 'unknown';
-
-        WpsMcpServer.dataCache.set(key, {
-          data,
-          timestamp: Date.now(),
-          appType,
-        });
-
-        logger.info(`Data cached: key=${key}, appType=${appType}`);
-
-        return {
-          id: '',
-          success: true,
-          content: [
-            {
-              type: 'text',
-              text: JSON.stringify({
-                success: true,
-                key,
-                message: `数据已缓存，可在其他应用中通过 wps_get_cached_data 获取`,
-                cacheSize: WpsMcpServer.dataCache.size,
-              }),
-            },
-          ],
-        };
-      }
-    );
-
-    // 获取缓存数据
-    this.registry.register(
-      {
-        name: 'wps_get_cached_data',
-        description: '从MCP Server获取缓存的数据，用于跨应用数据传递。',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            key: {
-              type: 'string',
-              description: '缓存键名',
-            },
-          },
-          required: ['key'],
-        },
-        category: ToolCategory.COMMON,
-      },
-      async (args) => {
-        const key = args.key as string;
-        const cached = WpsMcpServer.dataCache.get(key);
-
-        if (!cached) {
-          return {
-            id: '',
-            success: false,
-            content: [
-              {
-                type: 'text',
-                text: JSON.stringify({
-                  success: false,
-                  error: `缓存键 "${key}" 不存在`,
-                  availableKeys: Array.from(WpsMcpServer.dataCache.keys()),
-                }),
-              },
-            ],
-          };
-        }
-
-        logger.info(`Cache hit: key=${key}, age=${Date.now() - cached.timestamp}ms`);
-
-        return {
-          id: '',
-          success: true,
-          content: [
-            {
-              type: 'text',
-              text: JSON.stringify({
-                success: true,
-                key,
-                data: cached.data,
-                appType: cached.appType,
-                cachedAt: new Date(cached.timestamp).toISOString(),
-              }),
-            },
-          ],
-        };
-      }
-    );
-
-    // 列出所有缓存
-    this.registry.register(
-      {
-        name: 'wps_list_cache',
-        description: '列出MCP Server中所有缓存的数据键名',
-        inputSchema: {
-          type: 'object',
-          properties: {},
-        },
-        category: ToolCategory.COMMON,
-      },
-      async () => {
-        const cacheList = Array.from(WpsMcpServer.dataCache.entries()).map(([key, value]) => ({
-          key,
-          appType: value.appType,
-          cachedAt: new Date(value.timestamp).toISOString(),
-          ageMs: Date.now() - value.timestamp,
-        }));
-
-        return {
-          id: '',
-          success: true,
-          content: [
-            {
-              type: 'text',
-              text: JSON.stringify({
-                success: true,
-                count: cacheList.length,
-                caches: cacheList,
-              }),
-            },
-          ],
-        };
-      }
-    );
-
-    // 清除缓存
-    this.registry.register(
-      {
-        name: 'wps_clear_cache',
-        description: '清除MCP Server中的缓存数据',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            key: {
-              type: 'string',
-              description: '要清除的缓存键名，不指定则清除所有缓存',
-            },
-          },
-        },
-        category: ToolCategory.COMMON,
-      },
-      async (args) => {
-        const key = args.key as string | undefined;
-
-        if (key) {
-          const deleted = WpsMcpServer.dataCache.delete(key);
-          logger.info(`Cache cleared: key=${key}, deleted=${deleted}`);
-
-          return {
-            id: '',
-            success: true,
-            content: [
-              {
-                type: 'text',
-                text: JSON.stringify({
-                  success: true,
-                  message: deleted ? `缓存 "${key}" 已清除` : `缓存 "${key}" 不存在`,
-                }),
-              },
-            ],
-          };
-        } else {
-          const count = WpsMcpServer.dataCache.size;
-          WpsMcpServer.dataCache.clear();
-          logger.info(`All cache cleared: count=${count}`);
-
-          return {
-            id: '',
-            success: true,
-            content: [
-              {
-                type: 'text',
-                text: JSON.stringify({
-                  success: true,
-                  message: `已清除所有缓存，共 ${count} 条`,
-                }),
-              },
-            ],
-          };
-        }
-      }
-    );
-
-    logger.info(`Registered ${this.registry.size} built-in tools`);
+    registerBuiltinToolSet();
   }
 
   /**
@@ -878,7 +525,7 @@ export function prefixWithWarnings(result: ToolCallResult): ToolContent[] {
   const ws = result.warnings;
   if (!ws || !ws.length) return result.content;
   const fmt = (w: ToolWarning) => (w.step ? `  - ${w.step}：${w.message}` : `  - ${w.message}`);
-  // 分级（体验修复轮 B）：severity='info' 是不影响本次结果的提醒（快照提示/协作提醒/
+  // 分级：severity='info' 是不影响本次结果的提醒（快照提示/协作提醒/
   // 修订模式建议），不该被当成"未按预期"——真失败会被这种头淹没。缺省（未标）一律
   // 按 warning 处理，老行为逐字保留。
   const blocking = ws.filter((w) => w.severity !== 'info');

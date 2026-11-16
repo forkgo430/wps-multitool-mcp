@@ -1,31 +1,22 @@
 /**
  * Input: 环境变量（WPS_BACKEND / WPS_OFFICE）/ process.platform / WSL 探测 / ProgID→二进制解析
- * Output: 后端判定（com | addon | off）+ host 判定（wps | office）+ 判定依据
+ * Output: 后端识别（com | addon | off）+ host 识别（wps | office）+ 判断依据
  * Pos: Linux 适配的地基——五层决策链（计划 §4.1）；Office 支持一期（2026-11-07）加 host 维度。
- *      一旦我被修改，请更新我的头部注释，以及所属目录的md。
- *
  * 原则：探测，不猜。platform 只是线索，能不能干活看通道通不通。
- *
- * 五层（自上而下，命中即返回）：
  *   1. WPS_BACKEND 环境变量强制覆盖（com / addon / off；调试与 CI 用，写错直接抛）
- *   2. process.platform === 'win32' → COM（现状主通道）
- *   3. WSL 特判：platform 报 linux 但存在 /mnt/c/.../powershell.exe → 仍走 COM
  *      （不特判的话 WSL 用户会被错误甩去 addon 通道，平白多一层延迟且原因不可见）
- *   4. Linux/macOS 能力探测（端口上有加载项握手吗）——归 B2，通道未实现前到不了这层
+ *   4. Linux/macOS 能力探测（端口上有加载项握手吗）——加载项通道未实现前到不了这层
  *   5. 兜底：明确抛错 + 说清该等什么/设什么，绝不静默降级
- *
  * host 维度（Office 支持一期 · 与 WPS_BACKEND 正交）：
  *   WPS_OFFICE=on | off | auto（缺省 auto）。
  *   - on/off：强制指定 host，用户显式选择不探测。
  *   - auto：解析 ProgID 链到【实际服务器二进制】再归类——
  *     ProgID 存在性、CoCreate 成败、Application.Name/Version 自报统统不可信：
- *     实测（2026-11-07，卡面"判定阶段情报"）装有 WPS 的机器上 Word.Application 的
  *     COM 激活会被 WPS 动态类工厂顶名应答（Name 自报 'Microsoft Word'、Version 12.0）。
  *     唯一可靠判据 = LocalServer32 指向的 exe 真身（wps.exe → wps；WINWORD.EXE → office）。
  *   - 探测不可用 / 结论不一致 → 保守按 wps（现任主通道），不猜、不静默假装 office 可用。
  *   - backend=off 时 host 维度不适用，固定 'wps'（不探测）。
- *
- * C4（Windows 延迟不变）：判定结果模块内缓存一次；Windows 上每次调用只是读缓存，
+ * （Windows 延迟不变）：识别结果模块内缓存一次；Windows 上每次调用只是读缓存，
  * COM 分支一个字节没动（wps-client.ts 只有顶部一个转发点）。
  */
 
@@ -40,9 +31,9 @@ export interface BackendDecision {
   wsl: boolean;
   /** host 维度：这次会话驱动哪套办公套件（Office 支持一期） */
   host: Host;
-  /** host 判定依据（人话，与 basis 分开——两个维度两条依据） */
+  /** host 判断依据（人话，与 basis 分开——两个维度两条依据） */
   hostBasis: string;
-  /** 判定依据（人话，给 wps_backend_status / 排障日志用） */
+  /** 判断依据（人话，给 wps_backend_status / 排障日志用） */
   basis: string;
 }
 
@@ -171,7 +162,7 @@ export function probeHostLive(): Host | null {
   return hostProbeCache;
 }
 
-// ==================== host 维度判定（与 backend 正交）====================
+// ==================== host 维度识别（与 backend 正交）====================
 
 export interface DetectHostInput {
   env?: Record<string, string | undefined>;
@@ -266,11 +257,11 @@ export function detectBackend(input?: {
       wsl: true,
       host: h.host,
       hostBasis: h.hostBasis,
-      basis: 'WSL 环境（探到 Windows PowerShell），能力判定走 COM；管道在 WSL 的可达性由通道层实测（B2/B4）',
+      basis: 'WSL 环境（探到 Windows PowerShell），能力识别走 COM；管道在 WSL 的可达性由通道层实测',
     };
   }
 
-  // 第 4/5 层：Linux/macOS——能力探测（加载项握手）归 B2，通道没实现前到不了那层。
+  // 第 4/5 层：Linux/macOS——能力探测（加载项握手），加载项通道没实现前到不了那层。
   // 现状 = 明确报错 + 说清选项，绝不静默降级去撞一个必然失败的通道。
   const os = platform === 'darwin' ? 'macOS' : 'Linux';
   throw new BackendUnavailableError(
@@ -279,7 +270,7 @@ export function detectBackend(input?: {
   );
 }
 
-/** 判定缓存：模块内只算一次（C4）。失败不缓存——每次调用都拿到最新的一次明确报错 */
+/** 识别缓存：模块内只算一次。失败不缓存——每次调用都拿到最新的一次明确报错 */
 let cached: BackendDecision | null = null;
 
 export function backendDecision(): BackendDecision {
@@ -289,7 +280,7 @@ export function backendDecision(): BackendDecision {
 
 /**
  * 便捷常量（计划 §4.2 的形状）：addon 通道实现后，Linux + 加载项在线时为 true。
- * Windows 上恒 false。判定失败（Linux 无通道）按 false 处理——真正的报错由
+ * Windows 上恒 false。探测失败（Linux 无通道）按 false 处理——真正的报错由
  * backendDecision() 在调用时抛，别在模块加载期把整个 server 带崩。
  */
 export const USE_ADDON = (() => {
@@ -300,7 +291,7 @@ export const USE_ADDON = (() => {
   }
 })();
 
-/** 后端状态摘要（wps_backend_status 工具的数据源，B2 注册工具时直接用） */
+/** 后端状态摘要（wps_backend_status 工具的数据源） */
 export function backendStatus(): BackendDecision & { transport: string } {
   const d = backendDecision();
   return {
