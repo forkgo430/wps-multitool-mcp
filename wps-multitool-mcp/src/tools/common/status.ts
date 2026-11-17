@@ -15,9 +15,10 @@ import {
   ToolCategory,
   RegisteredTool,
 } from '../../types/tools';
-import { wpsClient } from '../../client/wps-client';
+
 import { psDaemon } from '../../client/ps-daemon';
 import { versionLine, MCP_VERSION, MCP_AUTHOR } from '../../version';
+import { call } from './helpers';
 
 /** PowerShell 侧 wpsStatus 动作返回的数据形状 */
 interface AppState {
@@ -87,8 +88,8 @@ export const statusHandler: ToolHandler = async (): Promise<ToolCallResult> => {
   let wps: WpsStatusData | null = null;
   let wpsError: string | null = null;
   try {
-    const response = await wpsClient.executeMethod<WpsStatusData>('wpsStatus', {});
-    if (response.success) {
+    const response = await call<WpsStatusData>('wpsStatus', {});
+    if (response.ok) {
       wps = response.data ?? null;
     } else {
       wpsError = String(response.error ?? '未知错误');

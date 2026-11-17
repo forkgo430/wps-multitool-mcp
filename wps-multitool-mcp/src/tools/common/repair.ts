@@ -14,8 +14,7 @@ import {
   ToolCategory,
   RegisteredTool,
 } from '../../types/tools';
-import { wpsClient } from '../../client/wps-client';
-
+import { ok, fail, call } from './helpers';
 
 /** PowerShell 侧 wpsRepair 返回的数据形状 */
 interface RepairDoc {
@@ -93,25 +92,15 @@ export const repairDefinition: ToolDefinition = {
 export const repairHandler: ToolHandler = async (): Promise<ToolCallResult> => {
   let r;
   try {
-    r = await wpsClient.executeMethod<RepairData>('wpsRepair', {});
+    r = await call<RepairData>('wpsRepair', {});
   } catch (err) {
     const m = err instanceof Error ? err.message : String(err);
-    return {
-      id: '',
-      success: false,
-      content: [{ type: 'text', text: `诊断失败：${m}` }],
-      error: m,
-    };
+    return fail(`诊断失败：${m}`, m);
   }
 
-  if (!r.success) {
+  if (!r.ok) {
     const m = String(r.error ?? '未知错误');
-    return {
-      id: '',
-      success: false,
-      content: [{ type: 'text', text: `诊断失败：${m}` }],
-      error: m,
-    };
+    return fail(`诊断失败：${m}`, m);
   }
 
   const d = r.data ?? {};
@@ -147,11 +136,7 @@ export const repairHandler: ToolHandler = async (): Promise<ToolCallResult> => {
   }
   if (d.hint) lines.push('', d.hint);
 
-  return {
-    id: '',
-    success: true,
-    content: [{ type: 'text', text: lines.join('\n') }],
-  };
+  return ok(lines.join('\n'), r.warnings);
 };
 
 export const repairTools: RegisteredTool[] = [

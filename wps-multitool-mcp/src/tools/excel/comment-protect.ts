@@ -9,7 +9,6 @@
  * - wps_excel_set_hyperlink: 设置超链接
  */
 
-import { v4 as uuidv4 } from 'uuid';
 import {
   ToolDefinition,
   ToolHandler,
@@ -17,8 +16,8 @@ import {
   ToolCategory,
   RegisteredTool,
 } from '../../types/tools';
-import { wpsClient } from '../../client/wps-client';
-import { WpsAppType } from '../../types/wps';
+
+import { call, ok, fail } from './helpers';
 
 /**
  * 删除单元格批注
@@ -42,18 +41,14 @@ export const deleteCellCommentHandler: ToolHandler = async (
 ): Promise<ToolCallResult> => {
   const { cell, sheet } = args as { cell: string; sheet?: string };
   try {
-    const response = await wpsClient.executeMethod<{ message: string }>(
-      'deleteCellComment',
-      { cell, sheet },
-      WpsAppType.SPREADSHEET
-    );
-    if (!response.success) {
-      return { id: uuidv4(), success: false, content: [{ type: 'text', text: `删除批注失败: ${response.error}` }], error: response.error };
+    const response = await call<{ message: string }>('deleteCellComment', { cell, sheet });
+    if (!response.ok) {
+      return fail(`删除批注失败: ${response.error}`, response.error);
     }
-    return { id: uuidv4(), success: true, content: [{ type: 'text', text: `批注删除成功！单元格: ${cell}` }] };
+    return ok(`批注删除成功！单元格: ${cell}`, response.warnings);
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    return { id: uuidv4(), success: false, content: [{ type: 'text', text: `删除批注出错: ${errMsg}` }], error: errMsg };
+    return fail(`删除批注出错: ${errMsg}`, errMsg);
   }
 };
 
@@ -76,28 +71,24 @@ export const getCellCommentsHandler: ToolHandler = async (
 ): Promise<ToolCallResult> => {
   const { range, sheet } = args as { range?: string; sheet?: string };
   try {
-    const response = await wpsClient.executeMethod<{
+    const response = await call<{
       comments: Array<{ cell: string; comment: string; author?: string }>;
-    }>(
-      'getCellComments',
-      { range, sheet },
-      WpsAppType.SPREADSHEET
-    );
-    if (!response.success || !response.data) {
-      return { id: uuidv4(), success: false, content: [{ type: 'text', text: `获取批注失败: ${response.error}` }], error: response.error };
+    }>('getCellComments', { range, sheet });
+    if (!response.ok || !response.data) {
+      return fail(`获取批注失败: ${response.error}`, response.error);
     }
     const comments = response.data.comments;
     if (!comments || comments.length === 0) {
-      return { id: uuidv4(), success: true, content: [{ type: 'text', text: `${range ? `范围 ${range}` : '当前工作表'}没有批注` }] };
+      return ok(`${range ? `范围 ${range}` : '当前工作表'}没有批注`, response.warnings);
     }
     let output = `找到${comments.length}条批注：\n\n`;
     comments.forEach((c) => {
       output += `- ${c.cell}: ${c.comment}${c.author ? ` (作者: ${c.author})` : ''}\n`;
     });
-    return { id: uuidv4(), success: true, content: [{ type: 'text', text: output }] };
+    return ok(output, response.warnings);
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    return { id: uuidv4(), success: false, content: [{ type: 'text', text: `获取批注出错: ${errMsg}` }], error: errMsg };
+    return fail(`获取批注出错: ${errMsg}`, errMsg);
   }
 };
 
@@ -119,18 +110,14 @@ export const unprotectSheetHandler: ToolHandler = async (
 ): Promise<ToolCallResult> => {
   const { password } = args as { password?: string };
   try {
-    const response = await wpsClient.executeMethod<{ message: string }>(
-      'unprotectSheet',
-      { password },
-      WpsAppType.SPREADSHEET
-    );
-    if (!response.success) {
-      return { id: uuidv4(), success: false, content: [{ type: 'text', text: `取消保护工作表失败: ${response.error}` }], error: response.error };
+    const response = await call<{ message: string }>('unprotectSheet', { password });
+    if (!response.ok) {
+      return fail(`取消保护工作表失败: ${response.error}`, response.error);
     }
-    return { id: uuidv4(), success: true, content: [{ type: 'text', text: '工作表取消保护成功！' }] };
+    return ok('工作表取消保护成功！', response.warnings);
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    return { id: uuidv4(), success: false, content: [{ type: 'text', text: `取消保护工作表出错: ${errMsg}` }], error: errMsg };
+    return fail(`取消保护工作表出错: ${errMsg}`, errMsg);
   }
 };
 
@@ -157,18 +144,14 @@ export const lockCellsHandler: ToolHandler = async (
 ): Promise<ToolCallResult> => {
   const { range, locked, sheet } = args as { range: string; locked: boolean; sheet?: string };
   try {
-    const response = await wpsClient.executeMethod<{ message: string }>(
-      'lockCells',
-      { range, locked, sheet },
-      WpsAppType.SPREADSHEET
-    );
-    if (!response.success) {
-      return { id: uuidv4(), success: false, content: [{ type: 'text', text: `${locked ? '锁定' : '解锁'}单元格失败: ${response.error}` }], error: response.error };
+    const response = await call<{ message: string }>('lockCells', { range, locked, sheet });
+    if (!response.ok) {
+      return fail(`${locked ? '锁定' : '解锁'}单元格失败: ${response.error}`, response.error);
     }
-    return { id: uuidv4(), success: true, content: [{ type: 'text', text: `单元格${locked ? '锁定' : '解锁'}成功！范围: ${range}` }] };
+    return ok(`单元格${locked ? '锁定' : '解锁'}成功！范围: ${range}`, response.warnings);
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    return { id: uuidv4(), success: false, content: [{ type: 'text', text: `${locked ? '锁定' : '解锁'}单元格出错: ${errMsg}` }], error: errMsg };
+    return fail(`${locked ? '锁定' : '解锁'}单元格出错: ${errMsg}`, errMsg);
   }
 };
 
@@ -195,18 +178,14 @@ export const setArrayFormulaHandler: ToolHandler = async (
 ): Promise<ToolCallResult> => {
   const { range, formula, sheet } = args as { range: string; formula: string; sheet?: string };
   try {
-    const response = await wpsClient.executeMethod<{ message: string }>(
-      'setArrayFormula',
-      { range, formula, sheet },
-      WpsAppType.SPREADSHEET
-    );
-    if (!response.success) {
-      return { id: uuidv4(), success: false, content: [{ type: 'text', text: `设置数组公式失败: ${response.error}` }], error: response.error };
+    const response = await call<{ message: string }>('setArrayFormula', { range, formula, sheet });
+    if (!response.ok) {
+      return fail(`设置数组公式失败: ${response.error}`, response.error);
     }
-    return { id: uuidv4(), success: true, content: [{ type: 'text', text: `数组公式设置成功！范围: ${range}，公式: ${formula}` }] };
+    return ok(`数组公式设置成功！范围: ${range}，公式: ${formula}`, response.warnings);
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    return { id: uuidv4(), success: false, content: [{ type: 'text', text: `设置数组公式出错: ${errMsg}` }], error: errMsg };
+    return fail(`设置数组公式出错: ${errMsg}`, errMsg);
   }
 };
 
@@ -239,21 +218,17 @@ export const insertExcelImageHandler: ToolHandler = async (
   };
   try {
     // 参数对齐：底层读取 params.path，需同时发送 path/imagePath
-    const response = await wpsClient.executeMethod<{ message: string }>(
-      'insertExcelImage',
-      { filePath, path: filePath, imagePath: filePath, cell, width, height, sheet },
-      WpsAppType.SPREADSHEET
-    );
-    if (!response.success) {
-      return { id: uuidv4(), success: false, content: [{ type: 'text', text: `插入图片失败: ${response.error}` }], error: response.error };
+    const response = await call<{ message: string }>('insertExcelImage', { filePath, path: filePath, imagePath: filePath, cell, width, height, sheet });
+    if (!response.ok) {
+      return fail(`插入图片失败: ${response.error}`, response.error);
     }
     let text = `图片插入成功！文件: ${filePath}`;
     if (cell) text += `，位置: ${cell}`;
     if (width || height) text += `，尺寸: ${width || '自动'}x${height || '自动'}`;
-    return { id: uuidv4(), success: true, content: [{ type: 'text', text }] };
+    return ok(text, response.warnings);
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    return { id: uuidv4(), success: false, content: [{ type: 'text', text: `插入图片出错: ${errMsg}` }], error: errMsg };
+    return fail(`插入图片出错: ${errMsg}`, errMsg);
   }
 };
 
@@ -281,18 +256,14 @@ export const setHyperlinkHandler: ToolHandler = async (
 ): Promise<ToolCallResult> => {
   const { cell, url, text, sheet } = args as { cell: string; url: string; text?: string; sheet?: string };
   try {
-    const response = await wpsClient.executeMethod<{ message: string }>(
-      'setHyperlink',
-      { cell, url, text, sheet },
-      WpsAppType.SPREADSHEET
-    );
-    if (!response.success) {
-      return { id: uuidv4(), success: false, content: [{ type: 'text', text: `设置超链接失败: ${response.error}` }], error: response.error };
+    const response = await call<{ message: string }>('setHyperlink', { cell, url, text, sheet });
+    if (!response.ok) {
+      return fail(`设置超链接失败: ${response.error}`, response.error);
     }
-    return { id: uuidv4(), success: true, content: [{ type: 'text', text: `超链接设置成功！单元格: ${cell}，URL: ${url}${text ? `，显示文本: ${text}` : ''}` }] };
+    return ok(`超链接设置成功！单元格: ${cell}，URL: ${url}${text ? `，显示文本: ${text}` : ''}`, response.warnings);
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    return { id: uuidv4(), success: false, content: [{ type: 'text', text: `设置超链接出错: ${errMsg}` }], error: errMsg };
+    return fail(`设置超链接出错: ${errMsg}`, errMsg);
   }
 };
 

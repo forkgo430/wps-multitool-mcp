@@ -5,7 +5,6 @@
  * - wps_excel_diagnose_formula: 诊断公式错误，分析原因并提供修复建议
  */
 
-import { v4 as uuidv4 } from 'uuid';
 import {
   ToolDefinition,
   ToolHandler,
@@ -13,8 +12,8 @@ import {
   ToolCategory,
   RegisteredTool,
 } from '../../types/tools';
-import { wpsClient } from '../../client/wps-client';
-import { WpsAppType } from '../../types/wps';
+
+import { call, ok, fail } from './helpers';
 
 /**
  * 设置公式到指定单元格
@@ -55,48 +54,20 @@ export const setFormulaHandler: ToolHandler = async (
 
   // 公式必须以=开头
   if (!formula.startsWith('=')) {
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: '公式格式错误：公式必须以=开头，如 =SUM(A1:A10)' }],
-      error: '公式格式错误：必须以=开头',
-    };
+    return fail('公式格式错误：公式必须以=开头，如 =SUM(A1:A10)', '公式格式错误：必须以=开头');
   }
 
   try {
-    const response = await wpsClient.executeMethod(
-      'setFormula',
-      { range, formula, sheet },
-      WpsAppType.SPREADSHEET
-    );
+    const response = await call('setFormula', { range, formula, sheet });
 
-    if (response.success) {
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [
-          {
-            type: 'text',
-            text: `公式设置成功！\n单元格: ${range}\n公式: ${formula}\n计算结果: ${JSON.stringify(response.data)}`,
-          },
-        ],
-      };
+    if (response.ok) {
+      return ok(`公式设置成功！\n单元格: ${range}\n公式: ${formula}\n计算结果: ${JSON.stringify(response.data)}`, response.warnings);
     } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `公式设置失败: ${response.error}` }],
-        error: response.error,
-      };
+      return fail(`公式设置失败: ${response.error}`, response.error);
     }
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `设置公式出错: ${errMsg}` }],
-      error: errMsg,
-    };
+    return fail(`设置公式出错: ${errMsg}`, errMsg);
   }
 };
 
@@ -138,39 +109,23 @@ export const generateFormulaHandler: ToolHandler = async (
 
   try {
     // 先获取工作表上下文，这样AI才能理解表结构
-    const contextResponse = await wpsClient.executeMethod<{
+    const contextResponse = await call<{
       workbookName: string;
       currentSheet: string;
       allSheets: string[];
       selectedCell: string;
       headers: Array<{ column: string; value: string }>;
       usedRangeAddress: string;
-    }>('getContext', {}, WpsAppType.SPREADSHEET);
+    }>('getContext', {});
 
-    if (!contextResponse.success || !contextResponse.data) {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [
-          {
-            type: 'text',
-            text: '获取工作表上下文失败，请确保WPS表格已打开并且有活动工作簿',
-          },
-        ],
-        error: '无法获取工作表上下文',
-      };
+    if (!contextResponse.ok || !contextResponse.data) {
+      return fail('获取工作表上下文失败，请确保WPS表格已打开并且有活动工作簿', '无法获取工作表上下文');
     }
 
     const context = contextResponse.data;
 
     // 返回上下文信息，让AI根据这些信息生成公式
-    return {
-      id: uuidv4(),
-      success: true,
-      content: [
-        {
-          type: 'text',
-          text: `工作表上下文信息：
+    return ok(`工作表上下文信息：
 工作簿: ${context.workbookName}
 当前工作表: ${context.currentSheet}
 所有工作表: ${context.allSheets.join(', ')}
@@ -182,18 +137,10 @@ ${context.headers.map((h) => `  ${h.column}列: ${h.value}`).join('\n')}
 用户需求: ${description}
 目标单元格: ${target_cell || '待确认'}
 
-请根据上下文和用户描述生成公式，然后调用 wps_excel_set_formula 写入。`,
-        },
-      ],
-    };
+请根据上下文和用户描述生成公式，然后调用 wps_excel_set_formula 写入。`, contextResponse.warnings);
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `获取上下文出错: ${errMsg}` }],
-      error: errMsg,
-    };
+    return fail(`获取上下文出错: ${errMsg}`, errMsg);
   }
 };
 
@@ -237,7 +184,7 @@ export const diagnoseFormulaHandler: ToolHandler = async (
   const { cell } = args as { cell: string };
 
   try {
-    const response = await wpsClient.executeMethod<{
+    const response = await call<{
       cell: string;
       formula: string;
       currentValue: unknown;
@@ -245,43 +192,23 @@ export const diagnoseFormulaHandler: ToolHandler = async (
       diagnosis: string;
       suggestion: string;
       precedents: string[];
-    }>('diagnoseFormula', { cell }, WpsAppType.SPREADSHEET);
+    }>('diagnoseFormula', { cell });
 
-    if (!response.success || !response.data) {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `诊断失败: ${response.error}` }],
-        error: response.error,
-      };
+    if (!response.ok || !response.data) {
+      return fail(`诊断失败: ${response.error}`, response.error);
     }
 
     const diagnosis = response.data;
 
     // 如果没有错误
     if (!diagnosis.errorType) {
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [
-          {
-            type: 'text',
-            text: `单元格 ${cell} 的公式没有错误！
+      return ok(`单元格 ${cell} 的公式没有错误！
 公式: ${diagnosis.formula}
-计算结果: ${JSON.stringify(diagnosis.currentValue)}`,
-          },
-        ],
-      };
+计算结果: ${JSON.stringify(diagnosis.currentValue)}`, response.warnings);
     }
 
     // 有错误，给出详细诊断
-    return {
-      id: uuidv4(),
-      success: true,
-      content: [
-        {
-          type: 'text',
-          text: `公式诊断结果：
+    return ok(`公式诊断结果：
 
 单元格: ${diagnosis.cell}
 公式: ${diagnosis.formula}
@@ -291,18 +218,10 @@ export const diagnoseFormulaHandler: ToolHandler = async (
 
 修复建议: ${diagnosis.suggestion}
 
-引用的单元格: ${diagnosis.precedents.length > 0 ? diagnosis.precedents.join(', ') : '无引用'}`,
-        },
-      ],
-    };
+引用的单元格: ${diagnosis.precedents.length > 0 ? diagnosis.precedents.join(', ') : '无引用'}`, response.warnings);
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `诊断公式出错: ${errMsg}` }],
-      error: errMsg,
-    };
+    return fail(`诊断公式出错: ${errMsg}`, errMsg);
   }
 };
 
@@ -333,30 +252,13 @@ export const evaluateFormulaDefinition: ToolDefinition = {
 export const evaluateFormulaHandler = async (args: Record<string, unknown>) => {
   const { formula, cell } = args as { formula?: string; cell?: string };
   if (!formula || !formula.trim()) {
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text' as const, text: '[勿重试·先改参数] formula 不能为空（如 =SUM(A1:A10)）' }],
-      error: 'formula 为空',
-    };
+    return fail('[勿重试·先改参数] formula 不能为空（如 =SUM(A1:A10)）', 'formula 为空');
   }
 
-  const response = await wpsClient.executeMethod<{ formula: string; result: unknown }>(
-    // 动作名没变（evaluateFormula），但 ps1 里原先【没有这个 case】，
-    // 一直是 Unknown action。本轮补了 case（Application.Evaluate，**只算不写**）。
-    // 原来那句 "// NOTE: 仅Windows支持" 是假的：Windows 上也不支持，压根没这个 case。
-    'evaluateFormula',
-    { formula: formula.trim() },
-    WpsAppType.SPREADSHEET
-  );
+  const response = await call<{ formula: string; result: unknown }>('evaluateFormula', { formula: formula.trim() });
 
-  if (!response.success) {
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text' as const, text: `公式计算失败: ${response.error ?? '未知原因'}` }],
-      error: response.error ?? '公式计算失败',
-    };
+  if (!response.ok) {
+    return fail(`公式计算失败: ${response.error ?? '未知原因'}`, response.error ?? '公式计算失败');
   }
 
   // 原来直接把 data 整个 JSON.stringify —— 失败时打的是 "undefined"，成功时打的是一坨字段名，
@@ -374,32 +276,14 @@ export const evaluateFormulaHandler = async (args: Record<string, unknown>) => {
   // 让它在给了 cell 时写单元格就是"声明只读却动手改"。拆开后两个动作各守各的注解。
   let written = '';
   if (cell && cell.trim()) {
-    const w = await wpsClient.executeMethod<{ success: boolean }>(
-      'setRangeData',
-      { range: cell.trim(), data: [[raw as string | number]] },
-      WpsAppType.SPREADSHEET
-    );
-    if (!w.success) {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [
-          {
-            type: 'text' as const,
-            text: `算出来了（${shown}），但写入 ${cell} 失败: ${w.error ?? '未知原因'}。值没有落盘，别当成已写入。`,
-          },
-        ],
-        error: w.error ?? '写入失败',
-      };
+    const w = await call<{ success: boolean }>('setRangeData', { range: cell.trim(), data: [[raw as string | number]] });
+    if (!w.ok) {
+      return fail(`算出来了（${shown}），但写入 ${cell} 失败: ${w.error ?? '未知原因'}。值没有落盘，别当成已写入。`, w.error ?? '写入失败');
     }
     written = `\n已把该值写入 ${cell.trim()}（写的是值，不是公式）`;
   }
 
-  return {
-    id: uuidv4(),
-    success: true,
-    content: [{ type: 'text' as const, text: `计算结果: ${shown}\n公式: ${response.data?.formula ?? formula}${written}` }],
-  };
+  return ok(`计算结果: ${shown}\n公式: ${response.data?.formula ?? formula}${written}`);
 };
 
 export const setPrintAreaDefinition: ToolDefinition = {
@@ -414,11 +298,9 @@ export const setPrintAreaDefinition: ToolDefinition = {
 };
 
 export const setPrintAreaHandler = async (args: Record<string, unknown>) => {
-  const response = await wpsClient.executeMethod<{ success: boolean }>(
-    'setPrintArea', args, WpsAppType.SPREADSHEET
-  );
+  const response = await call<{ success: boolean }>('setPrintArea', args);
 
-  return { id: uuidv4(), success: response.success, content: [{ type: "text" as const, text: response.success ? "打印区域已设置" : "设置失败" }] };
+  return response.ok ? ok('打印区域已设置', response.warnings) : fail('设置失败', response.error);
 };
 
 export const formulaTools: RegisteredTool[] = [

@@ -17,6 +17,7 @@
  */
 
 import { v4 as uuidv4 } from 'uuid';
+import { call } from './helpers';
 import {
   ToolDefinition,
   ToolHandler,
@@ -30,7 +31,6 @@ import { reportProgress } from '../../server/progress-context';
 // 风险判据只有一份：与单工具写入的自动快照共用（口径不一致会让人以为单调用也安全）
 import { snapshotRiskOf } from '../../server/auto-snapshot';
 import { isDestructiveAction, isIdempotentAction } from '../../bridge/cancellable';
-import { wpsClient } from '../../client/wps-client';
 import { WpsAppType } from '../../types/wps';
 import { classifyWpsError } from '../../utils/error';
 import { createSnapshot, appendOpLog } from './snapshot';
@@ -300,8 +300,8 @@ async function runAction(action: string, params: Args, app: string): Promise<Too
     ppt: WpsAppType.PRESENTATION,
     common: undefined as unknown as WpsAppType,
   };
-  const r = await wpsClient.executeMethod(action, params, typeMap[app]);
-  if (!r.success) return fail(r.error ?? `${action} 执行失败`, r.error);
+  const r = await call(action, params, typeMap[app]);
+  if (!r.ok) return fail(r.error ?? `${action} 执行失败`, r.error);
   return ok(`${action} 完成${r.warnings?.length ? '（有保留）' : ''}`, r.warnings);
 }
 

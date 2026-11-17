@@ -4,7 +4,6 @@
  * Pos: Excel 透视表工具实现。一旦我被修改，请更新我的头部注释，以及所属文件夹的md。
  */
 
-import { v4 as uuidv4 } from 'uuid';
 import {
   ToolDefinition,
   ToolHandler,
@@ -12,8 +11,8 @@ import {
   ToolCategory,
   RegisteredTool,
 } from '../../types/tools';
-import { wpsClient } from '../../client/wps-client';
-import { WpsAppType } from '../../types/wps';
+
+import { call, ok, fail } from './helpers';
 
 /**
  * 值字段聚合类型
@@ -140,75 +139,40 @@ export const createPivotTableHandler: ToolHandler = async (
 
   // 参数校验：必填项检查
   if (!config.sourceRange || config.sourceRange.trim() === '') {
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: '数据源范围(sourceRange)不能为空' }],
-      error: '参数错误：sourceRange为空',
-    };
+    return fail('数据源范围(sourceRange)不能为空', '参数错误：sourceRange为空');
   }
 
   if (!config.destinationCell || config.destinationCell.trim() === '') {
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: '放置位置(destinationCell)不能为空' }],
-      error: '参数错误：destinationCell为空',
-    };
+    return fail('放置位置(destinationCell)不能为空', '参数错误：destinationCell为空');
   }
 
   if (!config.rowFields || config.rowFields.length === 0) {
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: '行字段(rowFields)至少需要一个字段' }],
-      error: '参数错误：rowFields为空',
-    };
+    return fail('行字段(rowFields)至少需要一个字段', '参数错误：rowFields为空');
   }
 
   if (!config.valueFields || config.valueFields.length === 0) {
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: '值字段(valueFields)至少需要一个字段' }],
-      error: '参数错误：valueFields为空',
-    };
+    return fail('值字段(valueFields)至少需要一个字段', '参数错误：valueFields为空');
   }
 
   // 校验聚合类型
   const validAggregations: AggregationType[] = ['SUM', 'COUNT', 'AVERAGE', 'MAX', 'MIN'];
   for (const vf of config.valueFields) {
     if (!vf.field || vf.field.trim() === '') {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: '值字段的field不能为空，请指定要汇总的字段名' }],
-        error: '参数错误：valueFields中field为空',
-      };
+      return fail('值字段的field不能为空，请指定要汇总的字段名', '参数错误：valueFields中field为空');
     }
     if (!vf.aggregation || !validAggregations.includes(vf.aggregation)) {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{
-          type: 'text',
-          text: `聚合类型(aggregation)必须是${validAggregations.join('/')}之一，当前值"${vf.aggregation}"无效`
-        }],
-        error: '参数错误：aggregation无效',
-      };
+      return fail(`聚合类型(aggregation)必须是${validAggregations.join('/')}之一，当前值"${vf.aggregation}"无效`, '参数错误：aggregation无效');
     }
   }
 
   try {
-    const response = await wpsClient.executeMethod<{
+    const response = await call<{
       success: boolean;
       pivotTableName: string;
       location: string;
       rowCount: number;
       columnCount: number;
-    }>(
-      'createPivotTable',
-      {
+    }>('createPivotTable', {
         sourceRange: config.sourceRange.trim(),
         destinationCell: config.destinationCell.trim(),
         destinationSheet: config.destinationSheet,
@@ -217,19 +181,11 @@ export const createPivotTableHandler: ToolHandler = async (
         valueFields: config.valueFields,
         filterFields: config.filterFields || [],
         tableName: config.tableName,
-      },
-      WpsAppType.SPREADSHEET
-    );
+      });
 
-    if (response.success && response.data) {
+    if (response.ok && response.data) {
       const result = response.data;
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [
-          {
-            type: 'text',
-            text: `透视表创建成功！
+      return ok(`透视表创建成功！
 
 透视表名称: ${result.pivotTableName}
 放置位置: ${result.location}
@@ -240,26 +196,13 @@ export const createPivotTableHandler: ToolHandler = async (
 - 行字段: ${config.rowFields.join(', ')}
 - 列字段: ${config.columnFields?.join(', ') || '无'}
 - 值字段: ${config.valueFields.map(v => `${v.field}(${v.aggregation})`).join(', ')}
-- 筛选字段: ${config.filterFields?.join(', ') || '无'}`,
-          },
-        ],
-      };
+- 筛选字段: ${config.filterFields?.join(', ') || '无'}`, response.warnings);
     } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `创建透视表失败: ${response.error}` }],
-        error: response.error,
-      };
+      return fail(`创建透视表失败: ${response.error}`, response.error);
     }
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `创建透视表出错: ${errMsg}` }],
-      error: errMsg,
-    };
+    return fail(`创建透视表出错: ${errMsg}`, errMsg);
   }
 };
 
@@ -400,15 +343,7 @@ export const updatePivotTableHandler: ToolHandler = async (
 
   // 至少要有一种方式定位透视表
   if (!pivotTableName && !pivotTableCell) {
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{
-        type: 'text',
-        text: '请指定目标透视表，提供 pivotTableName 或 pivotTableCell'
-      }],
-      error: '参数错误：未指定透视表',
-    };
+    return fail('请指定目标透视表，提供 pivotTableName 或 pivotTableCell', '参数错误：未指定透视表');
   }
 
   // 检查是否有实际的操作
@@ -425,15 +360,7 @@ export const updatePivotTableHandler: ToolHandler = async (
     refresh === true;
 
   if (!hasOperations) {
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{
-        type: 'text',
-        text: '未指定任何操作参数，请至少指定一个更新操作'
-      }],
-      error: '参数错误：无操作',
-    };
+    return fail('未指定任何操作参数，请至少指定一个更新操作', '参数错误：无操作');
   }
 
   // 校验值字段的聚合类型
@@ -442,23 +369,10 @@ export const updatePivotTableHandler: ToolHandler = async (
     if (!fields) return null;
     for (const vf of fields) {
       if (!vf.field || vf.field.trim() === '') {
-        return {
-          id: uuidv4(),
-          success: false,
-          content: [{ type: 'text', text: `${fieldName}中的field不能为空` }],
-          error: `参数错误：${fieldName}中field为空`,
-        };
+        return fail(`${fieldName}中的field不能为空`, `参数错误：${fieldName}中field为空`);
       }
       if (!vf.aggregation || !validAggregations.includes(vf.aggregation)) {
-        return {
-          id: uuidv4(),
-          success: false,
-          content: [{
-            type: 'text',
-            text: `${fieldName}中的聚合类型必须是${validAggregations.join('/')}之一`
-          }],
-          error: `参数错误：${fieldName}中aggregation无效`,
-        };
+        return fail(`${fieldName}中的聚合类型必须是${validAggregations.join('/')}之一`, `参数错误：${fieldName}中aggregation无效`);
       }
     }
     return null;
@@ -471,7 +385,7 @@ export const updatePivotTableHandler: ToolHandler = async (
   if (updateValueFieldsError) return updateValueFieldsError;
 
   try {
-    const response = await wpsClient.executeMethod<{
+    const response = await call<{
       success: boolean;
       pivotTableName: string;
       operations: Array<{
@@ -479,9 +393,7 @@ export const updatePivotTableHandler: ToolHandler = async (
         success: boolean;
         message: string;
       }>;
-    }>(
-      'updatePivotTable',
-      {
+    }>('updatePivotTable', {
         pivotTableName: pivotTableName?.trim(),
         pivotTableCell: pivotTableCell?.trim(),
         addRowFields: addRowFields || [],
@@ -494,11 +406,9 @@ export const updatePivotTableHandler: ToolHandler = async (
         addFilterFields: addFilterFields || [],
         removeFilterFields: removeFilterFields || [],
         refresh: refresh || false,
-      },
-      WpsAppType.SPREADSHEET
-    );
+      });
 
-    if (response.success && response.data) {
+    if (response.ok && response.data) {
       const result = response.data;
       let output = `透视表"${result.pivotTableName}"更新完成！\n\n操作结果：\n`;
 
@@ -507,27 +417,13 @@ export const updatePivotTableHandler: ToolHandler = async (
         output += `- ${op.operation}: ${status} - ${op.message}\n`;
       }
 
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [{ type: 'text', text: output }],
-      };
+      return ok(output, response.warnings);
     } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `更新透视表失败: ${response.error}` }],
-        error: response.error,
-      };
+      return fail(`更新透视表失败: ${response.error}`, response.error);
     }
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `更新透视表出错: ${errMsg}` }],
-      error: errMsg,
-    };
+    return fail(`更新透视表出错: ${errMsg}`, errMsg);
   }
 };
 

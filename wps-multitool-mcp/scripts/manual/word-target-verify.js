@@ -111,7 +111,7 @@ const ok = (label, cond, detail) => {
   };
   await expectFail('sandbox-9 超范围', { text: 'h', target: { instance: 'sandbox-9' } }, '超出范围');
   await expectFail('不认识的 instance', { text: 'h', target: { instance: 'pool-1' } }, '不认识的 target.instance');
-  await expectFail('target 不是对象', { text: 'h', target: 'sandbox' }, 'target 必须是对象');
+  await expectFail('target 不是对象', { text: 'h', target: 'sandbox' }, '应为 object');
   await expectFail('doc 不是字符串', { text: 'h', target: { doc: 123 } }, 'target.doc 必须是字符串');
 
   console.log('\n=== 7. excel / ppt 传 target：明确拒绝（本轮只做 word）===');

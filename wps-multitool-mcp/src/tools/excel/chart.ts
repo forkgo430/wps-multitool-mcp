@@ -13,9 +13,10 @@ import {
   ToolCategory,
   RegisteredTool,
 } from '../../types/tools';
-import { wpsClient } from '../../client/wps-client';
+
 import { imageContentBlock } from '../../utils/image-inline';
-import { WpsAppType } from '../../types/wps';
+
+import { call, ok, fail } from './helpers';
 
 /**
  * 支持的图表类型枚举
@@ -176,48 +177,26 @@ export const createChartHandler: ToolHandler = async (
 
   // 校验数据范围格式
   if (!data_range || !/^[A-Z]+[0-9]+(:[A-Z]+[0-9]+)?$/i.test(data_range)) {
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [
-        {
-          type: 'text',
-          text: `数据范围格式无效，应为类似 A1:C10 的格式，当前传入: ${data_range}`,
-        },
-      ],
-      error: '数据范围格式无效',
-    };
+    return fail(`数据范围格式无效，应为类似 A1:C10 的格式，当前传入: ${data_range}`, '数据范围格式无效');
   }
 
   // 校验图表类型
   const validChartTypes = Object.values(ChartType);
   if (!validChartTypes.includes(chart_type as ChartType)) {
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [
-        {
-          type: 'text',
-          text: `不支持的图表类型: ${chart_type}\n支持的类型: ${validChartTypes.join(', ')}`,
-        },
-      ],
-      error: '无效的图表类型',
-    };
+    return fail(`不支持的图表类型: ${chart_type}\n支持的类型: ${validChartTypes.join(', ')}`, '无效的图表类型');
   }
 
   try {
     // 获取WPS图表类型常量
     const wpsChartType = CHART_TYPE_MAP[chart_type as ChartType];
 
-    const response = await wpsClient.executeMethod<{
+    const response = await call<{
       chartName: string;
       chartIndex: number;
       dataRange: string;
       chartType: string;
       position: { left: number; top: number; width: number; height: number };
-    }>(
-      'createChart',
-      {
+    }>('createChart', {
         dataRange: data_range,
         chartType: wpsChartType,
         chartTypeName: chart_type,
@@ -232,31 +211,16 @@ export const createChartHandler: ToolHandler = async (
         hasHeader: has_header,
         showLegend: show_legend,
         showDataLabels: show_data_labels,
-      },
-      WpsAppType.SPREADSHEET
-    );
+      });
 
-    if (!response.success || !response.data) {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [
-          { type: 'text', text: `创建图表失败: ${response.error || '未知错误'}` },
-        ],
-        error: response.error,
-      };
+    if (!response.ok || !response.data) {
+      return fail(`创建图表失败: ${response.error || '未知错误'}`, response.error);
     }
 
     const result = response.data;
     const pos = result.position || { left: 0, top: 0, width: 400, height: 300 };
 
-    return {
-      id: uuidv4(),
-      success: true,
-      content: [
-        {
-          type: 'text',
-          text: `图表创建成功！
+    return ok(`图表创建成功！
 图表名称: ${result.chartName || 'Chart'}
 图表索引: ${result.chartIndex || 1}
 数据范围: ${result.dataRange || data_range}
@@ -264,18 +228,10 @@ export const createChartHandler: ToolHandler = async (
 位置: 左${pos.left}px, 上${pos.top}px
 尺寸: ${pos.width}x${pos.height}px
 
-提示: 可以使用 wps_excel_update_chart 工具修改图表的标题、颜色等属性`,
-        },
-      ],
-    };
+提示: 可以使用 wps_excel_update_chart 工具修改图表的标题、颜色等属性`, response.warnings);
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `创建图表出错: ${errMsg}` }],
-      error: errMsg,
-    };
+    return fail(`创建图表出错: ${errMsg}`, errMsg);
   }
 };
 
@@ -373,34 +329,14 @@ export const updateChartHandler: ToolHandler = async (
 
   // 必须指定图表索引或名称
   if (chart_index === undefined && !chart_name) {
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [
-        {
-          type: 'text',
-          text: '请指定目标图表，chart_index 或 chart_name 至少填写一个',
-        },
-      ],
-      error: '未指定目标图表',
-    };
+    return fail('请指定目标图表，chart_index 或 chart_name 至少填写一个', '未指定目标图表');
   }
 
   // 校验图表类型（如果指定了）
   if (chart_type) {
     const validChartTypes = Object.values(ChartType);
     if (!validChartTypes.includes(chart_type)) {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [
-          {
-            type: 'text',
-            text: `不支持的图表类型: ${chart_type}\n支持的类型: ${validChartTypes.join(', ')}`,
-          },
-        ],
-        error: '无效的图表类型',
-      };
+      return fail(`不支持的图表类型: ${chart_type}\n支持的类型: ${validChartTypes.join(', ')}`, '无效的图表类型');
     }
   }
 
@@ -409,17 +345,7 @@ export const updateChartHandler: ToolHandler = async (
     const colorRegex = /^#([0-9A-Fa-f]{6}|[0-9A-Fa-f]{3})$/;
     const invalidColors = colors.filter((c) => !colorRegex.test(c));
     if (invalidColors.length > 0) {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [
-          {
-            type: 'text',
-            text: `颜色格式不对！应该是十六进制格式如 #FF0000，无效的颜色: ${invalidColors.join(', ')}`,
-          },
-        ],
-        error: '颜色格式无效',
-      };
+      return fail(`颜色格式不对！应该是十六进制格式如 #FF0000，无效的颜色: ${invalidColors.join(', ')}`, '颜色格式无效');
     }
   }
 
@@ -443,48 +369,23 @@ export const updateChartHandler: ToolHandler = async (
     if (data_range !== undefined) updateParams.dataRange = data_range;
     if (colors !== undefined) updateParams.colors = colors;
 
-    const response = await wpsClient.executeMethod<{
+    const response = await call<{
       chartName: string;
       updatedProperties: string[];
-    }>(
-      'updateChart',
-      updateParams,
-      WpsAppType.SPREADSHEET
-    );
+    }>('updateChart', updateParams);
 
-    if (!response.success || !response.data) {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [
-          { type: 'text', text: `更新图表失败: ${response.error || '未知错误'}` },
-        ],
-        error: response.error,
-      };
+    if (!response.ok || !response.data) {
+      return fail(`更新图表失败: ${response.error || '未知错误'}`, response.error);
     }
 
     const result = response.data;
 
-    return {
-      id: uuidv4(),
-      success: true,
-      content: [
-        {
-          type: 'text',
-          text: `图表更新成功！
+    return ok(`图表更新成功！
 图表名称: ${result.chartName}
-更新的属性: ${result.updatedProperties.join(', ')}`,
-        },
-      ],
-    };
+更新的属性: ${result.updatedProperties.join(', ')}`, response.warnings);
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `更新图表出错: ${errMsg}` }],
-      error: errMsg,
-    };
+    return fail(`更新图表出错: ${errMsg}`, errMsg);
   }
 };
 
@@ -568,26 +469,22 @@ export const exportChartAsImageHandler: ToolHandler = async (
   const filterName = rawFormat === 'JPEG' ? 'JPG' : rawFormat;
 
   try {
-    const response = await wpsClient.executeMethod<{
+    const response = await call<{
       success: boolean;
       message?: string;
       chartName?: string;
       outputPath?: string;
       format?: string;
-    }>(
-      'exportChartAsImage',
-      {
+    }>('exportChartAsImage', {
         chartName,
         outputPath,
         // 参数对齐：底层同时读取 path/outputPath，需一并发送
         path: outputPath,
         format: filterName,
         sheet,
-      },
-      WpsAppType.SPREADSHEET
-    );
+      });
 
-    if (response.success) {
+    if (response.ok) {
       const text =
         `图表导出图片成功！\n` +
         `图表: ${chartName}\n` +
@@ -608,21 +505,11 @@ export const exportChartAsImageHandler: ToolHandler = async (
         content,
       };
     } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `导出图表为图片失败: ${response.error}` }],
-        error: response.error,
-      };
+      return fail(`导出图表为图片失败: ${response.error}`, response.error);
     }
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `导出图表为图片出错: ${errMsg}` }],
-      error: errMsg,
-    };
+    return fail(`导出图表为图片出错: ${errMsg}`, errMsg);
   }
 };
 
@@ -709,17 +596,7 @@ export const exportRangeAsImageHandler: ToolHandler = async (
 
   // 校验 range 格式（与 createChart 保持一致）
   if (!range || !/^[A-Z]+[0-9]+(:[A-Z]+[0-9]+)?$/i.test(range)) {
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [
-        {
-          type: 'text',
-          text: `区域格式无效，应为类似 A1:F20 的格式，当前传入: ${range}`,
-        },
-      ],
-      error: '区域格式无效',
-    };
+    return fail(`区域格式无效，应为类似 A1:F20 的格式，当前传入: ${range}`, '区域格式无效');
   }
 
   // 归一化 format：JPEG → JPG
@@ -727,26 +604,22 @@ export const exportRangeAsImageHandler: ToolHandler = async (
   const filterName = rawFormat === 'JPEG' ? 'JPG' : rawFormat;
 
   try {
-    const response = await wpsClient.executeMethod<{
+    const response = await call<{
       success: boolean;
       message?: string;
       range?: string;
       outputPath?: string;
       format?: string;
-    }>(
-      'exportRangeAsImage',
-      {
+    }>('exportRangeAsImage', {
         range,
         outputPath,
         // 参数对齐：底层同时读取 path/outputPath，需一并发送
         path: outputPath,
         format: filterName,
         sheet,
-      },
-      WpsAppType.SPREADSHEET
-    );
+      });
 
-    if (response.success) {
+    if (response.ok) {
       const text =
         `区域导出图片成功！\n` +
         `区域: ${range}\n` +
@@ -767,21 +640,11 @@ export const exportRangeAsImageHandler: ToolHandler = async (
         content,
       };
     } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `导出区域为图片失败: ${response.error}` }],
-        error: response.error,
-      };
+      return fail(`导出区域为图片失败: ${response.error}`, response.error);
     }
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `导出区域为图片出错: ${errMsg}` }],
-      error: errMsg,
-    };
+    return fail(`导出区域为图片出错: ${errMsg}`, errMsg);
   }
 };
 

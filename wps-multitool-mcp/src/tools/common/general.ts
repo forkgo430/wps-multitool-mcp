@@ -5,7 +5,6 @@
  * - wps_common_wire_check: 检查通信线路
  */
 
-import { v4 as uuidv4 } from 'uuid';
 import {
   ToolDefinition,
   ToolHandler,
@@ -14,11 +13,11 @@ import {
   RegisteredTool,
 } from '../../types/tools';
 import {
-  wpsClient,
   setWordTarget,
   setExcelTarget,
   setPptTarget,
 } from '../../client/wps-client';
+import { call, ok, fail } from './helpers';
 
 // ============================================================
 // 1. wps_common_save - 保存当前文档
@@ -48,35 +47,19 @@ export const saveHandler: ToolHandler = async (
   _args: Record<string, unknown>
 ): Promise<ToolCallResult> => {
   try {
-    const response = await wpsClient.executeMethod<{
+    const response = await call<{
       success: boolean;
       message: string;
     }>('save', {});
 
-    if (response.success) {
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [
-          { type: 'text', text: `文档保存成功！${response.data?.message || ''}` },
-        ],
-      };
+    if (response.ok) {
+      return ok(`文档保存成功！${response.data?.message || ''}`, response.warnings);
     } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `保存失败: ${response.error}` }],
-        error: response.error,
-      };
+      return fail(`保存失败: ${response.error}`, response.error);
     }
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `保存出错: ${errMsg}` }],
-      error: errMsg,
-    };
+    return fail(`保存出错: ${errMsg}`, errMsg);
   }
 };
 
@@ -122,12 +105,7 @@ export const saveAsHandler: ToolHandler = async (
   };
 
   if (!filePath || filePath.trim() === '') {
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: '文件路径不能为空，请指定保存路径' }],
-      error: '文件路径为空',
-    };
+    return fail('文件路径不能为空，请指定保存路径', '文件路径为空');
   }
 
   try {
@@ -140,14 +118,14 @@ export const saveAsHandler: ToolHandler = async (
       params.format = format.toLowerCase().replace(/^\./, '');
     }
 
-    const response = await wpsClient.executeMethod<{
+    const response = await call<{
       success: boolean;
       message: string;
       outputPath: string;
       appType?: string;
     }>('saveAs', params);
 
-    if (response.success && response.data) {
+    if (response.ok && response.data) {
       // 另存为会【改掉文档的 Name】。之前锁定的目标名（比如"文字文稿1"）就此失效，
       // 后续调用会报一句莫名其妙的 "No active document" —— 实测踩过一次。
       // 这里按新文件名重新锁定；错锁比不锁更危险，所以类型不明时宁可不锁。
@@ -159,32 +137,13 @@ export const saveAsHandler: ToolHandler = async (
         else if (app === 'excel') setExcelTarget(base);
         else if (app === 'ppt') setPptTarget(base);
       }
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [
-          {
-            type: 'text',
-            text: `另存为成功！\n输出路径: ${outPath}`,
-          },
-        ],
-      };
+      return ok(`另存为成功！\n输出路径: ${outPath}`, response.warnings);
     } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `另存为失败: ${response.error}` }],
-        error: response.error,
-      };
+      return fail(`另存为失败: ${response.error}`, response.error);
     }
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `另存为出错: ${errMsg}` }],
-      error: errMsg,
-    };
+    return fail(`另存为出错: ${errMsg}`, errMsg);
   }
 };
 
@@ -218,14 +177,14 @@ export const wireCheckHandler: ToolHandler = async (
   _args: Record<string, unknown>
 ): Promise<ToolCallResult> => {
   try {
-    const response = await wpsClient.executeMethod<{
+    const response = await call<{
       success: boolean;
       message: string;
       latency?: number;
       protocol?: string;
     }>('wireCheck', {});
 
-    if (response.success && response.data) {
+    if (response.ok && response.data) {
       const data = response.data;
       let info = '通信线路正常！';
       if (data.latency !== undefined) {
@@ -238,27 +197,13 @@ export const wireCheckHandler: ToolHandler = async (
         info += `\n${data.message}`;
       }
 
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [{ type: 'text', text: info }],
-      };
+      return ok(info, response.warnings);
     } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `通信线路检查失败: ${response.error}` }],
-        error: response.error,
-      };
+      return fail(`通信线路检查失败: ${response.error}`, response.error);
     }
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `通信线路检查出错: ${errMsg}` }],
-      error: errMsg,
-    };
+    return fail(`通信线路检查出错: ${errMsg}`, errMsg);
   }
 };
 
@@ -291,7 +236,7 @@ export const getAppInfoHandler: ToolHandler = async (
   _args: Record<string, unknown>
 ): Promise<ToolCallResult> => {
   try {
-    const response = await wpsClient.executeMethod<{
+    const response = await call<{
       success: boolean;
       message: string;
       version?: string;
@@ -300,7 +245,7 @@ export const getAppInfoHandler: ToolHandler = async (
       activeDocument?: string;
     }>('getAppInfo', {});
 
-    if (response.success && response.data) {
+    if (response.ok && response.data) {
       const data = response.data;
       const lines: string[] = ['WPS应用信息：'];
       if (data.version) lines.push(`版本: ${data.version}`);
@@ -309,27 +254,13 @@ export const getAppInfoHandler: ToolHandler = async (
       if (data.activeDocument) lines.push(`当前文档: ${data.activeDocument}`);
       if (data.message) lines.push(data.message);
 
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [{ type: 'text', text: lines.join('\n') }],
-      };
+      return ok(lines.join('\n'), response.warnings);
     } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `获取应用信息失败: ${response.error}` }],
-        error: response.error,
-      };
+      return fail(`获取应用信息失败: ${response.error}`, response.error);
     }
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `获取应用信息出错: ${errMsg}` }],
-      error: errMsg,
-    };
+    return fail(`获取应用信息出错: ${errMsg}`, errMsg);
   }
 };
 
@@ -361,44 +292,24 @@ export const getSelectedTextHandler: ToolHandler = async (
   _args: Record<string, unknown>
 ): Promise<ToolCallResult> => {
   try {
-    const response = await wpsClient.executeMethod<{
+    const response = await call<{
       success: boolean;
       message: string;
       text: string;
     }>('getSelectedText', {});
 
-    if (response.success && response.data) {
+    if (response.ok && response.data) {
       const text = response.data.text;
       if (!text || text.length === 0) {
-        return {
-          id: uuidv4(),
-          success: true,
-          content: [{ type: 'text', text: '当前没有选中任何文本。' }],
-        };
+        return ok('当前没有选中任何文本。', response.warnings);
       }
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [
-          { type: 'text', text: `选中的文本内容：\n${text}` },
-        ],
-      };
+      return ok(`选中的文本内容：\n${text}`, response.warnings);
     } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `获取选中文本失败: ${response.error}` }],
-        error: response.error,
-      };
+      return fail(`获取选中文本失败: ${response.error}`, response.error);
     }
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `获取选中文本出错: ${errMsg}` }],
-      error: errMsg,
-    };
+    return fail(`获取选中文本出错: ${errMsg}`, errMsg);
   }
 };
 
@@ -437,44 +348,23 @@ export const setSelectedTextHandler: ToolHandler = async (
   const { text } = args as { text: string };
 
   if (text === undefined || text === null) {
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: '替换文本不能为空，请指定要替换的内容' }],
-      error: '替换文本为空',
-    };
+    return fail('替换文本不能为空，请指定要替换的内容', '替换文本为空');
   }
 
   try {
-    const response = await wpsClient.executeMethod<{
+    const response = await call<{
       success: boolean;
       message: string;
     }>('setSelectedText', { text });
 
-    if (response.success) {
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [
-          { type: 'text', text: `选中文本已替换成功！${response.data?.message || ''}` },
-        ],
-      };
+    if (response.ok) {
+      return ok(`选中文本已替换成功！${response.data?.message || ''}`, response.warnings);
     } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `替换选中文本失败: ${response.error}` }],
-        error: response.error,
-      };
+      return fail(`替换选中文本失败: ${response.error}`, response.error);
     }
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `替换选中文本出错: ${errMsg}` }],
-      error: errMsg,
-    };
+    return fail(`替换选中文本出错: ${errMsg}`, errMsg);
   }
 };
 
@@ -514,7 +404,7 @@ export const showWindowHandler: ToolHandler = async (
 ): Promise<ToolCallResult> => {
   const launch = args.launch === undefined ? true : Boolean(args.launch);
   try {
-    const response = await wpsClient.executeMethod<{
+    const response = await call<{
       apps?: string[];
       visible?: number;
       activated?: number;
@@ -523,7 +413,7 @@ export const showWindowHandler: ToolHandler = async (
       message?: string;
     }>('showWps', { launch });
 
-    if (response.success && response.data) {
+    if (response.ok && response.data) {
       const d = response.data;
       const lines: string[] = ['WPS 窗口已唤起：'];
       if (d.apps && d.apps.length) lines.push(`应用: ${d.apps.join(' / ')}`);
@@ -532,31 +422,12 @@ export const showWindowHandler: ToolHandler = async (
       lines.push(`启动可见实例: ${d.launched ? '是' : '否'}`);
       lines.push(`置前成功: ${d.foreground ? '是' : '否'}`);
       if (d.message) lines.push(d.message);
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [{ type: 'text', text: lines.join('\n') }],
-      };
+      return ok(lines.join('\n'), response.warnings);
     }
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [
-        {
-          type: 'text',
-          text: `唤起 WPS 窗口失败: ${response.error || '未找到运行中的 WPS 实例'}`,
-        },
-      ],
-      error: response.error,
-    };
+    return fail(`唤起 WPS 窗口失败: ${response.error || '未找到运行中的 WPS 实例'}`, response.error);
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `唤起 WPS 窗口出错: ${errMsg}` }],
-      error: errMsg,
-    };
+    return fail(`唤起 WPS 窗口出错: ${errMsg}`, errMsg);
   }
 };
 
@@ -601,44 +472,25 @@ export const quitHandler: ToolHandler = async (
   args: Record<string, unknown>
 ): Promise<ToolCallResult> => {
   try {
-    const response = await wpsClient.executeMethod<{
+    const response = await call<{
       quit?: string[];
       forced?: boolean;
       remaining?: number;
       message?: string;
     }>('quitWps', { confirm: args.confirm === true });
 
-    if (response.success && response.data) {
+    if (response.ok && response.data) {
       const d = response.data;
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [
-          {
-            type: 'text',
-            text: `${d.message || 'WPS 已退出'}\n优雅退出: ${
+      return ok(`${d.message || 'WPS 已退出'}\n优雅退出: ${
               (d.quit || []).join(', ') || '无活动实例'
             }\n剩余进程: ${d.remaining ?? 0}${
               d.remaining ? '（多为用户自己打开的实例，未强行关闭）' : ''
-            }`,
-          },
-        ],
-      };
+            }`, response.warnings);
     }
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `结束 WPS 失败: ${response.error}` }],
-      error: response.error,
-    };
+    return fail(`结束 WPS 失败: ${response.error}`, response.error);
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `结束 WPS 出错: ${errMsg}` }],
-      error: errMsg,
-    };
+    return fail(`结束 WPS 出错: ${errMsg}`, errMsg);
   }
 };
 

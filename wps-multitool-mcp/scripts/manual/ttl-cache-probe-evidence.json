@@ -1,0 +1,18 @@
+{
+  "probe": "ttl-cache",
+  "ts": "2026-11-16T17:42:22.787Z",
+  "tools": {
+    "wps_excel_get_cell_value": {
+      "channelAvg": 20.533333333333335,
+      "hitAvg": 0
+    },
+    "wps_excel_read_range": {
+      "channelAvg": 32.5,
+      "hitAvg": 0
+    },
+    "wps_ppt_get_slide_info": {
+      "channelAvg": 15.733333333333333,
+      "hitAvg": 0.03333333333333333
+    }
+  }
+}

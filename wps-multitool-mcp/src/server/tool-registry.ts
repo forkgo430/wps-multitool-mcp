@@ -22,6 +22,7 @@ import { createChildLogger } from '../utils/logger';
 import { emitToolGroupsChanged } from './tool-group-events';
 import { ESSENTIAL_TOOL_NAMES, isEssentialTier, isListedByDefault } from './tool-tiers';
 import { isLiveVerified } from './tool-verification';
+import { validateToolArgs } from './schema-validate';
 import {
   ToolNotFoundError,
   ToolExecutionError,
@@ -589,8 +590,13 @@ export class ToolRegistry {
         ? applyAliasParams(requestedName, args || {})
         : args || {};
 
-      // 验证参数
-      this.validateArguments(tool.definition, callArgs);
+      // 验证参数（入参真校验：type/enum/required/范围/数组元素，失败请求不进 COM）
+      const argsProblem = validateToolArgs(tool.definition, callArgs);
+      if (argsProblem) {
+        throw new InvalidParamsError(argsProblem, {
+          toolName: tool.definition.name,
+        });
+      }
 
       // 执行handler —— 外面裹一层"可退"保险：破坏性/非幂等的工具在动手前自动存快照。
       // 防重与失败降级都在 withAutoSnapshot 里（嵌套调用不再建、建不了只进 warnings）。
@@ -675,27 +681,6 @@ export class ToolRegistry {
     }
   }
 
-  /**
-   * 验证参数 - 检查必填参数是否都有
-   */
-  private validateArguments(
-    definition: ToolDefinition,
-    args: Record<string, unknown>
-  ): void {
-    const { inputSchema } = definition;
-    const required = inputSchema.required || [];
-
-    for (const param of required) {
-      if (!(param in args) || args[param] === undefined || args[param] === null) {
-        throw new InvalidParamsError(`Missing required parameter: ${param}`, {
-          toolName: definition.name,
-          missingParam: param,
-        });
-      }
-    }
-
-    // TODO: 可以加更详细的类型验证，但现在先这样，够用
-  }
 
   /**
    * 获取Tool数量

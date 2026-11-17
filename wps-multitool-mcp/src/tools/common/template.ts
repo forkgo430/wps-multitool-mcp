@@ -9,7 +9,7 @@
  */
 import { ToolDefinition, ToolCategory, ToolHandler, ToolCallResult } from '../../types/tools';
 import { wpsClient } from '../../client/wps-client';
-import { ok, fail, errText } from '../word/helpers';
+import { ok, fail, errText } from './helpers';
 
 const normalizeWinPath = (p: string): string => p.replace(/\//g, '\\');
 
@@ -63,7 +63,7 @@ export const renderTemplateHandler: ToolHandler = async (
       templatePath: normalizeWinPath(templatePath),
       outputPath: normalizeWinPath(outputPath),
       data,
-    }, pptApp as never);
+    }, pptApp);
     if (!r.success || !r.data) return fail(errText('模板渲染失败', r), r.error);
     const pd = r.data;
     const plines = [
@@ -83,7 +83,7 @@ export const renderTemplateHandler: ToolHandler = async (
     templatePath: normalizeWinPath(templatePath),
     outputPath: normalizeWinPath(outputPath),
     data,
-  }, 'word' as never);
+  }, 'word');
   if (!r.success || !r.data) return fail(errText('模板渲染失败', r), r.error);
   const d = r.data;
   const lines = [
@@ -128,7 +128,7 @@ export const extractTemplateHandler: ToolHandler = async (
     path: normalizeWinPath(srcPath),
     outputPath: normalizeWinPath(outputPath),
     ...(maxSlots ? { maxSlots } : {}),
-  }, 'word' as never);
+  }, 'word');
   if (!r.success || !r.data) return fail(errText('模板提取失败', r), r.error);
   const d = r.data;
   const lines = [

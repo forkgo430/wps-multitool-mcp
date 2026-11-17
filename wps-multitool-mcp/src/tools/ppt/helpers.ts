@@ -12,6 +12,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import { ToolCallResult, ToolWarning } from '../../types/tools';
 import { wpsClient } from '../../client/wps-client';
+import { AppKey } from '../../client/action-routes';
 import { WpsAppType } from '../../types/wps';
 
 type Args = Record<string, unknown>;
@@ -20,7 +21,7 @@ type Args = Record<string, unknown>;
 export async function call<T>(
   action: string,
   params: Args,
-  app: WpsAppType = WpsAppType.PRESENTATION
+  app: WpsAppType | AppKey = WpsAppType.PRESENTATION
 ): Promise<{ ok: boolean; data?: T; error?: string; warnings?: ToolWarning[] }> {
   const r = await wpsClient.executeMethod<T>(action, params, app);
   return { ok: r.success, data: r.data, error: r.error, warnings: r.warnings };

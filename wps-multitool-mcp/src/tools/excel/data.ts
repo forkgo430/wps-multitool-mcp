@@ -8,7 +8,6 @@
  * - wps_excel_remove_duplicates: 删除重复行
  */
 
-import { v4 as uuidv4 } from 'uuid';
 import {
   ToolDefinition,
   ToolHandler,
@@ -17,7 +16,8 @@ import {
   RegisteredTool,
 } from '../../types/tools';
 import { wpsClient } from '../../client/wps-client';
-import { WpsAppType } from '../../types/wps';
+
+import { call, ok, fail } from './helpers';
 
 /**
  * 读取指定范围的单元格数据
@@ -66,16 +66,7 @@ export const readRangeHandler: ToolHandler = async (
     const response = await wpsClient.getRangeData(sheet || 0, range);
 
     if (!response || response.length === 0) {
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [
-          {
-            type: 'text',
-            text: `范围 ${range} 是空的，没有数据`,
-          },
-        ],
-      };
+      return ok(`范围 ${range} 是空的，没有数据`);
     }
 
     // 截断：超出 maxRows 的行切掉，但总行数如实带回
@@ -100,19 +91,10 @@ export const readRangeHandler: ToolHandler = async (
       });
     }
 
-    return {
-      id: uuidv4(),
-      success: true,
-      content: [{ type: 'text', text: output }],
-    };
+    return ok(output);
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `读取数据出错: ${errMsg}` }],
-      error: errMsg,
-    };
+    return fail(`读取数据出错: ${errMsg}`, errMsg);
   }
 };
 
@@ -161,44 +143,20 @@ export const writeRangeHandler: ToolHandler = async (
 
   // 数据校验
   if (!Array.isArray(data) || data.length === 0) {
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: '写入数据不能为空，请提供有效的二维数组数据' }],
-      error: '数据为空',
-    };
+    return fail('写入数据不能为空，请提供有效的二维数组数据', '数据为空');
   }
 
   try {
     const success = await wpsClient.setRangeData(sheet || 0, range, data);
 
     if (success) {
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [
-          {
-            type: 'text',
-            text: `数据写入成功！\n起始位置: ${range}\n写入规模: ${data.length}行 x ${data[0]?.length || 0}列`,
-          },
-        ],
-      };
+      return ok(`数据写入成功！\n起始位置: ${range}\n写入规模: ${data.length}行 x ${data[0]?.length || 0}列`);
     } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: '写入数据失败' }],
-        error: '写入失败',
-      };
+      return fail('写入数据失败', '写入失败');
     }
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `写入数据出错: ${errMsg}` }],
-      error: errMsg,
-    };
+    return fail(`写入数据出错: ${errMsg}`, errMsg);
   }
 };
 
@@ -255,21 +213,11 @@ export const cleanDataHandler: ToolHandler = async (
   const invalidOps = operations.filter((op) => !validOperations.includes(op));
 
   if (invalidOps.length > 0) {
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [
-        {
-          type: 'text',
-          text: `不支持的操作: ${invalidOps.join(', ')}\n支持的操作: ${validOperations.join(', ')}`,
-        },
-      ],
-      error: '无效的操作类型',
-    };
+    return fail(`不支持的操作: ${invalidOps.join(', ')}\n支持的操作: ${validOperations.join(', ')}`, '无效的操作类型');
   }
 
   try {
-    const response = await wpsClient.executeMethod<{
+    const response = await call<{
       range: string;
       operations: Array<{
         operation: string;
@@ -277,19 +225,10 @@ export const cleanDataHandler: ToolHandler = async (
         message: string;
       }>;
       message: string;
-    }>(
-      'cleanData',
-      { range, operations, sheet },
-      WpsAppType.SPREADSHEET
-    );
+    }>('cleanData', { range, operations, sheet });
 
-    if (!response.success || !response.data) {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `数据清洗失败: ${response.error}` }],
-        error: response.error,
-      };
+    if (!response.ok || !response.data) {
+      return fail(`数据清洗失败: ${response.error}`, response.error);
     }
 
     const result = response.data;
@@ -300,19 +239,10 @@ export const cleanDataHandler: ToolHandler = async (
       output += `- ${op.operation}: ${status} - ${op.message}\n`;
     });
 
-    return {
-      id: uuidv4(),
-      success: true,
-      content: [{ type: 'text', text: output }],
-    };
+    return ok(output, response.warnings);
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `数据清洗出错: ${errMsg}` }],
-      error: errMsg,
-    };
+    return fail(`数据清洗出错: ${errMsg}`, errMsg);
   }
 };
 
@@ -362,53 +292,30 @@ export const removeDuplicatesHandler: ToolHandler = async (
   };
 
   try {
-    const response = await wpsClient.executeMethod<{
+    const response = await call<{
       originalCount: number;
       removedCount: number;
       remainingCount: number;
-    }>(
-      'removeDuplicates',
-      {
+    }>('removeDuplicates', {
         range,
         columns: columns || [],
         hasHeader: has_header !== false, // 默认true
         sheet,
-      },
-      WpsAppType.SPREADSHEET
-    );
+      });
 
-    if (!response.success || !response.data) {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `删除重复行失败: ${response.error}` }],
-        error: response.error,
-      };
+    if (!response.ok || !response.data) {
+      return fail(`删除重复行失败: ${response.error}`, response.error);
     }
 
     const result = response.data;
 
-    return {
-      id: uuidv4(),
-      success: true,
-      content: [
-        {
-          type: 'text',
-          text: `删除重复行完成！
+    return ok(`删除重复行完成！
 原始行数: ${result.originalCount}
 删除行数: ${result.removedCount}
-剩余行数: ${result.remainingCount}`,
-        },
-      ],
-    };
+剩余行数: ${result.remainingCount}`, response.warnings);
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `删除重复行出错: ${errMsg}` }],
-      error: errMsg,
-    };
+    return fail(`删除重复行出错: ${errMsg}`, errMsg);
   }
 };
 
@@ -438,18 +345,14 @@ export const sortRangeHandler: ToolHandler = async (
   try {
     // order 用字符串（'desc'/'asc'）：PS 的 sortRange 是拿它跟 "desc" 比。
     // 以前发的是 ascending 布尔，PS 压根不读 → 永远升序，"按第N列降序"是假的。
-    const response = await wpsClient.executeMethod<{ message: string }>(
-      'sortRange',
-      { range, column, order: ascending === false ? 'desc' : 'asc' },
-      WpsAppType.SPREADSHEET
-    );
-    if (!response.success) {
-      return { id: uuidv4(), success: false, content: [{ type: 'text', text: `排序失败: ${response.error}` }], error: response.error };
+    const response = await call<{ message: string }>('sortRange', { range, column, order: ascending === false ? 'desc' : 'asc' });
+    if (!response.ok) {
+      return fail(`排序失败: ${response.error}`, response.error);
     }
-    return { id: uuidv4(), success: true, content: [{ type: 'text', text: `排序完成！范围: ${range}，按第${column}列${ascending !== false ? '升序' : '降序'}` }] };
+    return ok(`排序完成！范围: ${range}，按第${column}列${ascending !== false ? '升序' : '降序'}`, response.warnings);
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    return { id: uuidv4(), success: false, content: [{ type: 'text', text: `排序出错: ${errMsg}` }], error: errMsg };
+    return fail(`排序出错: ${errMsg}`, errMsg);
   }
 };
 
@@ -477,19 +380,15 @@ export const findReplaceHandler: ToolHandler = async (
     matchCase?: boolean;
   };
   try {
-    const response = await wpsClient.executeMethod<{ count: number; message: string }>(
-      'findReplace',
-      { find, replace, matchCase: matchCase || false },
-      WpsAppType.SPREADSHEET
-    );
-    if (!response.success) {
-      return { id: uuidv4(), success: false, content: [{ type: 'text', text: `查找替换失败: ${response.error}` }], error: response.error };
+    const response = await call<{ count: number; message: string }>('findReplace', { find, replace, matchCase: matchCase || false });
+    if (!response.ok) {
+      return fail(`查找替换失败: ${response.error}`, response.error);
     }
     const count = response.data?.count || 0;
-    return { id: uuidv4(), success: true, content: [{ type: 'text', text: `查找替换完成！将"${find}"替换为"${replace}"，共替换${count}处` }] };
+    return ok(`查找替换完成！将"${find}"替换为"${replace}"，共替换${count}处`, response.warnings);
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    return { id: uuidv4(), success: false, content: [{ type: 'text', text: `查找替换出错: ${errMsg}` }], error: errMsg };
+    return fail(`查找替换出错: ${errMsg}`, errMsg);
   }
 };
 
@@ -519,23 +418,15 @@ export const addCommentHandler: ToolHandler = async (
     // 动作名是 addCellComment（Excel 自己的一条），不是 Word 那个 addComment。
     // 曾经这里调 addComment —— 那是 Word 版（Get-WpsWord + $word.Selection.Range），
     // 结果：只开 Excel 时报 "WPS Word not running"；两个都开的时候批注**写进 Word 文档**去了。
-    const response = await wpsClient.executeMethod<{ cell: string; sheet: string }>(
-      'addCellComment',
-      { cell, comment, sheet },
-      WpsAppType.SPREADSHEET
-    );
-    if (!response.success) {
-      return { id: uuidv4(), success: false, content: [{ type: 'text', text: `添加批注失败: ${response.error}` }], error: response.error };
+    const response = await call<{ cell: string; sheet: string }>('addCellComment', { cell, comment, sheet });
+    if (!response.ok) {
+      return fail(`添加批注失败: ${response.error}`, response.error);
     }
     const where = response.data?.sheet ? `${response.data.sheet}!` : '';
-    return {
-      id: uuidv4(),
-      success: true,
-      content: [{ type: 'text', text: `批注添加成功！${where}${cell}` }],
-    };
+    return ok(`批注添加成功！${where}${cell}`, response.warnings);
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    return { id: uuidv4(), success: false, content: [{ type: 'text', text: `添加批注出错: ${errMsg}` }], error: errMsg };
+    return fail(`添加批注出错: ${errMsg}`, errMsg);
   }
 };
 
@@ -559,18 +450,14 @@ export const protectSheetHandler: ToolHandler = async (
   const { password, protect } = args as { password?: string; protect?: boolean };
   const doProtect = protect !== false;
   try {
-    const response = await wpsClient.executeMethod<{ message: string }>(
-      'protectSheet',
-      { password, protect: doProtect },
-      WpsAppType.SPREADSHEET
-    );
-    if (!response.success) {
-      return { id: uuidv4(), success: false, content: [{ type: 'text', text: `${doProtect ? '保护' : '取消保护'}工作表失败: ${response.error}` }], error: response.error };
+    const response = await call<{ message: string }>('protectSheet', { password, protect: doProtect });
+    if (!response.ok) {
+      return fail(`${doProtect ? '保护' : '取消保护'}工作表失败: ${response.error}`, response.error);
     }
-    return { id: uuidv4(), success: true, content: [{ type: 'text', text: `工作表${doProtect ? '保护' : '取消保护'}成功！` }] };
+    return ok(`工作表${doProtect ? '保护' : '取消保护'}成功！`, response.warnings);
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    return { id: uuidv4(), success: false, content: [{ type: 'text', text: `${doProtect ? '保护' : '取消保护'}工作表出错: ${errMsg}` }], error: errMsg };
+    return fail(`${doProtect ? '保护' : '取消保护'}工作表出错: ${errMsg}`, errMsg);
   }
 };
 
@@ -594,18 +481,14 @@ export const setConditionalFormatHandler: ToolHandler = async (
 ): Promise<ToolCallResult> => {
   const { range, condition, format } = args as { range: string; condition: string; format: string };
   try {
-    const response = await wpsClient.executeMethod<{ message: string }>(
-      'addConditionalFormat',
-      { range, condition, format },
-      WpsAppType.SPREADSHEET
-    );
-    if (!response.success) {
-      return { id: uuidv4(), success: false, content: [{ type: 'text', text: `设置条件格式失败: ${response.error}` }], error: response.error };
+    const response = await call<{ message: string }>('addConditionalFormat', { range, condition, format });
+    if (!response.ok) {
+      return fail(`设置条件格式失败: ${response.error}`, response.error);
     }
-    return { id: uuidv4(), success: true, content: [{ type: 'text', text: `条件格式设置成功！范围: ${range}，条件: ${condition}，格式: ${format}` }] };
+    return ok(`条件格式设置成功！范围: ${range}，条件: ${condition}，格式: ${format}`, response.warnings);
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    return { id: uuidv4(), success: false, content: [{ type: 'text', text: `设置条件格式出错: ${errMsg}` }], error: errMsg };
+    return fail(`设置条件格式出错: ${errMsg}`, errMsg);
   }
 };
 
@@ -628,18 +511,14 @@ export const protectWorkbookHandler: ToolHandler = async (
 ): Promise<ToolCallResult> => {
   const { password, protect } = args as { password: string; protect: boolean };
   try {
-    const response = await wpsClient.executeMethod<{ message: string }>(
-      'protectWorkbook',
-      { password, protect },
-      WpsAppType.SPREADSHEET
-    );
-    if (!response.success) {
-      return { id: uuidv4(), success: false, content: [{ type: 'text', text: `${protect ? '保护' : '取消保护'}工作簿失败: ${response.error}` }], error: response.error };
+    const response = await call<{ message: string }>('protectWorkbook', { password, protect });
+    if (!response.ok) {
+      return fail(`${protect ? '保护' : '取消保护'}工作簿失败: ${response.error}`, response.error);
     }
-    return { id: uuidv4(), success: true, content: [{ type: 'text', text: `工作簿${protect ? '保护' : '取消保护'}成功！` }] };
+    return ok(`工作簿${protect ? '保护' : '取消保护'}成功！`, response.warnings);
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    return { id: uuidv4(), success: false, content: [{ type: 'text', text: `${protect ? '保护' : '取消保护'}工作簿出错: ${errMsg}` }], error: errMsg };
+    return fail(`${protect ? '保护' : '取消保护'}工作簿出错: ${errMsg}`, errMsg);
   }
 };
 
@@ -667,33 +546,21 @@ export const setZoomHandler: ToolHandler = async (
 ): Promise<ToolCallResult> => {
   const { percent } = args as { percent: number };
   if (typeof percent !== 'number' || Number.isNaN(percent) || percent < 10 || percent > 400) {
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `[勿重试·先改参数] 缩放比例必须在 10-400 之间（收到 ${String(percent)}）` }],
-      error: '缩放比例超出范围',
-    };
+    return fail(`[勿重试·先改参数] 缩放比例必须在 10-400 之间（收到 ${String(percent)}）`, '缩放比例超出范围');
   }
   try {
-    const response = await wpsClient.executeMethod<{ zoom?: number; requested?: number }>(
-      // 动作名没变（setZoom），ps1 里原先【没有这个 case】→ 一直 Unknown action。
-      // 本轮补了 case（ActiveWindow.Zoom）。注意它与 ps1 里 PageSetup.Zoom 是两回事（打印缩放）。
-      // 原来那句 "// NOTE: 仅Windows支持" 是假的：Windows 上也不支持，压根没这个 case。
-      'setZoom',
-      { percent },
-      WpsAppType.SPREADSHEET
-    );
-    if (!response.success) {
-      return { id: uuidv4(), success: false, content: [{ type: 'text', text: `设置缩放失败: ${response.error}` }], error: response.error };
+    const response = await call<{ zoom?: number; requested?: number }>('setZoom', { percent });
+    if (!response.ok) {
+      return fail(`设置缩放失败: ${response.error}`, response.error);
     }
     // 报"现在到底是多少"：WPS 可能夹取到自己的范围，回显请求值会骗人。
     const actual = response.data?.zoom;
     const shown = typeof actual === 'number' ? actual : percent;
     const note = typeof actual === 'number' && actual !== percent ? `（请求 ${percent}%，实际 ${actual}% —— WPS 夹取到了自己的范围）` : '';
-    return { id: uuidv4(), success: true, content: [{ type: 'text', text: `窗口缩放已设为 ${shown}%${note}` }] };
+    return ok(`窗口缩放已设为 ${shown}%${note}`, response.warnings);
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    return { id: uuidv4(), success: false, content: [{ type: 'text', text: `设置缩放出错: ${errMsg}` }], error: errMsg };
+    return fail(`设置缩放出错: ${errMsg}`, errMsg);
   }
 };
 

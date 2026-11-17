@@ -398,7 +398,6 @@ export const setShapePositionHandler: ToolHandler = async (
   return ok(text, r.warnings);
 };
 
-
 // ==================== 10. 设置形状透明度 ====================
 
 export const setShapeTransparencyDefinition: ToolDefinition = {
@@ -480,7 +479,6 @@ export const setShapeTextHandler: ToolHandler = async (
   if (!r.ok || !r.data) return fail(errText('设置形状文字失败', r), r.error);
   return ok(`形状文字设置成功！\n形状: ${r.data.name}\n文字: "${text}"`, r.warnings);
 };
-
 
 // ==================== 13. 设置幻灯片标题 ====================
 
@@ -693,7 +691,6 @@ export const groupShapesHandler: ToolHandler = async (
 
   return ok(text, r.warnings);
 };
-
 
 export const shapeBasicTools: RegisteredTool[] = [
   { definition: addShapeDefinition, handler: addShapeHandler },

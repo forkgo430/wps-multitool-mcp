@@ -24,7 +24,7 @@ import {
   ToolCategory,
   RegisteredTool,
 } from '../../types/tools';
-import { wpsClient } from '../../client/wps-client';
+import { call } from './helpers';
 import { RUNTIME_ID } from '../../runtime-identity';
 
 const HOME = process.env.HOME || process.env.USERPROFILE || os.homedir();
@@ -135,9 +135,9 @@ export function readOpLog(): SnapshotRecord[] {
 async function getActiveState(
   app?: 'word' | 'excel' | 'ppt'
 ): Promise<{ ok: true; state: DocState } | { ok: false; error: string }> {
-  let r: Awaited<ReturnType<typeof wpsClient.executeMethod<DocState>>>;
+  let r;
   try {
-    r = await wpsClient.executeMethod<DocState>(
+    r = await call<DocState>(
       'getActiveDocumentState',
       app ? { app } : {}
     );
@@ -146,7 +146,7 @@ async function getActiveState(
     // 归为"拿不到状态"，让快照降级走"建不了快照不阻断"的既定语义（2026-10-28 CI 实抓）
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
   }
-  if (!r.success) return { ok: false, error: r.error || '拿不到活动文档状态' };
+  if (!r.ok) return { ok: false, error: r.error || '拿不到活动文档状态' };
   const data = (r.data ?? undefined) as DocState | undefined;
   if (!data) return { ok: false, error: '拿不到活动文档状态（返回空）' };
   return { ok: true, state: data };

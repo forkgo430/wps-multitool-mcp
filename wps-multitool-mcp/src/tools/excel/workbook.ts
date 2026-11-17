@@ -4,7 +4,6 @@
  * Pos: Excel 工作簿管理工具实现。一旦我被修改，请更新我的头部注释，以及所属文件夹的md。
  */
 
-import { v4 as uuidv4 } from 'uuid';
 import {
   ToolDefinition,
   ToolHandler,
@@ -12,8 +11,9 @@ import {
   ToolCategory,
   RegisteredTool,
 } from '../../types/tools';
-import { wpsClient, setExcelTarget } from '../../client/wps-client';
-import { WpsAppType } from '../../types/wps';
+import { setExcelTarget } from '../../client/wps-client';
+
+import { call, ok, fail } from './helpers';
 
 /**
  * 打开指定路径的Excel工作簿
@@ -39,27 +39,18 @@ export const openWorkbookHandler: ToolHandler = async (
 ): Promise<ToolCallResult> => {
   const { filePath } = args as { filePath: string };
   if (!filePath) {
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: '请提供工作簿文件路径' }],
-      error: '缺少文件路径',
-    };
+    return fail('请提供工作簿文件路径', '缺少文件路径');
   }
   try {
     const params = { filePath, path: filePath };
-    const response = await wpsClient.executeMethod<{ message: string }>(
-      'openWorkbook',
-      params,
-      WpsAppType.SPREADSHEET
-    );
-    if (!response.success) {
-      return { id: uuidv4(), success: false, content: [{ type: 'text', text: `打开工作簿失败: ${response.error}` }], error: response.error };
+    const response = await call<{ message: string }>('openWorkbook', params);
+    if (!response.ok) {
+      return fail(`打开工作簿失败: ${response.error}`, response.error);
     }
-    return { id: uuidv4(), success: true, content: [{ type: 'text', text: `工作簿已打开: ${filePath}` }] };
+    return ok(`工作簿已打开: ${filePath}`, response.warnings);
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    return { id: uuidv4(), success: false, content: [{ type: 'text', text: `打开工作簿出错: ${errMsg}` }], error: errMsg };
+    return fail(`打开工作簿出错: ${errMsg}`, errMsg);
   }
 };
 
@@ -78,21 +69,17 @@ export const getOpenWorkbooksHandler: ToolHandler = async (
   _args: Record<string, unknown>
 ): Promise<ToolCallResult> => {
   try {
-    const response = await wpsClient.executeMethod<{ workbooks: string[] }>(
-      'getOpenWorkbooks',
-      {},
-      WpsAppType.SPREADSHEET
-    );
-    if (!response.success) {
-      return { id: uuidv4(), success: false, content: [{ type: 'text', text: `获取工作簿列表失败: ${response.error}` }], error: response.error };
+    const response = await call<{ workbooks: string[] }>('getOpenWorkbooks', {});
+    if (!response.ok) {
+      return fail(`获取工作簿列表失败: ${response.error}`, response.error);
     }
     const list = response.data?.workbooks || [];
     // 把 PS 侧的 warnings 传出去（同 Word 侧那处）。
     // PS 在"实例刚重建、列表可能暂时为空"时会带一条提示，不转发它就等于没提示。
-    return { id: uuidv4(), success: true, content: [{ type: 'text', text: `已打开的工作簿 (${list.length}个):\n${list.join('\n') || '无'}` }], warnings: response.warnings };
+    return ok(`已打开的工作簿 (${list.length}个):\n${list.join('\n') || '无'}`, response.warnings);
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    return { id: uuidv4(), success: false, content: [{ type: 'text', text: `获取工作簿列表出错: ${errMsg}` }], error: errMsg };
+    return fail(`获取工作簿列表出错: ${errMsg}`, errMsg);
   }
 };
 
@@ -117,24 +104,20 @@ export const switchWorkbookHandler: ToolHandler = async (
 ): Promise<ToolCallResult> => {
   const { name } = args as { name: string };
   if (!name) {
-    return { id: uuidv4(), success: false, content: [{ type: 'text', text: '请提供工作簿名称' }], error: '缺少工作簿名称' };
+    return fail('请提供工作簿名称', '缺少工作簿名称');
   }
   try {
-    const response = await wpsClient.executeMethod<{ message: string }>(
-      'switchWorkbook',
-      { name },
-      WpsAppType.SPREADSHEET
-    );
-    if (!response.success) {
-      return { id: uuidv4(), success: false, content: [{ type: 'text', text: `切换工作簿失败: ${response.error}` }], error: response.error };
+    const response = await call<{ message: string }>('switchWorkbook', { name });
+    if (!response.ok) {
+      return fail(`切换工作簿失败: ${response.error}`, response.error);
     }
     // 锁定目标：之后所有 excel 调用都会自动带上 workbookName，
     // 避免 ActiveWorkbook 在多工作簿场景下漂移/返回空壳。
     setExcelTarget(name);
-    return { id: uuidv4(), success: true, content: [{ type: 'text', text: `已切换到工作簿: ${name}（后续 excel 操作将锁定此工作簿）` }] };
+    return ok(`已切换到工作簿: ${name}（后续 excel 操作将锁定此工作簿）`, response.warnings);
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    return { id: uuidv4(), success: false, content: [{ type: 'text', text: `切换工作簿出错: ${errMsg}` }], error: errMsg };
+    return fail(`切换工作簿出错: ${errMsg}`, errMsg);
   }
 };
 
@@ -169,18 +152,14 @@ export const closeWorkbookHandler: ToolHandler = async (
   try {
     // 线上参数名是 saveChanges（与 PS 侧 closeWorkbook case 的读法、Word 侧 closeDocument 一致）。
     // 曾经这里发的是 save，PS 读 saveChanges → save 永远为 true → 关未保存工作簿弹框卡死通道。
-    const response = await wpsClient.executeMethod<{ message: string }>(
-      'closeWorkbook',
-      { name, saveChanges: save !== false },
-      WpsAppType.SPREADSHEET
-    );
-    if (!response.success) {
-      return { id: uuidv4(), success: false, content: [{ type: 'text', text: `关闭工作簿失败: ${response.error}` }], error: response.error };
+    const response = await call<{ message: string }>('closeWorkbook', { name, saveChanges: save !== false });
+    if (!response.ok) {
+      return fail(`关闭工作簿失败: ${response.error}`, response.error);
     }
-    return { id: uuidv4(), success: true, content: [{ type: 'text', text: `工作簿已关闭${name ? ': ' + name : ''}${save !== false ? '（已保存）' : '（未保存）'}` }] };
+    return ok(`工作簿已关闭${name ? ': ' + name : ''}${save !== false ? '（已保存）' : '（未保存）'}`, response.warnings);
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    return { id: uuidv4(), success: false, content: [{ type: 'text', text: `关闭工作簿出错: ${errMsg}` }], error: errMsg };
+    return fail(`关闭工作簿出错: ${errMsg}`, errMsg);
   }
 };
 
@@ -199,18 +178,14 @@ export const createWorkbookHandler: ToolHandler = async (
   _args: Record<string, unknown>
 ): Promise<ToolCallResult> => {
   try {
-    const response = await wpsClient.executeMethod<{ message: string }>(
-      'createWorkbook',
-      {},
-      WpsAppType.SPREADSHEET
-    );
-    if (!response.success) {
-      return { id: uuidv4(), success: false, content: [{ type: 'text', text: `新建工作簿失败: ${response.error}` }], error: response.error };
+    const response = await call<{ message: string }>('createWorkbook', {});
+    if (!response.ok) {
+      return fail(`新建工作簿失败: ${response.error}`, response.error);
     }
-    return { id: uuidv4(), success: true, content: [{ type: 'text', text: '新工作簿已创建' }] };
+    return ok('新工作簿已创建', response.warnings);
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    return { id: uuidv4(), success: false, content: [{ type: 'text', text: `新建工作簿出错: ${errMsg}` }], error: errMsg };
+    return fail(`新建工作簿出错: ${errMsg}`, errMsg);
   }
 };
 
@@ -234,18 +209,14 @@ export const getCellValueHandler: ToolHandler = async (
 ): Promise<ToolCallResult> => {
   const { sheet, row, col } = args as { sheet: string; row: number; col: number };
   try {
-    const response = await wpsClient.executeMethod<{ value: unknown }>(
-      'getCellValue',
-      { sheet, row, col },
-      WpsAppType.SPREADSHEET
-    );
-    if (!response.success) {
-      return { id: uuidv4(), success: false, content: [{ type: 'text', text: `获取单元格值失败: ${response.error}` }], error: response.error };
+    const response = await call<{ value: unknown }>('getCellValue', { sheet, row, col });
+    if (!response.ok) {
+      return fail(`获取单元格值失败: ${response.error}`, response.error);
     }
-    return { id: uuidv4(), success: true, content: [{ type: 'text', text: `单元格值: ${JSON.stringify(response.data?.value)}` }] };
+    return ok(`单元格值: ${JSON.stringify(response.data?.value)}`, response.warnings);
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    return { id: uuidv4(), success: false, content: [{ type: 'text', text: `获取单元格值出错: ${errMsg}` }], error: errMsg };
+    return fail(`获取单元格值出错: ${errMsg}`, errMsg);
   }
 };
 
@@ -270,18 +241,14 @@ export const setCellValueHandler: ToolHandler = async (
 ): Promise<ToolCallResult> => {
   const { sheet, row, col, value } = args as { sheet: string; row: number; col: number; value: string };
   try {
-    const response = await wpsClient.executeMethod<{ message: string }>(
-      'setCellValue',
-      { sheet, row, col, value },
-      WpsAppType.SPREADSHEET
-    );
-    if (!response.success) {
-      return { id: uuidv4(), success: false, content: [{ type: 'text', text: `设置单元格值失败: ${response.error}` }], error: response.error };
+    const response = await call<{ message: string }>('setCellValue', { sheet, row, col, value });
+    if (!response.ok) {
+      return fail(`设置单元格值失败: ${response.error}`, response.error);
     }
-    return { id: uuidv4(), success: true, content: [{ type: 'text', text: `单元格值已设置: ${sheet}!R${row}C${col} = ${value}` }] };
+    return ok(`单元格值已设置: ${sheet}!R${row}C${col} = ${value}`, response.warnings);
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    return { id: uuidv4(), success: false, content: [{ type: 'text', text: `设置单元格值出错: ${errMsg}` }], error: errMsg };
+    return fail(`设置单元格值出错: ${errMsg}`, errMsg);
   }
 };
 
@@ -304,18 +271,14 @@ export const getFormulaHandler: ToolHandler = async (
 ): Promise<ToolCallResult> => {
   const { sheet, cell } = args as { sheet: string; cell: string };
   try {
-    const response = await wpsClient.executeMethod<{ formula: string }>(
-      'getFormula',
-      { sheet, cell },
-      WpsAppType.SPREADSHEET
-    );
-    if (!response.success) {
-      return { id: uuidv4(), success: false, content: [{ type: 'text', text: `获取公式失败: ${response.error}` }], error: response.error };
+    const response = await call<{ formula: string }>('getFormula', { sheet, cell });
+    if (!response.ok) {
+      return fail(`获取公式失败: ${response.error}`, response.error);
     }
-    return { id: uuidv4(), success: true, content: [{ type: 'text', text: `单元格 ${cell} 的公式: ${response.data?.formula || '无公式'}` }] };
+    return ok(`单元格 ${cell} 的公式: ${response.data?.formula || '无公式'}`, response.warnings);
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    return { id: uuidv4(), success: false, content: [{ type: 'text', text: `获取公式出错: ${errMsg}` }], error: errMsg };
+    return fail(`获取公式出错: ${errMsg}`, errMsg);
   }
 };
 
@@ -338,18 +301,14 @@ export const getCellInfoHandler: ToolHandler = async (
 ): Promise<ToolCallResult> => {
   const { sheet, cell } = args as { sheet: string; cell: string };
   try {
-    const response = await wpsClient.executeMethod<Record<string, unknown>>(
-      'getCellInfo',
-      { sheet, cell },
-      WpsAppType.SPREADSHEET
-    );
-    if (!response.success) {
-      return { id: uuidv4(), success: false, content: [{ type: 'text', text: `获取单元格信息失败: ${response.error}` }], error: response.error };
+    const response = await call<Record<string, unknown>>('getCellInfo', { sheet, cell });
+    if (!response.ok) {
+      return fail(`获取单元格信息失败: ${response.error}`, response.error);
     }
-    return { id: uuidv4(), success: true, content: [{ type: 'text', text: `单元格 ${cell} 信息:\n${JSON.stringify(response.data, null, 2)}` }] };
+    return ok(`单元格 ${cell} 信息:\n${JSON.stringify(response.data, null, 2)}`, response.warnings);
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    return { id: uuidv4(), success: false, content: [{ type: 'text', text: `获取单元格信息出错: ${errMsg}` }], error: errMsg };
+    return fail(`获取单元格信息出错: ${errMsg}`, errMsg);
   }
 };
 
@@ -380,19 +339,15 @@ export const clearRangeHandler: ToolHandler = async (
 ): Promise<ToolCallResult> => {
   const { range, sheet, type } = args as { range: string; sheet?: string; type?: string };
   try {
-    const response = await wpsClient.executeMethod<{ message: string }>(
-      'clearRange',
-      { range, sheet, type: type || 'all' },
-      WpsAppType.SPREADSHEET
-    );
-    if (!response.success) {
-      return { id: uuidv4(), success: false, content: [{ type: 'text', text: `清除范围失败: ${response.error}` }], error: response.error };
+    const response = await call<{ message: string }>('clearRange', { range, sheet, type: type || 'all' });
+    if (!response.ok) {
+      return fail(`清除范围失败: ${response.error}`, response.error);
     }
     const typeLabel = type === 'contents' ? '内容' : type === 'formats' ? '格式' : '全部';
-    return { id: uuidv4(), success: true, content: [{ type: 'text', text: `范围 ${range} 的${typeLabel}已清除` }] };
+    return ok(`范围 ${range} 的${typeLabel}已清除`, response.warnings);
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    return { id: uuidv4(), success: false, content: [{ type: 'text', text: `清除范围出错: ${errMsg}` }], error: errMsg };
+    return fail(`清除范围出错: ${errMsg}`, errMsg);
   }
 };
 

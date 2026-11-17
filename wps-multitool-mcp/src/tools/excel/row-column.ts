@@ -7,7 +7,6 @@
  * - wps_excel_delete_columns: 删除多列
  */
 
-import { v4 as uuidv4 } from 'uuid';
 import {
   ToolDefinition,
   ToolHandler,
@@ -15,8 +14,8 @@ import {
   ToolCategory,
   RegisteredTool,
 } from '../../types/tools';
-import { wpsClient } from '../../client/wps-client';
-import { WpsAppType } from '../../types/wps';
+
+import { call, ok, fail } from './helpers';
 
 export const insertRowsDefinition: ToolDefinition = {
   name: 'wps_excel_insert_rows',
@@ -39,18 +38,14 @@ export const insertRowsHandler: ToolHandler = async (
   const { row, count, sheet } = args as { row: number; count?: number; sheet?: string };
   const insertCount = count || 1;
   try {
-    const response = await wpsClient.executeMethod<{ message: string }>(
-      'insertRows',
-      { row, count: insertCount, sheet },
-      WpsAppType.SPREADSHEET
-    );
-    if (!response.success) {
-      return { id: uuidv4(), success: false, content: [{ type: 'text', text: `插入行失败: ${response.error}` }], error: response.error };
+    const response = await call<{ message: string }>('insertRows', { row, count: insertCount, sheet });
+    if (!response.ok) {
+      return fail(`插入行失败: ${response.error}`, response.error);
     }
-    return { id: uuidv4(), success: true, content: [{ type: 'text', text: `插入行完成！在第${row}行前插入了${insertCount}行` }] };
+    return ok(`插入行完成！在第${row}行前插入了${insertCount}行`, response.warnings);
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    return { id: uuidv4(), success: false, content: [{ type: 'text', text: `插入行出错: ${errMsg}` }], error: errMsg };
+    return fail(`插入行出错: ${errMsg}`, errMsg);
   }
 };
 
@@ -75,18 +70,14 @@ export const insertColumnsHandler: ToolHandler = async (
   const { column, count, sheet } = args as { column: string; count?: number; sheet?: string };
   const insertCount = count || 1;
   try {
-    const response = await wpsClient.executeMethod<{ message: string }>(
-      'insertColumns',
-      { column, count: insertCount, sheet },
-      WpsAppType.SPREADSHEET
-    );
-    if (!response.success) {
-      return { id: uuidv4(), success: false, content: [{ type: 'text', text: `插入列失败: ${response.error}` }], error: response.error };
+    const response = await call<{ message: string }>('insertColumns', { column, count: insertCount, sheet });
+    if (!response.ok) {
+      return fail(`插入列失败: ${response.error}`, response.error);
     }
-    return { id: uuidv4(), success: true, content: [{ type: 'text', text: `插入列完成！在${column}列前插入了${insertCount}列` }] };
+    return ok(`插入列完成！在${column}列前插入了${insertCount}列`, response.warnings);
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    return { id: uuidv4(), success: false, content: [{ type: 'text', text: `插入列出错: ${errMsg}` }], error: errMsg };
+    return fail(`插入列出错: ${errMsg}`, errMsg);
   }
 };
 
@@ -114,18 +105,14 @@ export const deleteRowsHandler: ToolHandler = async (
   const { startRow, count, sheet } = args as { startRow: number; count?: number; sheet?: string };
   const deleteCount = count || 1;
   try {
-    const response = await wpsClient.executeMethod<{ message: string }>(
-      'deleteRows',
-      { startRow, count: deleteCount, sheet },
-      WpsAppType.SPREADSHEET
-    );
-    if (!response.success) {
-      return { id: uuidv4(), success: false, content: [{ type: 'text', text: `删除行失败: ${response.error}` }], error: response.error };
+    const response = await call<{ message: string }>('deleteRows', { startRow, count: deleteCount, sheet });
+    if (!response.ok) {
+      return fail(`删除行失败: ${response.error}`, response.error);
     }
-    return { id: uuidv4(), success: true, content: [{ type: 'text', text: `删除行完成！从第${startRow}行开始删除了${deleteCount}行` }] };
+    return ok(`删除行完成！从第${startRow}行开始删除了${deleteCount}行`, response.warnings);
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    return { id: uuidv4(), success: false, content: [{ type: 'text', text: `删除行出错: ${errMsg}` }], error: errMsg };
+    return fail(`删除行出错: ${errMsg}`, errMsg);
   }
 };
 
@@ -153,18 +140,14 @@ export const deleteColumnsHandler: ToolHandler = async (
   const { column, count, sheet } = args as { column: string; count?: number; sheet?: string };
   const deleteCount = count || 1;
   try {
-    const response = await wpsClient.executeMethod<{ message: string }>(
-      'deleteColumns',
-      { column, count: deleteCount, sheet },
-      WpsAppType.SPREADSHEET
-    );
-    if (!response.success) {
-      return { id: uuidv4(), success: false, content: [{ type: 'text', text: `删除列失败: ${response.error}` }], error: response.error };
+    const response = await call<{ message: string }>('deleteColumns', { column, count: deleteCount, sheet });
+    if (!response.ok) {
+      return fail(`删除列失败: ${response.error}`, response.error);
     }
-    return { id: uuidv4(), success: true, content: [{ type: 'text', text: `删除列完成！从${column}列开始删除了${deleteCount}列` }] };
+    return ok(`删除列完成！从${column}列开始删除了${deleteCount}列`, response.warnings);
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    return { id: uuidv4(), success: false, content: [{ type: 'text', text: `删除列出错: ${errMsg}` }], error: errMsg };
+    return fail(`删除列出错: ${errMsg}`, errMsg);
   }
 };
 
@@ -188,18 +171,14 @@ export const hideRowsHandler: ToolHandler = async (
 ): Promise<ToolCallResult> => {
   const { startRow, endRow, sheet } = args as { startRow: number; endRow: number; sheet?: string };
   try {
-    const response = await wpsClient.executeMethod<{ message: string }>(
-      'hideRows',
-      { startRow, endRow, sheet },
-      WpsAppType.SPREADSHEET
-    );
-    if (!response.success) {
-      return { id: uuidv4(), success: false, content: [{ type: 'text', text: `隐藏行失败: ${response.error}` }], error: response.error };
+    const response = await call<{ message: string }>('hideRows', { startRow, endRow, sheet });
+    if (!response.ok) {
+      return fail(`隐藏行失败: ${response.error}`, response.error);
     }
-    return { id: uuidv4(), success: true, content: [{ type: 'text', text: `隐藏行完成！已隐藏第${startRow}行到第${endRow}行` }] };
+    return ok(`隐藏行完成！已隐藏第${startRow}行到第${endRow}行`, response.warnings);
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    return { id: uuidv4(), success: false, content: [{ type: 'text', text: `隐藏行出错: ${errMsg}` }], error: errMsg };
+    return fail(`隐藏行出错: ${errMsg}`, errMsg);
   }
 };
 
@@ -223,18 +202,14 @@ export const showRowsHandler: ToolHandler = async (
 ): Promise<ToolCallResult> => {
   const { startRow, endRow, sheet } = args as { startRow: number; endRow: number; sheet?: string };
   try {
-    const response = await wpsClient.executeMethod<{ message: string }>(
-      'showRows',
-      { startRow, endRow, sheet },
-      WpsAppType.SPREADSHEET
-    );
-    if (!response.success) {
-      return { id: uuidv4(), success: false, content: [{ type: 'text', text: `显示行失败: ${response.error}` }], error: response.error };
+    const response = await call<{ message: string }>('showRows', { startRow, endRow, sheet });
+    if (!response.ok) {
+      return fail(`显示行失败: ${response.error}`, response.error);
     }
-    return { id: uuidv4(), success: true, content: [{ type: 'text', text: `显示行完成！已显示第${startRow}行到第${endRow}行` }] };
+    return ok(`显示行完成！已显示第${startRow}行到第${endRow}行`, response.warnings);
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    return { id: uuidv4(), success: false, content: [{ type: 'text', text: `显示行出错: ${errMsg}` }], error: errMsg };
+    return fail(`显示行出错: ${errMsg}`, errMsg);
   }
 };
 
@@ -258,18 +233,14 @@ export const showColumnsHandler: ToolHandler = async (
 ): Promise<ToolCallResult> => {
   const { startColumn, endColumn, sheet } = args as { startColumn: string; endColumn: string; sheet?: string };
   try {
-    const response = await wpsClient.executeMethod<{ message: string }>(
-      'showColumns',
-      { startColumn, endColumn, sheet },
-      WpsAppType.SPREADSHEET
-    );
-    if (!response.success) {
-      return { id: uuidv4(), success: false, content: [{ type: 'text', text: `显示列失败: ${response.error}` }], error: response.error };
+    const response = await call<{ message: string }>('showColumns', { startColumn, endColumn, sheet });
+    if (!response.ok) {
+      return fail(`显示列失败: ${response.error}`, response.error);
     }
-    return { id: uuidv4(), success: true, content: [{ type: 'text', text: `显示列完成！已显示${startColumn}列到${endColumn}列` }] };
+    return ok(`显示列完成！已显示${startColumn}列到${endColumn}列`, response.warnings);
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    return { id: uuidv4(), success: false, content: [{ type: 'text', text: `显示列出错: ${errMsg}` }], error: errMsg };
+    return fail(`显示列出错: ${errMsg}`, errMsg);
   }
 };
 
@@ -293,18 +264,14 @@ export const groupRowsHandler: ToolHandler = async (
 ): Promise<ToolCallResult> => {
   const { startRow, endRow, sheet } = args as { startRow: number; endRow: number; sheet?: string };
   try {
-    const response = await wpsClient.executeMethod<{ message: string }>(
-      'groupRows',
-      { startRow, endRow, sheet },
-      WpsAppType.SPREADSHEET
-    );
-    if (!response.success) {
-      return { id: uuidv4(), success: false, content: [{ type: 'text', text: `分组行失败: ${response.error}` }], error: response.error };
+    const response = await call<{ message: string }>('groupRows', { startRow, endRow, sheet });
+    if (!response.ok) {
+      return fail(`分组行失败: ${response.error}`, response.error);
     }
-    return { id: uuidv4(), success: true, content: [{ type: 'text', text: `分组行完成！已将第${startRow}行到第${endRow}行分组` }] };
+    return ok(`分组行完成！已将第${startRow}行到第${endRow}行分组`, response.warnings);
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    return { id: uuidv4(), success: false, content: [{ type: 'text', text: `分组行出错: ${errMsg}` }], error: errMsg };
+    return fail(`分组行出错: ${errMsg}`, errMsg);
   }
 };
 

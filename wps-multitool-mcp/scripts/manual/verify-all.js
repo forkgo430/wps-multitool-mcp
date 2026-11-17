@@ -81,6 +81,8 @@ const FAST = [
   ['actions-sync-verify.js', 'Linux 落仓轮：actions-sync 字节指纹钉（云端 B5-T4 验证版）/ 规格计数 13+15+95 / model-detect 双分支 / 三型接线（全 mock）'],
   ['deckkit-test.js', 'deckkit 引擎（E2 骨架 + E3 主题/溢出检查 + 质量修复轮：0 坐标/参数名对齐，10 页型展开 + 排版纪律 + mock 冒烟）'],
   ['task-engine-test.js', '任务引擎（意图一期：服务端执行/参数模板跨步引用/confirm 闸门/fail-fast，mock 注入）'],
+  ['schema-strict-verify.js', '入参真校验（代码技法卡 A 段）：类型/枚举/required/范围/数组元素/非隐式转换/合法透传/287 扫描/集成（全 mock）'],
+  ['registration-order-verify.js', '注册顺序对账（代码技法卡 D 段）：ppt·excel 拆分块原序/总量 287/professional 完整（全 mock）'],
 ];
 
 /** 要起子进程 / 真跑 PowerShell 的重测。第三列 = 仅 Windows 能跑（Linux 上跳过不判失败，B8） */

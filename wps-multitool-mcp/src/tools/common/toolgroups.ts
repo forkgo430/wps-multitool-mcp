@@ -9,7 +9,6 @@
  *   WPS_TOOL_GROUPS=common,word   初始加载哪些组（逗号分隔，覆盖默认值）
  */
 
-import { v4 as uuidv4 } from 'uuid';
 import {
   ToolDefinition,
   ToolHandler,
@@ -20,6 +19,7 @@ import {
 import { toolRegistry } from '../../server/tool-registry';
 import { verificationSummary } from '../../server/tool-verification';
 import { essentialButUnverified } from '../../server/tool-tiers';
+import { ok, fail } from './helpers';
 
 // 变更事件放在零依赖的 tool-group-events 里，由 ToolRegistry 在 load/unload 后触发。
 // 这里重新导出，方便订阅方只从工具模块引。
@@ -28,11 +28,7 @@ export { onToolGroupsChanged, offToolGroupsChanged, listenerCount } from '../../
 // ==================== 工具实现 ====================
 
 function text(result: unknown): ToolCallResult {
-  return {
-    id: uuidv4(),
-    success: true,
-    content: [{ type: 'text', text: typeof result === 'string' ? result : JSON.stringify(result, null, 2) }],
-  };
+  return ok(typeof result === 'string' ? result : JSON.stringify(result, null, 2));
 }
 
 export const listToolGroupsDefinition: ToolDefinition = {
@@ -106,16 +102,11 @@ export const loadToolGroupDefinition: ToolDefinition = {
 export const loadToolGroupHandler: ToolHandler = async (args) => {
   const group = String(args.group ?? '').trim();
   if (!group) {
-    return { id: uuidv4(), success: false, content: [{ type: 'text', text: '缺少 group 参数' }], error: 'missing group' };
+    return fail('缺少 group 参数', 'missing group');
   }
   const r = toolRegistry.loadGroup(group);
   if (!r.ok) {
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `加载失败：${r.error}。可用组见 wps_list_tool_groups` }],
-      error: r.error,
-    };
+    return fail(`加载失败：${r.error}。可用组见 wps_list_tool_groups`, r.error);
   }
   // 变更事件由 ToolRegistry 在 load/unload 后统一触发，这里不用管
   const listed = toolRegistry.listTools().tools.length;
@@ -147,16 +138,11 @@ export const unloadToolGroupDefinition: ToolDefinition = {
 export const unloadToolGroupHandler: ToolHandler = async (args) => {
   const group = String(args.group ?? '').trim();
   if (!group) {
-    return { id: uuidv4(), success: false, content: [{ type: 'text', text: '缺少 group 参数' }], error: 'missing group' };
+    return fail('缺少 group 参数', 'missing group');
   }
   const r = toolRegistry.unloadGroup(group);
   if (!r.ok) {
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `卸载失败：${r.error}` }],
-      error: r.error,
-    };
+    return fail(`卸载失败：${r.error}`, r.error);
   }
   // 变更事件由 ToolRegistry 在 load/unload 后统一触发，这里不用管
   const listed = toolRegistry.listTools().tools.length;

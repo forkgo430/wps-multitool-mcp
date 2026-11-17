@@ -6,7 +6,6 @@
  * - wps_excel_set_named_range: 设置命名范围
  */
 
-import { v4 as uuidv4 } from 'uuid';
 import {
   ToolDefinition,
   ToolHandler,
@@ -14,8 +13,8 @@ import {
   ToolCategory,
   RegisteredTool,
 } from '../../types/tools';
-import { wpsClient } from '../../client/wps-client';
-import { WpsAppType } from '../../types/wps';
+
+import { call, ok, fail } from './helpers';
 
 export const getSelectionDefinition: ToolDefinition = {
   name: 'wps_excel_get_selection',
@@ -31,46 +30,23 @@ export const getSelectionHandler: ToolHandler = async (
   _args: Record<string, unknown>
 ): Promise<ToolCallResult> => {
   try {
-    const response = await wpsClient.executeMethod<{
+    const response = await call<{
       address: string;
       rowCount: number;
       columnCount: number;
       sheet: string;
-    }>(
-      'getSelection',
-      {},
-      WpsAppType.SPREADSHEET
-    );
+    }>('getSelection', {});
 
-    if (!response.success || !response.data) {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `获取选中区域失败: ${response.error}` }],
-        error: response.error,
-      };
+    if (!response.ok || !response.data) {
+      return fail(`获取选中区域失败: ${response.error}`, response.error);
     }
 
     const { address, rowCount, columnCount, sheet } = response.data;
 
-    return {
-      id: uuidv4(),
-      success: true,
-      content: [
-        {
-          type: 'text',
-          text: `当前选中区域信息：\n工作表: ${sheet}\n范围: ${address}\n行数: ${rowCount}\n列数: ${columnCount}`,
-        },
-      ],
-    };
+    return ok(`当前选中区域信息：\n工作表: ${sheet}\n范围: ${address}\n行数: ${rowCount}\n列数: ${columnCount}`, response.warnings);
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `获取选中区域出错: ${errMsg}` }],
-      error: errMsg,
-    };
+    return fail(`获取选中区域出错: ${errMsg}`, errMsg);
   }
 };
 
@@ -106,41 +82,18 @@ export const deleteRowHandler: ToolHandler = async (
   const { row, count = 1 } = args as { row: number; count?: number };
 
   try {
-    const response = await wpsClient.executeMethod<{
+    const response = await call<{
       deletedRows: number;
-    }>(
-      'deleteRows',
-      { row, count },
-      WpsAppType.SPREADSHEET
-    );
+    }>('deleteRows', { row, count });
 
-    if (!response.success) {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `删除行失败: ${response.error}` }],
-        error: response.error,
-      };
+    if (!response.ok) {
+      return fail(`删除行失败: ${response.error}`, response.error);
     }
 
-    return {
-      id: uuidv4(),
-      success: true,
-      content: [
-        {
-          type: 'text',
-          text: `已成功删除第${row}行起共${count}行`,
-        },
-      ],
-    };
+    return ok(`已成功删除第${row}行起共${count}行`, response.warnings);
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `删除行出错: ${errMsg}` }],
-      error: errMsg,
-    };
+    return fail(`删除行出错: ${errMsg}`, errMsg);
   }
 };
 
@@ -177,42 +130,19 @@ export const freezePanesHandler: ToolHandler = async (
   };
 
   try {
-    const response = await wpsClient.executeMethod<{
+    const response = await call<{
       frozen: boolean;
-    }>(
-      'freezePanes',
-      { row, column, freeze },
-      WpsAppType.SPREADSHEET
-    );
+    }>('freezePanes', { row, column, freeze });
 
-    if (!response.success) {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `冻结窗格操作失败: ${response.error}` }],
-        error: response.error,
-      };
+    if (!response.ok) {
+      return fail(`冻结窗格操作失败: ${response.error}`, response.error);
     }
 
     const action = freeze ? '冻结' : '取消冻结';
-    return {
-      id: uuidv4(),
-      success: true,
-      content: [
-        {
-          type: 'text',
-          text: `窗格${action}成功！${row ? `\n冻结行: ${row}` : ''}${column ? `\n冻结列: ${column}` : ''}`,
-        },
-      ],
-    };
+    return ok(`窗格${action}成功！${row ? `\n冻结行: ${row}` : ''}${column ? `\n冻结列: ${column}` : ''}`, response.warnings);
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `冻结窗格操作出错: ${errMsg}` }],
-      error: errMsg,
-    };
+    return fail(`冻结窗格操作出错: ${errMsg}`, errMsg);
   }
 };
 
@@ -248,41 +178,18 @@ export const autoFillHandler: ToolHandler = async (
   };
 
   try {
-    const response = await wpsClient.executeMethod<{
+    const response = await call<{
       filled: boolean;
-    }>(
-      'fillSeries',
-      { sourceRange, targetRange },
-      WpsAppType.SPREADSHEET
-    );
+    }>('fillSeries', { sourceRange, targetRange });
 
-    if (!response.success) {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `自动填充失败: ${response.error}` }],
-        error: response.error,
-      };
+    if (!response.ok) {
+      return fail(`自动填充失败: ${response.error}`, response.error);
     }
 
-    return {
-      id: uuidv4(),
-      success: true,
-      content: [
-        {
-          type: 'text',
-          text: `自动填充成功！\n源区域: ${sourceRange}\n目标区域: ${targetRange}`,
-        },
-      ],
-    };
+    return ok(`自动填充成功！\n源区域: ${sourceRange}\n目标区域: ${targetRange}`, response.warnings);
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `自动填充出错: ${errMsg}` }],
-      error: errMsg,
-    };
+    return fail(`自动填充出错: ${errMsg}`, errMsg);
   }
 };
 
@@ -318,42 +225,19 @@ export const setNamedRangeHandler: ToolHandler = async (
   };
 
   try {
-    const response = await wpsClient.executeMethod<{
+    const response = await call<{
       name: string;
       range: string;
-    }>(
-      'createNamedRange',
-      { name, range },
-      WpsAppType.SPREADSHEET
-    );
+    }>('createNamedRange', { name, range });
 
-    if (!response.success) {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `设置命名范围失败: ${response.error}` }],
-        error: response.error,
-      };
+    if (!response.ok) {
+      return fail(`设置命名范围失败: ${response.error}`, response.error);
     }
 
-    return {
-      id: uuidv4(),
-      success: true,
-      content: [
-        {
-          type: 'text',
-          text: `命名范围设置成功！\n名称: ${name}\n范围: ${range}`,
-        },
-      ],
-    };
+    return ok(`命名范围设置成功！\n名称: ${name}\n范围: ${range}`, response.warnings);
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `设置命名范围出错: ${errMsg}` }],
-      error: errMsg,
-    };
+    return fail(`设置命名范围出错: ${errMsg}`, errMsg);
   }
 };
 
@@ -391,44 +275,21 @@ export const hideColumnHandler: ToolHandler = async (
   };
 
   try {
-    const response = await wpsClient.executeMethod<{
+    const response = await call<{
       column: number;
       count: number;
       hidden: boolean;
-    }>(
-      'hideColumns',
-      { column, count, hide },
-      WpsAppType.SPREADSHEET
-    );
+    }>('hideColumns', { column, count, hide });
 
-    if (!response.success) {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `${hide ? '隐藏' : '显示'}列失败: ${response.error}` }],
-        error: response.error,
-      };
+    if (!response.ok) {
+      return fail(`${hide ? '隐藏' : '显示'}列失败: ${response.error}`, response.error);
     }
 
     const action = hide ? '隐藏' : '显示';
-    return {
-      id: uuidv4(),
-      success: true,
-      content: [
-        {
-          type: 'text',
-          text: `已成功${action}第${column}列起共${count}列`,
-        },
-      ],
-    };
+    return ok(`已成功${action}第${column}列起共${count}列`, response.warnings);
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `隐藏/显示列出错: ${errMsg}` }],
-      error: errMsg,
-    };
+    return fail(`隐藏/显示列出错: ${errMsg}`, errMsg);
   }
 };
 
@@ -470,61 +331,29 @@ export const autoSumHandler: ToolHandler = async (
   // 这两个参数拼的是公式文本，空值会拼出 =SUM() —— 那是语法错，写进去只会得到 #NAME?。
   // 在 TS 侧先拦住，比让 WPS 抛一句看不懂的错更省事。
   if (!range || !range.trim() || !targetCell || !targetCell.trim()) {
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: '[勿重试·先改参数] range 与 targetCell 都不能为空' }],
-      error: 'range/targetCell 为空',
-    };
+    return fail('[勿重试·先改参数] range 与 targetCell 都不能为空', 'range/targetCell 为空');
   }
 
   try {
     const formula = `=SUM(${range.trim()})`;
-    const response = await wpsClient.executeMethod<{
+    const response = await call<{
       range: string;
       formula: string;
       value: unknown;
-    }>(
-      // 第 1 期第 2 章第 2 轮修：原先调 'autoSum'，而 wps-com.ps1 里【没有这个动作】（零命中）
-      // → 每次调用都落到默认分支报 Unknown action，工具从上线起从未生效过。
-      // 能力本来就在 setFormula 上（它接受 range + formula），所以只改动作名 + 拼公式，PS 侧只补了 sheet 解析。
-      // 原来那句 "// NOTE: 仅Windows支持" 是假的：Windows 上也不支持，压根没这个 case。
-      'setFormula',
-      { range: targetCell.trim(), formula },
-      WpsAppType.SPREADSHEET
-    );
+    }>('setFormula', { range: targetCell.trim(), formula });
 
-    if (!response.success) {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `自动求和失败: ${response.error}` }],
-        error: response.error,
-      };
+    if (!response.ok) {
+      return fail(`自动求和失败: ${response.error}`, response.error);
     }
 
     // 读回值：公式写进去了不等于算出了数（引用空区域得 0，引用坏区域得 #REF!）。
     // 有值就报，没读到就明说 —— 不能让用户以为一定成功了。
     const v = response.data?.value;
     const shown = v === undefined || v === null || v === '' ? '（没读到结果值，公式已写入，请用 wps_excel_get_cell_value 核对）' : String(v);
-    return {
-      id: uuidv4(),
-      success: true,
-      content: [
-        {
-          type: 'text',
-          text: `自动求和完成！\n求和范围: ${range}\n写入: ${targetCell} = ${formula}\n当前值: ${shown}`,
-        },
-      ],
-    };
+    return ok(`自动求和完成！\n求和范围: ${range}\n写入: ${targetCell} = ${formula}\n当前值: ${shown}`, response.warnings);
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `自动求和出错: ${errMsg}` }],
-      error: errMsg,
-    };
+    return fail(`自动求和出错: ${errMsg}`, errMsg);
   }
 };
 
@@ -555,33 +384,15 @@ range 需包含表头行。可选 tableName 自定义表名（默认自动命名
 export const createExcelTableHandler: ToolHandler = async (args) => {
   const { sheet, range, tableName } = args as { sheet?: string; range?: string; tableName?: string };
   try {
-    const response = await wpsClient.executeMethod<{ name: string; range: string }>(
-      'createExcelTable',
-      { sheet, range, tableName },
-      WpsAppType.SPREADSHEET
-    );
-    if (response.success) {
+    const response = await call<{ name: string; range: string }>('createExcelTable', { sheet, range, tableName });
+    if (response.ok) {
       const d = response.data as { name?: string; range?: string } | undefined;
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [{ type: 'text', text: `已创建表格「${d?.name ?? tableName ?? ''}」（${d?.range ?? range}）。之后可 addSlicer 加切片器，或对表内数据排序/筛选。` }],
-      };
+      return ok(`已创建表格「${d?.name ?? tableName ?? ''}」（${d?.range ?? range}）。之后可 addSlicer 加切片器，或对表内数据排序/筛选。`, response.warnings);
     }
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `创建表格失败: ${response.error}` }],
-      error: response.error,
-    };
+    return fail(`创建表格失败: ${response.error}`, response.error);
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `创建表格出错: ${errMsg}` }],
-      error: errMsg,
-    };
+    return fail(`创建表格出错: ${errMsg}`, errMsg);
   }
 };
 
@@ -611,33 +422,15 @@ export const addSlicerHandler: ToolHandler = async (args) => {
     name?: string;
   };
   try {
-    const response = await wpsClient.executeMethod<{ slicer: string; table: string; field: string }>(
-      'addSlicer',
-      { sheet, tableName, field, name },
-      WpsAppType.SPREADSHEET
-    );
-    if (response.success) {
+    const response = await call<{ slicer: string; table: string; field: string }>('addSlicer', { sheet, tableName, field, name });
+    if (response.ok) {
       const d = response.data as { slicer?: string; table?: string; field?: string } | undefined;
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [{ type: 'text', text: `已添加切片器「${d?.slicer ?? name ?? field}」（表 ${d?.table ?? tableName ?? ''} · 列 ${d?.field ?? field}）` }],
-      };
+      return ok(`已添加切片器「${d?.slicer ?? name ?? field}」（表 ${d?.table ?? tableName ?? ''} · 列 ${d?.field ?? field}）`, response.warnings);
     }
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `添加切片器失败: ${response.error}` }],
-      error: response.error,
-    };
+    return fail(`添加切片器失败: ${response.error}`, response.error);
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `添加切片器出错: ${errMsg}` }],
-      error: errMsg,
-    };
+    return fail(`添加切片器出错: ${errMsg}`, errMsg);
   }
 };
 

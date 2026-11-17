@@ -83,7 +83,7 @@ export const getDocumentStatsHandler: ToolHandler = async (): Promise<ToolCallRe
     pages: number;
   }>('getDocumentStats', {});
   if (!r.ok) return fail(`读取文档统计失败: ${r.error}`, r.error);
-  const d = r.data || ({} as never);
+  const d = r.data || { name: '', path: '', paragraphs: 0, words: 0, characters: 0, sections: 0, pages: 0 };
   const lines = [
     `文档「${d.name}」统计：`,
     `  字数     : ${d.words}`,

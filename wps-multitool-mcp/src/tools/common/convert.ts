@@ -4,7 +4,6 @@
  * Pos: 通用文档转换工具实现。一旦我被修改，请更新我的头部注释，以及所属文件夹的md。
  */
 
-import { v4 as uuidv4 } from 'uuid';
 import {
   ToolDefinition,
   ToolHandler,
@@ -12,8 +11,9 @@ import {
   ToolCategory,
   RegisteredTool,
 } from '../../types/tools';
-import { wpsClient } from '../../client/wps-client';
+
 import { WpsAppType } from '../../types/wps';
+import { call, ok, fail } from './helpers';
 
 /**
  * 根据文件扩展名判断应该用哪个WPS应用类型
@@ -163,16 +163,14 @@ export const convertToPdfHandler: ToolHandler = async (
 
   try {
     // 调用WPS加载项执行转换
-    const response = await wpsClient.executeMethod<{
+    const response = await call<{
       success: boolean;
       message: string;
       sourcePath: string;
       outputPath: string;
       appType: string;
       pageCount?: number;
-    }>(
-      'convertToPDF',
-      {
+    }>('convertToPDF', {
         outputPath: outputPath || '',
         // 参数对齐：补齐 path/filePath 别名，避免底层只读单一字段导致路径丢失
         path: outputPath || '',
@@ -180,42 +178,21 @@ export const convertToPdfHandler: ToolHandler = async (
         openAfterExport: openAfterExport || false,
         // Office 支持二期：app 参数短路（excel/word/ppt/auto），缺省 auto 保持自动检测
         app: app || 'auto',
-      }
-      // 不指定appType，让WPS加载项自动检测当前活动的应用
-    );
+      });
 
-    if (response.success && response.data) {
+    if (response.ok && response.data) {
       const result = response.data;
 
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [
-          {
-            type: 'text',
-            text: `PDF导出成功！
+      return ok(`PDF导出成功！
 源文件: ${result.sourcePath}
 输出路径: ${result.outputPath}
-文档类型: ${result.appType}${result.pageCount ? `\n页数: ${result.pageCount}` : ''}`,
-          },
-        ],
-      };
+文档类型: ${result.appType}${result.pageCount ? `\n页数: ${result.pageCount}` : ''}`, response.warnings);
     } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `PDF导出失败: ${response.error}` }],
-        error: response.error,
-      };
+      return fail(`PDF导出失败: ${response.error}`, response.error);
     }
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `PDF导出出错: ${errMsg}` }],
-      error: errMsg,
-    };
+    return fail(`PDF导出出错: ${errMsg}`, errMsg);
   }
 };
 
@@ -268,17 +245,12 @@ export const convertFormatHandler: ToolHandler = async (
   };
 
   if (!targetFormat || targetFormat.trim() === '') {
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: '目标格式不能为空，请指定目标格式（如 doc、xlsx、pdf 等）' }],
-      error: '目标格式为空',
-    };
+    return fail('目标格式不能为空，请指定目标格式（如 doc、xlsx、pdf 等）', '目标格式为空');
   }
 
   try {
     // 调用WPS加载项执行格式转换
-    const response = await wpsClient.executeMethod<{
+    const response = await call<{
       success: boolean;
       message: string;
       sourcePath: string;
@@ -286,51 +258,28 @@ export const convertFormatHandler: ToolHandler = async (
       targetFormat: string;
       outputPath: string;
       appType: string;
-    }>(
-      'convertFormat',
-      {
+    }>('convertFormat', {
         targetFormat: targetFormat.toLowerCase().replace(/^\./, ''), // 去掉开头的点
         outputPath: outputPath || '',
         // 参数对齐：补齐 path/filePath 别名，避免底层只读单一字段导致路径丢失
         path: outputPath || '',
         filePath: outputPath || '',
-      }
-      // 不指定appType，让WPS加载项自动检测
-    );
+      });
 
-    if (response.success && response.data) {
+    if (response.ok && response.data) {
       const result = response.data;
 
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [
-          {
-            type: 'text',
-            text: `格式转换成功！
+      return ok(`格式转换成功！
 源文件: ${result.sourcePath}
 源格式: ${result.sourceFormat}
 目标格式: ${result.targetFormat}
-输出路径: ${result.outputPath}`,
-          },
-        ],
-      };
+输出路径: ${result.outputPath}`, response.warnings);
     } else {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `格式转换失败: ${response.error}` }],
-        error: response.error,
-      };
+      return fail(`格式转换失败: ${response.error}`, response.error);
     }
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `格式转换出错: ${errMsg}` }],
-      error: errMsg,
-    };
+    return fail(`格式转换出错: ${errMsg}`, errMsg);
   }
 };
 

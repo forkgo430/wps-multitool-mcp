@@ -17,6 +17,10 @@ export interface ToolParameterSchema {
   properties?: Record<string, ToolParameterSchema>;
   required?: string[];
   default?: unknown;
+  /** 数值下界（number 参数的范围护栏，代码技法卡 A 段） */
+  minimum?: number;
+  /** 数值上界（number 参数的范围护栏，代码技法卡 A 段） */
+  maximum?: number;
   /** 数组下界（转成 JSON Schema 的 minItems） */
   minItems?: number;
   /** 数组上界（转成 JSON Schema 的 maxItems）—— 批量上限要靠它在协议层就说清 */

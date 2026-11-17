@@ -13,20 +13,23 @@ import { ACTION_ROUTES } from './action-routes.generated';
 export type AppKey = 'excel' | 'word' | 'ppt' | 'common';
 
 /** WpsAppType -> 应用键（WpsAppType 的值就是 WPS 自己的进程名风格：wps / et / wpp） */
-export function appKeyFromType(appType?: WpsAppType): AppKey | undefined {
+export function appKeyFromType(appType?: WpsAppType | AppKey): AppKey | undefined {
   switch (appType) {
     case WpsAppType.SPREADSHEET:
+    case 'excel':
       return 'excel';
     case WpsAppType.WRITER:
+    case 'word':
       return 'word';
     case WpsAppType.PRESENTATION:
+    case 'ppt':
       return 'ppt';
     default:
       return undefined;
   }
 }
 
-export function resolveAppKey(action: string, appType?: WpsAppType): AppKey {
+export function resolveAppKey(action: string, appType?: WpsAppType | AppKey): AppKey {
   const mode = process.env.WPS_BRIDGE_ROUTE_MODE;
   const fromType = appKeyFromType(appType);
   const fromTable = ACTION_ROUTES[action];

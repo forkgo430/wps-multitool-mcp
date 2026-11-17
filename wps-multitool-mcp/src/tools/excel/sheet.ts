@@ -6,7 +6,6 @@
  * - wps_excel_delete_sheet: 删除指定工作表
  */
 
-import { v4 as uuidv4 } from 'uuid';
 import {
   ToolDefinition,
   ToolHandler,
@@ -14,8 +13,8 @@ import {
   ToolCategory,
   RegisteredTool,
 } from '../../types/tools';
-import { wpsClient } from '../../client/wps-client';
-import { WpsAppType } from '../../types/wps';
+
+import { call, ok, fail } from './helpers';
 
 export const createSheetDefinition: ToolDefinition = {
   name: 'wps_excel_create_sheet',
@@ -46,42 +45,19 @@ export const createSheetHandler: ToolHandler = async (
   };
 
   try {
-    const response = await wpsClient.executeMethod<{
+    const response = await call<{
       name: string;
       index: number;
-    }>(
-      'createSheet',
-      { name, position },
-      WpsAppType.SPREADSHEET
-    );
+    }>('createSheet', { name, position });
 
-    if (!response.success || !response.data) {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `创建工作表失败: ${response.error}` }],
-        error: response.error,
-      };
+    if (!response.ok || !response.data) {
+      return fail(`创建工作表失败: ${response.error}`, response.error);
     }
 
-    return {
-      id: uuidv4(),
-      success: true,
-      content: [
-        {
-          type: 'text',
-          text: `工作表创建成功！\n名称: ${response.data.name}\n位置: 第${response.data.index + 1}个`,
-        },
-      ],
-    };
+    return ok(`工作表创建成功！\n名称: ${response.data.name}\n位置: 第${response.data.index + 1}个`, response.warnings);
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `创建工作表出错: ${errMsg}` }],
-      error: errMsg,
-    };
+    return fail(`创建工作表出错: ${errMsg}`, errMsg);
   }
 };
 
@@ -110,41 +86,18 @@ export const deleteSheetHandler: ToolHandler = async (
   const { name } = args as { name: string };
 
   try {
-    const response = await wpsClient.executeMethod<{
+    const response = await call<{
       deleted: string;
-    }>(
-      'deleteSheet',
-      { name },
-      WpsAppType.SPREADSHEET
-    );
+    }>('deleteSheet', { name });
 
-    if (!response.success) {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `删除工作表失败: ${response.error}` }],
-        error: response.error,
-      };
+    if (!response.ok) {
+      return fail(`删除工作表失败: ${response.error}`, response.error);
     }
 
-    return {
-      id: uuidv4(),
-      success: true,
-      content: [
-        {
-          type: 'text',
-          text: `工作表 "${name}" 已成功删除`,
-        },
-      ],
-    };
+    return ok(`工作表 "${name}" 已成功删除`, response.warnings);
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `删除工作表出错: ${errMsg}` }],
-      error: errMsg,
-    };
+    return fail(`删除工作表出错: ${errMsg}`, errMsg);
   }
 };
 
@@ -177,42 +130,19 @@ export const renameSheetHandler: ToolHandler = async (
   };
 
   try {
-    const response = await wpsClient.executeMethod<{
+    const response = await call<{
       oldName: string;
       newName: string;
-    }>(
-      'renameSheet',
-      { oldName, newName },
-      WpsAppType.SPREADSHEET
-    );
+    }>('renameSheet', { oldName, newName });
 
-    if (!response.success) {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `重命名工作表失败: ${response.error}` }],
-        error: response.error,
-      };
+    if (!response.ok) {
+      return fail(`重命名工作表失败: ${response.error}`, response.error);
     }
 
-    return {
-      id: uuidv4(),
-      success: true,
-      content: [
-        {
-          type: 'text',
-          text: `工作表重命名成功！\n"${oldName}" → "${newName}"`,
-        },
-      ],
-    };
+    return ok(`工作表重命名成功！\n"${oldName}" → "${newName}"`, response.warnings);
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `重命名工作表出错: ${errMsg}` }],
-      error: errMsg,
-    };
+    return fail(`重命名工作表出错: ${errMsg}`, errMsg);
   }
 };
 
@@ -250,43 +180,20 @@ export const copySheetHandler: ToolHandler = async (
   };
 
   try {
-    const response = await wpsClient.executeMethod<{
+    const response = await call<{
       sourceName: string;
       newName: string;
       index: number;
-    }>(
-      'copySheet',
-      { name, newName, position },
-      WpsAppType.SPREADSHEET
-    );
+    }>('copySheet', { name, newName, position });
 
-    if (!response.success || !response.data) {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `复制工作表失败: ${response.error}` }],
-        error: response.error,
-      };
+    if (!response.ok || !response.data) {
+      return fail(`复制工作表失败: ${response.error}`, response.error);
     }
 
-    return {
-      id: uuidv4(),
-      success: true,
-      content: [
-        {
-          type: 'text',
-          text: `工作表复制成功！\n源工作表: ${response.data.sourceName}\n新工作表: ${response.data.newName}\n位置: 第${response.data.index + 1}个`,
-        },
-      ],
-    };
+    return ok(`工作表复制成功！\n源工作表: ${response.data.sourceName}\n新工作表: ${response.data.newName}\n位置: 第${response.data.index + 1}个`, response.warnings);
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `复制工作表出错: ${errMsg}` }],
-      error: errMsg,
-    };
+    return fail(`复制工作表出错: ${errMsg}`, errMsg);
   }
 };
 
@@ -304,26 +211,17 @@ export const getSheetListHandler: ToolHandler = async (
   _args: Record<string, unknown>
 ): Promise<ToolCallResult> => {
   try {
-    const response = await wpsClient.executeMethod<{
+    const response = await call<{
       sheets: Array<{
         name: string;
         index: number;
         active: boolean;
       }>;
       count: number;
-    }>(
-      'getSheetList',
-      {},
-      WpsAppType.SPREADSHEET
-    );
+    }>('getSheetList', {});
 
-    if (!response.success || !response.data) {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `获取工作表列表失败: ${response.error}` }],
-        error: response.error,
-      };
+    if (!response.ok || !response.data) {
+      return fail(`获取工作表列表失败: ${response.error}`, response.error);
     }
 
     const { sheets, count } = response.data;
@@ -334,19 +232,10 @@ export const getSheetListHandler: ToolHandler = async (
       output += `${sheet.index + 1}. ${sheet.name}${activeFlag}\n`;
     });
 
-    return {
-      id: uuidv4(),
-      success: true,
-      content: [{ type: 'text', text: output }],
-    };
+    return ok(output, response.warnings);
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `获取工作表列表出错: ${errMsg}` }],
-      error: errMsg,
-    };
+    return fail(`获取工作表列表出错: ${errMsg}`, errMsg);
   }
 };
 
@@ -372,41 +261,18 @@ export const switchSheetHandler: ToolHandler = async (
   const { name } = args as { name: string };
 
   try {
-    const response = await wpsClient.executeMethod<{
+    const response = await call<{
       activatedSheet: string;
-    }>(
-      'switchSheet',
-      { name },
-      WpsAppType.SPREADSHEET
-    );
+    }>('switchSheet', { name });
 
-    if (!response.success) {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `切换工作表失败: ${response.error}` }],
-        error: response.error,
-      };
+    if (!response.ok) {
+      return fail(`切换工作表失败: ${response.error}`, response.error);
     }
 
-    return {
-      id: uuidv4(),
-      success: true,
-      content: [
-        {
-          type: 'text',
-          text: `已切换到工作表 "${name}"`,
-        },
-      ],
-    };
+    return ok(`已切换到工作表 "${name}"`, response.warnings);
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `切换工作表出错: ${errMsg}` }],
-      error: errMsg,
-    };
+    return fail(`切换工作表出错: ${errMsg}`, errMsg);
   }
 };
 
@@ -439,42 +305,19 @@ export const moveSheetHandler: ToolHandler = async (
   };
 
   try {
-    const response = await wpsClient.executeMethod<{
+    const response = await call<{
       name: string;
       newPosition: number;
-    }>(
-      'moveSheet',
-      { name, position },
-      WpsAppType.SPREADSHEET
-    );
+    }>('moveSheet', { name, position });
 
-    if (!response.success) {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `移动工作表失败: ${response.error}` }],
-        error: response.error,
-      };
+    if (!response.ok) {
+      return fail(`移动工作表失败: ${response.error}`, response.error);
     }
 
-    return {
-      id: uuidv4(),
-      success: true,
-      content: [
-        {
-          type: 'text',
-          text: `工作表 "${name}" 已移动到第${position + 1}个位置`,
-        },
-      ],
-    };
+    return ok(`工作表 "${name}" 已移动到第${position + 1}个位置`, response.warnings);
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `移动工作表出错: ${errMsg}` }],
-      error: errMsg,
-    };
+    return fail(`移动工作表出错: ${errMsg}`, errMsg);
   }
 };
 

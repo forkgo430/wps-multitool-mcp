@@ -12,44 +12,16 @@
  * 不支持的那个走 warnings 而不是整次失败。没验过的接口在能力探测里有对应项，
  */
 
-import { v4 as uuidv4 } from 'uuid';
 import {
   ToolDefinition,
   ToolHandler,
   ToolCallResult,
   ToolCategory,
   RegisteredTool,
-  ToolWarning,
 } from '../../types/tools';
-import { wpsClient } from '../../client/wps-client';
-import { WpsAppType } from '../../types/wps';
-
 type Args = Record<string, unknown>;
 
-/** 统一调用：一次失败一个成功，warnings 一路带回 */
-async function call<T>(action: string, params: Args): Promise<{
-  ok: boolean;
-  data?: T;
-  error?: string;
-  warnings?: ToolWarning[];
-}> {
-  const r = await wpsClient.executeMethod<T>(action, params, WpsAppType.SPREADSHEET);
-  return { ok: r.success, data: r.data, error: r.error, warnings: r.warnings };
-}
-
-const ok = (text: string, warnings?: ToolWarning[]): ToolCallResult => ({
-  id: uuidv4(),
-  success: true,
-  content: [{ type: 'text', text }],
-  ...(warnings && warnings.length ? { warnings } : {}),
-});
-
-const fail = (text: string, error?: string): ToolCallResult => ({
-  id: uuidv4(),
-  success: false,
-  content: [{ type: 'text', text }],
-  error: error ?? text,
-});
+import { call, ok, fail } from './helpers';
 
 /** 把"行/列表/散列"的查询结果排成可读文本 */
 function bulletList(items: Array<Record<string, unknown>>, keys: string[]): string {

@@ -68,7 +68,6 @@ export class WpsMcpServer {
   /** 工具组变更通知是否已接上（避免重复订阅） */
   private groupsNotifyWired: boolean = false;
 
-
   constructor(config?: Partial<McpServerConfig>) {
     this.config = { ...DEFAULT_CONFIG, ...config };
     this.registry = toolRegistry;
@@ -310,7 +309,7 @@ export class WpsMcpServer {
             sendNotification({
               method: 'notifications/progress' as const,
               params: { progressToken, progress: p, total: t, ...(msg ? { message: msg } : {}) },
-            } as never);
+            });
           },
           execute
         );

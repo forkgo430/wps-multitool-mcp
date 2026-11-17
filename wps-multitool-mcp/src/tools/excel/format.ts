@@ -7,7 +7,6 @@
  * - wps_excel_set_data_validation: 设置数据验证规则
  */
 
-import { v4 as uuidv4 } from 'uuid';
 import {
   ToolDefinition,
   ToolHandler,
@@ -15,8 +14,8 @@ import {
   ToolCategory,
   RegisteredTool,
 } from '../../types/tools';
-import { wpsClient } from '../../client/wps-client';
-import { WpsAppType } from '../../types/wps';
+
+import { call, ok, fail } from './helpers';
 
 // ============================================================
 // 1. wps_excel_set_cell_format - 设置单元格格式
@@ -69,43 +68,20 @@ export const setCellFormatHandler: ToolHandler = async (
   };
 
   try {
-    const response = await wpsClient.executeMethod(
-      'setCellFormat',
-      { range, format, sheet },
-      WpsAppType.SPREADSHEET
-    );
+    const response = await call('setCellFormat', { range, format, sheet });
 
-    if (!response.success) {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `设置单元格格式失败: ${response.error}` }],
-        error: response.error,
-      };
+    if (!response.ok) {
+      return fail(`设置单元格格式失败: ${response.error}`, response.error);
     }
 
     const formatDesc = Object.entries(format)
       .map(([key, value]) => `${key}: ${value}`)
       .join(', ');
 
-    return {
-      id: uuidv4(),
-      success: true,
-      content: [
-        {
-          type: 'text',
-          text: `单元格格式设置成功！\n范围: ${range}\n格式: ${formatDesc}`,
-        },
-      ],
-    };
+    return ok(`单元格格式设置成功！\n范围: ${range}\n格式: ${formatDesc}`, response.warnings);
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `设置单元格格式出错: ${errMsg}` }],
-      error: errMsg,
-    };
+    return fail(`设置单元格格式出错: ${errMsg}`, errMsg);
   }
 };
 
@@ -147,39 +123,16 @@ export const setCellStyleHandler: ToolHandler = async (
   };
 
   try {
-    const response = await wpsClient.executeMethod(
-      'setCellStyle',
-      { range, style, sheet },
-      WpsAppType.SPREADSHEET
-    );
+    const response = await call('setCellStyle', { range, style, sheet });
 
-    if (!response.success) {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `应用样式失败: ${response.error}` }],
-        error: response.error,
-      };
+    if (!response.ok) {
+      return fail(`应用样式失败: ${response.error}`, response.error);
     }
 
-    return {
-      id: uuidv4(),
-      success: true,
-      content: [
-        {
-          type: 'text',
-          text: `样式应用成功！\n范围: ${range}\n样式: ${style}`,
-        },
-      ],
-    };
+    return ok(`样式应用成功！\n范围: ${range}\n样式: ${style}`, response.warnings);
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `应用样式出错: ${errMsg}` }],
-      error: errMsg,
-    };
+    return fail(`应用样式出错: ${errMsg}`, errMsg);
   }
 };
 
@@ -233,45 +186,22 @@ export const setBorderHandler: ToolHandler = async (
   };
 
   try {
-    const response = await wpsClient.executeMethod(
-      'setBorder',
-      {
+    const response = await call('setBorder', {
         range,
         borderStyle,
         position: position || 'all',
         color: color || '#000000',
         sheet,
-      },
-      WpsAppType.SPREADSHEET
-    );
+      });
 
-    if (!response.success) {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `设置边框失败: ${response.error}` }],
-        error: response.error,
-      };
+    if (!response.ok) {
+      return fail(`设置边框失败: ${response.error}`, response.error);
     }
 
-    return {
-      id: uuidv4(),
-      success: true,
-      content: [
-        {
-          type: 'text',
-          text: `边框设置成功！\n范围: ${range}\n样式: ${borderStyle}\n位置: ${position || 'all'}\n颜色: ${color || '#000000'}`,
-        },
-      ],
-    };
+    return ok(`边框设置成功！\n范围: ${range}\n样式: ${borderStyle}\n位置: ${position || 'all'}\n颜色: ${color || '#000000'}`, response.warnings);
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `设置边框出错: ${errMsg}` }],
-      error: errMsg,
-    };
+    return fail(`设置边框出错: ${errMsg}`, errMsg);
   }
 };
 
@@ -322,39 +252,16 @@ export const setNumberFormatHandler: ToolHandler = async (
   };
 
   try {
-    const response = await wpsClient.executeMethod(
-      'setNumberFormat',
-      { range, format, sheet },
-      WpsAppType.SPREADSHEET
-    );
+    const response = await call('setNumberFormat', { range, format, sheet });
 
-    if (!response.success) {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `设置数字格式失败: ${response.error}` }],
-        error: response.error,
-      };
+    if (!response.ok) {
+      return fail(`设置数字格式失败: ${response.error}`, response.error);
     }
 
-    return {
-      id: uuidv4(),
-      success: true,
-      content: [
-        {
-          type: 'text',
-          text: `数字格式设置成功！\n范围: ${range}\n格式: ${format}`,
-        },
-      ],
-    };
+    return ok(`数字格式设置成功！\n范围: ${range}\n格式: ${format}`, response.warnings);
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `设置数字格式出错: ${errMsg}` }],
-      error: errMsg,
-    };
+    return fail(`设置数字格式出错: ${errMsg}`, errMsg);
   }
 };
 
@@ -391,39 +298,16 @@ export const mergeCellsHandler: ToolHandler = async (
   };
 
   try {
-    const response = await wpsClient.executeMethod(
-      'mergeCells',
-      { range, sheet },
-      WpsAppType.SPREADSHEET
-    );
+    const response = await call('mergeCells', { range, sheet });
 
-    if (!response.success) {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `合并单元格失败: ${response.error}` }],
-        error: response.error,
-      };
+    if (!response.ok) {
+      return fail(`合并单元格失败: ${response.error}`, response.error);
     }
 
-    return {
-      id: uuidv4(),
-      success: true,
-      content: [
-        {
-          type: 'text',
-          text: `单元格合并成功！\n范围: ${range}`,
-        },
-      ],
-    };
+    return ok(`单元格合并成功！\n范围: ${range}`, response.warnings);
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `合并单元格出错: ${errMsg}` }],
-      error: errMsg,
-    };
+    return fail(`合并单元格出错: ${errMsg}`, errMsg);
   }
 };
 
@@ -460,39 +344,16 @@ export const unmergeCellsHandler: ToolHandler = async (
   };
 
   try {
-    const response = await wpsClient.executeMethod(
-      'unmergeCells',
-      { range, sheet },
-      WpsAppType.SPREADSHEET
-    );
+    const response = await call('unmergeCells', { range, sheet });
 
-    if (!response.success) {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `拆分单元格失败: ${response.error}` }],
-        error: response.error,
-      };
+    if (!response.ok) {
+      return fail(`拆分单元格失败: ${response.error}`, response.error);
     }
 
-    return {
-      id: uuidv4(),
-      success: true,
-      content: [
-        {
-          type: 'text',
-          text: `单元格拆分成功！\n范围: ${range}`,
-        },
-      ],
-    };
+    return ok(`单元格拆分成功！\n范围: ${range}`, response.warnings);
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `拆分单元格出错: ${errMsg}` }],
-      error: errMsg,
-    };
+    return fail(`拆分单元格出错: ${errMsg}`, errMsg);
   }
 };
 
@@ -534,48 +395,20 @@ export const setColumnWidthHandler: ToolHandler = async (
   };
 
   if (width <= 0) {
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: '列宽必须大于0' }],
-      error: '列宽无效',
-    };
+    return fail('列宽必须大于0', '列宽无效');
   }
 
   try {
-    const response = await wpsClient.executeMethod(
-      'setColumnWidth',
-      { column, width, sheet },
-      WpsAppType.SPREADSHEET
-    );
+    const response = await call('setColumnWidth', { column, width, sheet });
 
-    if (!response.success) {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `设置列宽失败: ${response.error}` }],
-        error: response.error,
-      };
+    if (!response.ok) {
+      return fail(`设置列宽失败: ${response.error}`, response.error);
     }
 
-    return {
-      id: uuidv4(),
-      success: true,
-      content: [
-        {
-          type: 'text',
-          text: `列宽设置成功！\n列: ${column}\n宽度: ${width}`,
-        },
-      ],
-    };
+    return ok(`列宽设置成功！\n列: ${column}\n宽度: ${width}`, response.warnings);
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `设置列宽出错: ${errMsg}` }],
-      error: errMsg,
-    };
+    return fail(`设置列宽出错: ${errMsg}`, errMsg);
   }
 };
 
@@ -617,57 +450,24 @@ export const setRowHeightHandler: ToolHandler = async (
   };
 
   if (row < 1) {
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: '行号必须大于等于1' }],
-      error: '行号无效',
-    };
+    return fail('行号必须大于等于1', '行号无效');
   }
 
   if (height <= 0) {
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: '行高必须大于0' }],
-      error: '行高无效',
-    };
+    return fail('行高必须大于0', '行高无效');
   }
 
   try {
-    const response = await wpsClient.executeMethod(
-      'setRowHeight',
-      { row, height, sheet },
-      WpsAppType.SPREADSHEET
-    );
+    const response = await call('setRowHeight', { row, height, sheet });
 
-    if (!response.success) {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `设置行高失败: ${response.error}` }],
-        error: response.error,
-      };
+    if (!response.ok) {
+      return fail(`设置行高失败: ${response.error}`, response.error);
     }
 
-    return {
-      id: uuidv4(),
-      success: true,
-      content: [
-        {
-          type: 'text',
-          text: `行高设置成功！\n行: ${row}\n高度: ${height}`,
-        },
-      ],
-    };
+    return ok(`行高设置成功！\n行: ${row}\n高度: ${height}`, response.warnings);
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `设置行高出错: ${errMsg}` }],
-      error: errMsg,
-    };
+    return fail(`设置行高出错: ${errMsg}`, errMsg);
   }
 };
 
@@ -717,48 +517,20 @@ export const hideRowHandler: ToolHandler = async (
   };
 
   if (row < 1) {
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: '行号必须大于等于1' }],
-      error: '行号无效',
-    };
+    return fail('行号必须大于等于1', '行号无效');
   }
 
   try {
-    const response = await wpsClient.executeMethod(
-      'hideRows',
-      { row, count, hide, sheet },
-      WpsAppType.SPREADSHEET
-    );
+    const response = await call('hideRows', { row, count, hide, sheet });
 
-    if (!response.success) {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `${hide ? '隐藏' : '显示'}行失败: ${response.error}` }],
-        error: response.error,
-      };
+    if (!response.ok) {
+      return fail(`${hide ? '隐藏' : '显示'}行失败: ${response.error}`, response.error);
     }
 
-    return {
-      id: uuidv4(),
-      success: true,
-      content: [
-        {
-          type: 'text',
-          text: `行${hide ? '隐藏' : '显示'}成功！\n起始行: ${row}\n行数: ${count}`,
-        },
-      ],
-    };
+    return ok(`行${hide ? '隐藏' : '显示'}成功！\n起始行: ${row}\n行数: ${count}`, response.warnings);
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `${hide ? '隐藏' : '显示'}行出错: ${errMsg}` }],
-      error: errMsg,
-    };
+    return fail(`${hide ? '隐藏' : '显示'}行出错: ${errMsg}`, errMsg);
   }
 };
 
@@ -805,39 +577,16 @@ export const setDataValidationHandler: ToolHandler = async (
   };
 
   try {
-    const response = await wpsClient.executeMethod(
-      'addDataValidation',
-      { range, type, formula, sheet },
-      WpsAppType.SPREADSHEET
-    );
+    const response = await call('addDataValidation', { range, type, formula, sheet });
 
-    if (!response.success) {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [{ type: 'text', text: `设置数据验证失败: ${response.error}` }],
-        error: response.error,
-      };
+    if (!response.ok) {
+      return fail(`设置数据验证失败: ${response.error}`, response.error);
     }
 
-    return {
-      id: uuidv4(),
-      success: true,
-      content: [
-        {
-          type: 'text',
-          text: `数据验证设置成功！\n范围: ${range}\n类型: ${type}\n规则: ${formula}`,
-        },
-      ],
-    };
+    return ok(`数据验证设置成功！\n范围: ${range}\n类型: ${type}\n规则: ${formula}`, response.warnings);
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `设置数据验证出错: ${errMsg}` }],
-      error: errMsg,
-    };
+    return fail(`设置数据验证出错: ${errMsg}`, errMsg);
   }
 };
 

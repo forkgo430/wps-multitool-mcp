@@ -4,7 +4,6 @@
  * Pos: Excel 高级数据处理工具实现。一旦我被修改，请更新我的头部注释，以及所属文件夹的md。
  */
 
-import { v4 as uuidv4 } from 'uuid';
 import {
   ToolDefinition,
   ToolHandler,
@@ -12,8 +11,8 @@ import {
   ToolCategory,
   RegisteredTool,
 } from '../../types/tools';
-import { wpsClient } from '../../client/wps-client';
-import { WpsAppType } from '../../types/wps';
+
+import { call, ok, fail } from './helpers';
 
 export const autoFilterDefinition: ToolDefinition = {
   name: 'wps_excel_auto_filter',
@@ -38,18 +37,14 @@ export const autoFilterHandler: ToolHandler = async (
     range: string; column?: string; criteria?: string; sheet?: string;
   };
   try {
-    const response = await wpsClient.executeMethod<{ message: string }>(
-      'autoFilter',
-      { range, column, criteria, sheet },
-      WpsAppType.SPREADSHEET
-    );
-    if (!response.success) {
-      return { id: uuidv4(), success: false, content: [{ type: 'text', text: `自动筛选失败: ${response.error}` }], error: response.error };
+    const response = await call<{ message: string }>('autoFilter', { range, column, criteria, sheet });
+    if (!response.ok) {
+      return fail(`自动筛选失败: ${response.error}`, response.error);
     }
-    return { id: uuidv4(), success: true, content: [{ type: 'text', text: `自动筛选已应用: ${range}${column ? '，列: ' + column : ''}${criteria ? '，条件: ' + criteria : ''}` }] };
+    return ok(`自动筛选已应用: ${range}${column ? '，列: ' + column : ''}${criteria ? '，条件: ' + criteria : ''}`, response.warnings);
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    return { id: uuidv4(), success: false, content: [{ type: 'text', text: `自动筛选出错: ${errMsg}` }], error: errMsg };
+    return fail(`自动筛选出错: ${errMsg}`, errMsg);
   }
 };
 
@@ -78,18 +73,14 @@ export const copyRangeHandler: ToolHandler = async (
     source: string; destination: string; sheet?: string;
   };
   try {
-    const response = await wpsClient.executeMethod<{ message: string }>(
-      'copyRange',
-      { source, destination, sheet },
-      WpsAppType.SPREADSHEET
-    );
-    if (!response.success) {
-      return { id: uuidv4(), success: false, content: [{ type: 'text', text: `复制范围失败: ${response.error}` }], error: response.error };
+    const response = await call<{ message: string }>('copyRange', { source, destination, sheet });
+    if (!response.ok) {
+      return fail(`复制范围失败: ${response.error}`, response.error);
     }
-    return { id: uuidv4(), success: true, content: [{ type: 'text', text: `已复制 ${source} 到 ${destination}` }] };
+    return ok(`已复制 ${source} 到 ${destination}`, response.warnings);
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    return { id: uuidv4(), success: false, content: [{ type: 'text', text: `复制范围出错: ${errMsg}` }], error: errMsg };
+    return fail(`复制范围出错: ${errMsg}`, errMsg);
   }
 };
 
@@ -122,18 +113,14 @@ export const pasteRangeHandler: ToolHandler = async (
     destination: string; pasteType?: string; sheet?: string;
   };
   try {
-    const response = await wpsClient.executeMethod<{ message: string }>(
-      'pasteRange',
-      { destination, pasteType: pasteType || 'all', sheet },
-      WpsAppType.SPREADSHEET
-    );
-    if (!response.success) {
-      return { id: uuidv4(), success: false, content: [{ type: 'text', text: `粘贴失败: ${response.error}` }], error: response.error };
+    const response = await call<{ message: string }>('pasteRange', { destination, pasteType: pasteType || 'all', sheet });
+    if (!response.ok) {
+      return fail(`粘贴失败: ${response.error}`, response.error);
     }
-    return { id: uuidv4(), success: true, content: [{ type: 'text', text: `已粘贴到 ${destination}，类型: ${pasteType || 'all'}` }] };
+    return ok(`已粘贴到 ${destination}，类型: ${pasteType || 'all'}`, response.warnings);
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    return { id: uuidv4(), success: false, content: [{ type: 'text', text: `粘贴出错: ${errMsg}` }], error: errMsg };
+    return fail(`粘贴出错: ${errMsg}`, errMsg);
   }
 };
 
@@ -161,18 +148,14 @@ export const fillSeriesHandler: ToolHandler = async (
     range: string; direction?: string; type?: string; step?: number; sheet?: string;
   };
   try {
-    const response = await wpsClient.executeMethod<{ message: string }>(
-      'fillSeries',
-      { range, direction: direction || 'down', type: type || 'auto', step, sheet },
-      WpsAppType.SPREADSHEET
-    );
-    if (!response.success) {
-      return { id: uuidv4(), success: false, content: [{ type: 'text', text: `填充序列失败: ${response.error}` }], error: response.error };
+    const response = await call<{ message: string }>('fillSeries', { range, direction: direction || 'down', type: type || 'auto', step, sheet });
+    if (!response.ok) {
+      return fail(`填充序列失败: ${response.error}`, response.error);
     }
-    return { id: uuidv4(), success: true, content: [{ type: 'text', text: `序列填充完成: ${range}，方向: ${direction || 'down'}` }] };
+    return ok(`序列填充完成: ${range}，方向: ${direction || 'down'}`, response.warnings);
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    return { id: uuidv4(), success: false, content: [{ type: 'text', text: `填充序列出错: ${errMsg}` }], error: errMsg };
+    return fail(`填充序列出错: ${errMsg}`, errMsg);
   }
 };
 
@@ -198,18 +181,14 @@ export const transposeHandler: ToolHandler = async (
     source: string; destination: string; sheet?: string;
   };
   try {
-    const response = await wpsClient.executeMethod<{ message: string }>(
-      'transpose',
-      { source, destination, sheet },
-      WpsAppType.SPREADSHEET
-    );
-    if (!response.success) {
-      return { id: uuidv4(), success: false, content: [{ type: 'text', text: `转置失败: ${response.error}` }], error: response.error };
+    const response = await call<{ message: string }>('transpose', { source, destination, sheet });
+    if (!response.ok) {
+      return fail(`转置失败: ${response.error}`, response.error);
     }
-    return { id: uuidv4(), success: true, content: [{ type: 'text', text: `数据已转置: ${source} → ${destination}` }] };
+    return ok(`数据已转置: ${source} → ${destination}`, response.warnings);
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    return { id: uuidv4(), success: false, content: [{ type: 'text', text: `转置出错: ${errMsg}` }], error: errMsg };
+    return fail(`转置出错: ${errMsg}`, errMsg);
   }
 };
 
@@ -235,18 +214,14 @@ export const textToColumnsHandler: ToolHandler = async (
     range: string; delimiter?: string; sheet?: string;
   };
   try {
-    const response = await wpsClient.executeMethod<{ message: string }>(
-      'textToColumns',
-      { range, delimiter: delimiter || ',', sheet },
-      WpsAppType.SPREADSHEET
-    );
-    if (!response.success) {
-      return { id: uuidv4(), success: false, content: [{ type: 'text', text: `分列失败: ${response.error}` }], error: response.error };
+    const response = await call<{ message: string }>('textToColumns', { range, delimiter: delimiter || ',', sheet });
+    if (!response.ok) {
+      return fail(`分列失败: ${response.error}`, response.error);
     }
-    return { id: uuidv4(), success: true, content: [{ type: 'text', text: `分列完成: ${range}，分隔符: "${delimiter || ','}"` }] };
+    return ok(`分列完成: ${range}，分隔符: "${delimiter || ','}"`, response.warnings);
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    return { id: uuidv4(), success: false, content: [{ type: 'text', text: `分列出错: ${errMsg}` }], error: errMsg };
+    return fail(`分列出错: ${errMsg}`, errMsg);
   }
 };
 
@@ -278,18 +253,14 @@ export const subtotalHandler: ToolHandler = async (
     range: string; groupBy: string; function: string; columns: string[]; sheet?: string;
   };
   try {
-    const response = await wpsClient.executeMethod<{ message: string }>(
-      'subtotal',
-      { range, groupBy, function: func, columns, sheet },
-      WpsAppType.SPREADSHEET
-    );
-    if (!response.success) {
-      return { id: uuidv4(), success: false, content: [{ type: 'text', text: `分类汇总失败: ${response.error}` }], error: response.error };
+    const response = await call<{ message: string }>('subtotal', { range, groupBy, function: func, columns, sheet });
+    if (!response.ok) {
+      return fail(`分类汇总失败: ${response.error}`, response.error);
     }
-    return { id: uuidv4(), success: true, content: [{ type: 'text', text: `分类汇总完成: 按 ${groupBy} 分组，${func} 汇总 [${columns.join(', ')}]` }] };
+    return ok(`分类汇总完成: 按 ${groupBy} 分组，${func} 汇总 [${columns.join(', ')}]`, response.warnings);
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    return { id: uuidv4(), success: false, content: [{ type: 'text', text: `分类汇总出错: ${errMsg}` }], error: errMsg };
+    return fail(`分类汇总出错: ${errMsg}`, errMsg);
   }
 };
 

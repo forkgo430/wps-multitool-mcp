@@ -478,7 +478,7 @@ export class WpsClient {
   async executeMethod<T = unknown>(
     method: string,
     params?: Record<string, unknown>,
-    appType?: WpsAppType
+    appType?: WpsAppType | AppKey
   ): Promise<WpsApiResponse<T>> {
     let finalParams: Record<string, unknown> = params || {};
     // 锁定目标文稿后自动注入目标名（已显式传入则不覆盖）。
