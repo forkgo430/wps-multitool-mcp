@@ -1,0 +1,17 @@
+{
+  "ts": "2026-11-20T15:55:24.604Z",
+  "anchors": {
+    "via": "sentences-native",
+    "anchor1": {
+      "dry": "dryRun 预览：1 项可插（未写文档）\n  ✓ 第1 项 → 第3章（第三章 测试章标题3）·段3·句3 [via=sentences-native] ← 「第三章 测试章标题3」 句全文：\"这是第三句，句末是插入点。\"\n（dryRun 预览，未写文档——确认落点后去掉 dryRun 再调一次）",
+      "real": "已插 1 项，失败 0 项\n  ✓ 第1 项 → 第3章（第三章 测试章标题3）·段3·句3 [via=sentences-native] ← 「第三章 测试章标题3」 域结果：第三章 测试章标题3 句全文：\"这是第三句，句末是插入点。\"\n建议接着调 wps_word_update_fields 让引用显示正确",
+      "via": "sentences-native"
+    },
+    "anchor2": {
+      "summary": "已插 29 项，失败 0 项"
+    },
+    "anchor3": {
+      "text": "已插 0 项，失败 1 项\n  ✗ 第1 项失败：域结果为空或缺超链接开关（code='REF BadBookmark \\h \\* MERGEFORMAT'）——被引对象可能只包住部分字符，请检查被引项的选择范围\n建议接着调 wps_word_update_fields 让引用显示正确"
+    }
+  }
+}

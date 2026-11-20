@@ -88,6 +88,7 @@ const STATIC_ACTIONS = {
   wps_ppt_set_animation: ['addAnimation', 'setAnimationOrder'],
   wps_ppt_set_background: ['setMasterBackground', 'setBackgroundColor', 'setSlideBackground', 'getSlideCount'],
   wps_ppt_set_transition: ['applyTransitionToAll', 'setSlideTransition'],
+  wps_ppt_3d: ['ppt3d'],   // 3D 四件套 op-merge（E 段）：ps1 四 case 合一为 ppt3d，按 op 分发；分类走默认 write 规则与旧四件一致
   // 第 1 期第 2 章第 1 轮：这两个原先调的是 ps1 里不存在的动作（setTextColor / setLineSpacing），
   // 动作名推不出来，只能挂手写注解表。现在动作名修对了（setFont / setParagraph），
   // 但它们仍然观测不到 —— handler 先校验必填参数（color / lineSpacing），

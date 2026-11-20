@@ -46,7 +46,8 @@ const erelOk = eidx.slice(1).map((v, k) => v - eidx[k]).every((d) => d > 0);
 check('excel 工作表 16 件相对注册顺序 = 拆分前原序', erelOk, erelOk ? '' : `实际序: ${SHEET_ORDER.map((n) => flat.indexOf(n)).join(',')}`);
 
 // ---- 3. 总量与 professional 集合完整性（拆分不许丢工具）
-check('注册总量 287 不变', flat.length === 287, String(flat.length));
+// 287→284：3D 四件套 op-merge（host wps 优先卡 E 段数字连锁；卡面明定）
+  check('注册总量 284（3D op-merge 后）', flat.length === 284, String(flat.length));
 check('professional 工具集（allTools）全部在注册表', allTools.every((t) => flat.includes(t.definition.name)), '');
 
 const passed = results.filter((x) => x.ok).length;

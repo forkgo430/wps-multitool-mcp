@@ -4,7 +4,7 @@ const routesSrc = fs.readFileSync('C:/Users/金东权/wps-skills/wps-multitool-m
 const routes = {};
 for (const m of routesSrc.matchAll(/"([A-Za-z0-9_]+)":\s*'(\w+)'/g)) routes[m[1]] = m[2];
 const cases = Object.keys(routes);
-if (cases.length !== 317) { console.error('路由表数量异常: ' + cases.length); process.exit(1); }
+if (cases.length !== 314) { console.error('路由表数量异常: ' + cases.length); process.exit(1); }
 
 const live = new Set([
   'createDocument', 'insertText', 'addHeading', 'setFont', 'insertTable', 'getTableData',
@@ -139,7 +139,7 @@ for (const app of Object.keys(byApp)) {
 const md = [];
 md.push('# Office 兼容度对账表（一期+二期+收口+模板层+三格式 · 全量施工图）');
 md.push('');
-md.push('> 分母 = ps1 全部 case **317**（word 75 / excel 105 / ppt 113 / common 24——模板层 renderTemplate/extractTemplate/renderTemplatePpt/renderTemplateXlsx 四 case 入 common，与 gen-action-routes 口径一致）。');
+md.push('> 分母 = ps1 全部 case **314**（3D 四件套 op-merge 为 ppt3d 单 case——host wps 优先卡 E 段；与 gen-action-routes 口径一致）。');
 md.push('> 标注三态：**直通**｜**需 quirk 分支(已落地/未落地)**（注明差异）｜**WPS 专用(Office 不做)**。');
 md.push('> 验证状态两档：**live**（真机实测）/ **static**（静态对账依据）。');
 md.push('> 一期：试点 32 case（36/36）；二期：抽验 44 case（60/61）；收口：双场景 42/42 + findInSheet 9/9 + B2 六项 14/14 + 孤儿桥 10/10；三格式：ppt/xlsx 渲染+导图像素+读回全绿（WPS 宿主主验证）。');
@@ -148,8 +148,8 @@ md.push('## 一、总统计');
 md.push('');
 md.push('| 标注 | case 数 | 占比 |');
 md.push('|---|---|---|');
-for (const k of Object.keys(stat)) md.push(`| ${k} | ${stat[k]} | ${(stat[k] * 100 / 317).toFixed(1)}% |`);
-md.push(`| **合计** | **317** | 100% |`);
+for (const k of Object.keys(stat)) md.push(`| ${k} | ${stat[k]} | ${(stat[k] * 100 / 314).toFixed(1)}% |`);
+md.push(`| **合计** | **314** | 100% |`);
 md.push('');
 md.push(`live 标注 ${liveCount} 个 case。`);
 md.push('');

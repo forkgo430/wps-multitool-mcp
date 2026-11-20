@@ -98,217 +98,123 @@ export const addMasterElementHandler: ToolHandler = async (
   );
 };
 
-// ==================== 3D 操作 ====================
+// ==================== 3D 操作（op-merge：四件 → wps_ppt_3d 一工具四操作；旧名走 TOOL_ALIASES 全保） ====================
 
-export const set3DRotationDefinition: ToolDefinition = {
-  name: 'wps_ppt_set_3d_rotation',
-  description: `设置幻灯片中形状的3D旋转效果。
-
-通过调整X/Y/Z轴旋转角度实现3D透视效果。
+export const ppt3dDefinition: ToolDefinition = {
+  name: 'wps_ppt_3d',
+  description: `PPT 3D 效果一站式工具——op 四选一：rotation=旋转 / depth=深度 / material=材质 / text=创建3D文字。
 
 使用场景：
-- "给形状添加3D旋转效果"
-- "设置3D透视角度"
-- "让形状有立体感"`,
+- "给形状添加3D旋转效果"（op=rotation）
+- "设置3D透视/深度"（op=depth）
+- "换成金属材质"（op=material）
+- "创建立体文字"（op=text）`,
   category: ToolCategory.PRESENTATION,
   inputSchema: {
     type: 'object',
     properties: {
+      op: {
+        type: 'string',
+        enum: ['rotation', 'depth', 'material', 'text'],
+        description: '3D 操作类型（四选一）',
+      },
       slideIndex: {
         type: 'number',
         description: '幻灯片页码（从1开始）',
       },
       shapeIndex: {
         type: 'number',
-        description: '形状索引（从1开始）',
+        description: '形状索引（从1开始）——op=rotation/depth/material 时必填',
       },
       rotation: {
         type: 'object',
-        description: '旋转参数对象，如 {rotX:30,rotY:45,rotZ:0,perspective:50}',
-      },
-    },
-    required: ['slideIndex', 'shapeIndex', 'rotation'],
-  },
-};
-
-export const set3DRotationHandler: ToolHandler = async (
-  args: Record<string, unknown>
-): Promise<ToolCallResult> => {
-  const { slideIndex, shapeIndex, rotation } = args as {
-    slideIndex: number;
-    shapeIndex: number;
-    rotation: Record<string, unknown>;
-  };
-
-  const r = await call('set3DRotation', { slideIndex, shapeIndex, rotation });
-  if (!r.ok) return fail(errText('设置3D旋转失败', r), r.error);
-  return ok(
-    `3D旋转设置成功！\n幻灯片: 第 ${slideIndex} 页\n形状: 第 ${shapeIndex} 个\n旋转参数: ${JSON.stringify(rotation)}`,
-    r.warnings
-  );
-};
-
-export const set3DDepthDefinition: ToolDefinition = {
-  name: 'wps_ppt_set_3d_depth',
-  description: `设置幻灯片中形状的3D挤出深度。
-
-通过调整深度值使形状产生立体挤出效果。
-
-使用场景：
-- "给形状添加3D深度"
-- "设置立体厚度"
-- "增加形状深度效果"`,
-  category: ToolCategory.PRESENTATION,
-  inputSchema: {
-    type: 'object',
-    properties: {
-      slideIndex: {
-        type: 'number',
-        description: '幻灯片页码（从1开始）',
-      },
-      shapeIndex: {
-        type: 'number',
-        description: '形状索引（从1开始）',
+        description: '旋转参数对象，如 {rotX:30,rotY:45,rotZ:0,perspective:50}——op=rotation 时必填',
       },
       depth: {
         type: 'number',
-        description: '挤出深度值（磅），如 20、50、100',
-      },
-    },
-    required: ['slideIndex', 'shapeIndex', 'depth'],
-  },
-};
-
-export const set3DDepthHandler: ToolHandler = async (
-  args: Record<string, unknown>
-): Promise<ToolCallResult> => {
-  const { slideIndex, shapeIndex, depth } = args as {
-    slideIndex: number;
-    shapeIndex: number;
-    depth: number;
-  };
-
-  const r = await call('set3DDepth', { slideIndex, shapeIndex, depth });
-  if (!r.ok) return fail(errText('设置3D深度失败', r), r.error);
-  return ok(
-    `3D深度设置成功！\n幻灯片: 第 ${slideIndex} 页\n形状: 第 ${shapeIndex} 个\n深度: ${depth} 磅`,
-    r.warnings
-  );
-};
-
-export const set3DMaterialDefinition: ToolDefinition = {
-  name: 'wps_ppt_set_3d_material',
-  description: `设置幻灯片中形状的3D材质效果。
-
-支持的材质类型：
-- matte: 哑光
-- plastic: 塑料
-- metal: 金属
-- wireframe: 线框
-- soft_edge: 柔化边缘
-- flat: 平面
-- dark_edge: 暗边
-
-使用场景：
-- "给形状设置金属材质"
-- "改成塑料质感"
-- "用哑光效果"`,
-  category: ToolCategory.PRESENTATION,
-  inputSchema: {
-    type: 'object',
-    properties: {
-      slideIndex: {
-        type: 'number',
-        description: '幻灯片页码（从1开始）',
-      },
-      shapeIndex: {
-        type: 'number',
-        description: '形状索引（从1开始）',
+        description: '深度（磅）——op=depth 时必填',
       },
       material: {
         type: 'string',
-        description: '材质类型：matte(哑光)、plastic(塑料)、metal(金属)、wireframe(线框)、soft_edge(柔化)、flat(平面)、dark_edge(暗边)',
-      },
-    },
-    required: ['slideIndex', 'shapeIndex', 'material'],
-  },
-};
-
-export const set3DMaterialHandler: ToolHandler = async (
-  args: Record<string, unknown>
-): Promise<ToolCallResult> => {
-  const { slideIndex, shapeIndex, material } = args as {
-    slideIndex: number;
-    shapeIndex: number;
-    material: string;
-  };
-
-  const r = await call('set3DMaterial', { slideIndex, shapeIndex, material });
-  if (!r.ok) return fail(errText('设置3D材质失败', r), r.error);
-  const materialName: Record<string, string> = {
-    matte: '哑光',
-    plastic: '塑料',
-    metal: '金属',
-    wireframe: '线框',
-    soft_edge: '柔化边缘',
-    flat: '平面',
-    dark_edge: '暗边',
-  };
-
-  return ok(
-    `3D材质设置成功！\n幻灯片: 第 ${slideIndex} 页\n形状: 第 ${shapeIndex} 个\n材质: ${materialName[material] || material}`,
-    r.warnings
-  );
-};
-
-export const create3DTextDefinition: ToolDefinition = {
-  name: 'wps_ppt_create_3d_text',
-  description: `在幻灯片中创建带有3D效果的文字。
-
-可以指定文字内容和3D样式参数。
-
-使用场景：
-- "创建3D标题文字"
-- "添加立体文字效果"
-- "做一个炫酷的3D文字"`,
-  category: ToolCategory.PRESENTATION,
-  inputSchema: {
-    type: 'object',
-    properties: {
-      slideIndex: {
-        type: 'number',
-        description: '幻灯片页码（从1开始）',
+        description: '材质名——op=material 时必填',
       },
       text: {
         type: 'string',
-        description: '文字内容',
+        description: '文字内容——op=text 时必填',
       },
       style: {
         type: 'object',
-        description: '可选的3D样式参数，如 {depth:30,material:"metal",color:"#FFD700",fontSize:48,rotation:{rotX:20,rotY:30}}',
+        description: '可选的3D样式参数，如 {depth:30,material:"metal",color:"#FFD700",fontSize:48,rotation:{rotX:20,rotY:30}}——op=text 时可用',
       },
     },
-    required: ['slideIndex', 'text'],
+    required: ['op', 'slideIndex'],
   },
 };
 
-export const create3DTextHandler: ToolHandler = async (
+export const ppt3dHandler: ToolHandler = async (
   args: Record<string, unknown>
 ): Promise<ToolCallResult> => {
-  const { slideIndex, text, style } = args as {
-    slideIndex: number;
-    text: string;
-    style?: Record<string, unknown>;
-  };
-
-  const r = await call<{ shapeId?: number }>('create3DText', { slideIndex, text, style: style || {} });
-  if (!r.ok || !r.data) return fail(errText('创建3D文字失败', r), r.error);
-  return ok(
-    `3D文字创建成功！\n幻灯片: 第 ${slideIndex} 页\n文字: "${text}"${r.data.shapeId ? `\n形状ID: ${r.data.shapeId}` : ''}`,
-    r.warnings
-  );
+  const op = String(args.op);
+  const { slideIndex } = args as { slideIndex: number };
+  if (op === 'rotation') {
+    const { shapeIndex, rotation } = args as { shapeIndex: number; rotation: Record<string, unknown> };
+    if (!shapeIndex || !rotation) return fail('op=rotation 需要 shapeIndex 与 rotation（如 {rotX:30,rotY:45,rotZ:0,perspective:50}）', 'invalid_params');
+    const r = await call('ppt3d', { op: 'rotation', slideIndex, shapeIndex, rotation });
+    if (!r.ok) return fail(errText('设置3D旋转失败', r), r.error);
+    return ok(
+      `3D旋转设置成功！
+幻灯片: 第 ${slideIndex} 页
+形状: 第 ${shapeIndex} 个
+旋转参数: ${JSON.stringify(rotation)}`,
+      r.warnings
+    );
+  }
+  if (op === 'depth') {
+    const { shapeIndex, depth } = args as { shapeIndex: number; depth: number };
+    if (!shapeIndex || depth === undefined) return fail('op=depth 需要 shapeIndex 与 depth（磅）', 'invalid_params');
+    const r = await call('ppt3d', { op: 'depth', slideIndex, shapeIndex, depth });
+    if (!r.ok) return fail(errText('设置3D深度失败', r), r.error);
+    return ok(
+      `3D深度设置成功！
+幻灯片: 第 ${slideIndex} 页
+形状: 第 ${shapeIndex} 个
+深度: ${depth} 磅`,
+      r.warnings
+    );
+  }
+  if (op === 'material') {
+    const { shapeIndex, material } = args as { shapeIndex: number; material: string };
+    if (!shapeIndex || !material) return fail('op=material 需要 shapeIndex 与 material', 'invalid_params');
+    const r = await call('ppt3d', { op: 'material', slideIndex, shapeIndex, material });
+    if (!r.ok) return fail(errText('设置3D材质失败', r), r.error);
+    const materialName: Record<string, string> = {
+      matte: '哑光',
+      metal: '金属',
+      plastic: '塑料',
+      glass: '玻璃',
+    };
+    return ok(
+      `3D材质设置成功！
+幻灯片: 第 ${slideIndex} 页
+形状: 第 ${shapeIndex} 个
+材质: ${materialName[material] || material}`,
+      r.warnings
+    );
+  }
+  if (op === 'text') {
+    const { text, style } = args as { text: string; style?: Record<string, unknown> };
+    if (!text) return fail('op=text 需要 text（文字内容）', 'invalid_params');
+    const r = await call<{ shapeId?: number }>('ppt3d', { op: 'text', slideIndex, text, style: style || {} });
+    if (!r.ok || !r.data) return fail(errText('创建3D文字失败', r), r.error);
+    return ok(
+      `3D文字创建成功！
+幻灯片: 第 ${slideIndex} 页
+文字: "${text}"${r.data.shapeId ? `\n形状ID: ${r.data.shapeId}` : ''}`,
+      r.warnings
+    );
+  }
+  return fail("op 只能是 rotation / depth / material / text", 'invalid_params');
 };
-
 // ==================== 超链接操作 ====================
 
 /**
@@ -561,10 +467,7 @@ export const miscTools: RegisteredTool[] = [
   { definition: getSlideMasterDefinition, handler: getSlideMasterHandler },
   { definition: addMasterElementDefinition, handler: addMasterElementHandler },
   // 3D操作
-  { definition: set3DRotationDefinition, handler: set3DRotationHandler },
-  { definition: set3DDepthDefinition, handler: set3DDepthHandler },
-  { definition: set3DMaterialDefinition, handler: set3DMaterialHandler },
-  { definition: create3DTextDefinition, handler: create3DTextHandler },
+  { definition: ppt3dDefinition, handler: ppt3dHandler },
   // 超链接操作
   { definition: addPptHyperlinkDefinition, handler: addPptHyperlinkHandler },
   { definition: removePptHyperlinkDefinition, handler: removePptHyperlinkHandler },

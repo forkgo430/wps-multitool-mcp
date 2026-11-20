@@ -3,7 +3,7 @@
 [简体中文](README.md) | **English**
 
 <!-- AUTO:badges:start -->
-[![CI](https://github.com/forkgo430/wps-multitool-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/forkgo430/wps-multitool-mcp/actions/workflows/ci.yml) [![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE) [![npm](https://img.shields.io/npm/v/wps-multitool-mcp)](https://www.npmjs.com/package/wps-multitool-mcp) [![release](https://img.shields.io/github/v/release/forkgo430/wps-multitool-mcp)](https://github.com/forkgo430/wps-multitool-mcp/releases) [![tools](https://img.shields.io/badge/tools-287-brightgreen.svg)](#capabilities) [![platform](https://img.shields.io/badge/platform-Windows%20only-lightgrey.svg)](#requirements)
+[![CI](https://github.com/forkgo430/wps-multitool-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/forkgo430/wps-multitool-mcp/actions/workflows/ci.yml) [![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE) [![npm](https://img.shields.io/npm/v/wps-multitool-mcp)](https://www.npmjs.com/package/wps-multitool-mcp) [![release](https://img.shields.io/github/v/release/forkgo430/wps-multitool-mcp)](https://github.com/forkgo430/wps-multitool-mcp/releases) [![tools](https://img.shields.io/badge/tools-284-brightgreen.svg)](#capabilities) [![platform](https://img.shields.io/badge/platform-Windows%20only-lightgrey.svg)](#requirements)
 <!-- AUTO:badges:end -->
 
 > Let AI directly drive the office suite you have open right now — WPS Writer, Spreadsheets, Presentation, and Microsoft Office 365.
@@ -20,7 +20,7 @@
 | WPS Presentation | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Microsoft Office 365 | ✓ | ✓ | ✓ | ✓ | ✓ |
 
-<sub>Microsoft Office 365 shares the exact same tools and parameters as WPS; the host is auto-detected (pin it with `WPS_OFFICE`).</sub>
+<sub>Microsoft Office 365 shares the exact same tools and parameters as WPS; the host is auto-detected (dual-install defaults to WPS; `WPS_HOST_PREFERENCE=office` flips it, explicit `WPS_OFFICE` wins).</sub>
 
 <sub>Author / maintainer: **Yingrong** · [npm](https://www.npmjs.com/package/wps-multitool-mcp) · [Releases](https://github.com/forkgo430/wps-multitool-mcp/releases)</sub>
 
@@ -86,7 +86,7 @@ Four conveniences built in:
 |-----|-------|-----------|
 | Excel | 91 | formulas, data, charts, pivot tables, sheets, formatting, workbooks, rows/columns, comments & protection, image export |
 | Word | 69 | formatting, content, document management, headers/footers, comments, bookmarks, tables, templates, academic layout, revisions, index, cross-references |
-| PPT | 99 | slides, shapes, images, tables, beautify, animations, charts, 3D, data viz, image export |
+| PPT | 96 | slides, shapes, images, tables, beautify, animations, charts, 3D, data viz, image export |
 | Common | 28 | save, connection check, text selection, format conversion, tool groups, intent routing, batch |
 | Built-in | 7 (already counted above) | connection check, generic method, data cache |
 <!-- AUTO:tool-table:end -->
@@ -99,9 +99,9 @@ to the new tools with parameters migrated.
 <summary><b>Scale (measured from the registry)</b></summary>
 
 <!-- AUTO:tool-stats:start -->
-- **287 tools** (7 built-in + 280 specialized); **only 40 listed by default** (essential ∩ live-verified, load on demand — see `scripts/manual/basic-tier-verify.js`)
-- Distribution (by tool group, built-ins counted in their app group): Common 28 (incl. core) / Word 69 / Excel 91 / PPT 99
-- Annotations (measured): read-only 51 / destructive 36 / non-idempotent 115 — coverage 287/287
+- **284 tools** (7 built-in + 277 specialized); **only 40 listed by default** (essential ∩ live-verified, load on demand — see `scripts/manual/basic-tier-verify.js`)
+- Distribution (by tool group, built-ins counted in their app group): Common 28 (incl. core) / Word 69 / Excel 91 / PPT 96
+- Annotations (measured): read-only 51 / destructive 36 / non-idempotent 114 — coverage 284/284
 <!-- AUTO:tool-stats:end -->
 
 </details>
@@ -218,7 +218,7 @@ Full threat model in [SECURITY.md](SECURITY.md).
 
 ## Design boundaries (each is a choice — and a promise)
 
-- **Native Windows integration**: drives the office suite you have open — the AI works on the live documents in front of you, WYSIWYG; if a file isn't open it will tell you to open it, never popping windows behind your back. Both WPS Office and Microsoft Office 365 are supported through the same tool surface with automatic host detection (Office drives when installed; pin it explicitly via `WPS_OFFICE`); verified capability coverage is published in the compatibility matrix. The Linux channel is validated end-to-end (roadmap below).
+- **Native Windows integration**: drives the office suite you have open — the AI works on the live documents in front of you, WYSIWYG; if a file isn't open it will tell you to open it, never popping windows behind your back. Both WPS Office and Microsoft Office 365 are supported through the same tool surface with automatic host detection (dual-install defaults to WPS — `WPS_HOST_PREFERENCE=office` flips the preference; explicit `WPS_OFFICE` always wins); verified capability coverage is published in the compatibility matrix. The Linux channel is validated end-to-end (roadmap below).
 - **Cloud documents count**: a cloud doc opened in WPS is a live document — the AI reads and writes whatever WPS has open, regardless of where it's stored; the focus stays on the document open in front of you.
 - **Multi-step tasks in one shot**: the task engine runs a whole workflow server-side (with progress notifications) — the AI only sees the final result.
 - **Undo & recover**: step-by-step undo (`wps_word_undo`, UndoRecord-grade) + automatic snapshots before destructive operations with one-click restore (`snapshot_restore`) — every change has a clear way back.

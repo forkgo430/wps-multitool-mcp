@@ -6,8 +6,8 @@
     "基线建立：2026-10-25 第五任（pwsh7 兼容与退出护栏已包含在内）。"
   ],
   "files": {
-    "src/bridge/index.ts": "db173e85ec4687bdc41be9944b9a1e4af80afd46849554a939769058017a913a",
-    "src/bridge/ps-child.ts": "4b307fc3e418f8534d0de3e0217c070eb5776f1b5deff7e8a7911e572c5916cd",
+    "src/bridge/index.ts": "8999dedf4baa7a691474a164b9711f1d639b8b795891aea8ac828c0065e89af6",
+    "src/bridge/ps-child.ts": "3675d138a84b03cc51fdfa80a6775e5bea6abbd65646ad39d38b70eeb4f19707",
     "src/bridge/cancellable.ts": "b185e5da107faffdaddb434520d0ce960b743606b4f42afe87638de48710a98a",
     "src/client/ps-daemon.ts": "5da1eafbb3772400f7bf0db492810ffd983037fe13a7dc0318e176f5d3e8eb0c",
     "scripts/wps-comd.ps1": "3b9df2287b1329c98d0a6e49704f7c6303f93ec3348e96f1d512b4923ba2b703"

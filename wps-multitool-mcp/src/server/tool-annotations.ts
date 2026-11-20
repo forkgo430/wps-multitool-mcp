@@ -17,6 +17,7 @@ import {
 } from '../bridge/cancellable';
 import { TOOL_ACTIONS } from './tool-annotations.generated';
 import { resolveToolAlias } from './tool-aliases.generated';
+import { isLiveVerified } from './tool-verification';
 
 /** MCP 规范里的工具注解（字段名与规范一致，别改） */
 export interface ToolAnnotations {
@@ -30,6 +31,8 @@ export interface ToolAnnotations {
   idempotentHint?: boolean;
   /** 会与外部系统交互。本 MCP 只碰本机 WPS，一律 false */
   openWorldHint?: boolean;
+  /** 验证状态标签：live = 真机跑通过；static = 只有静态/mock 校验（真源：tool-verification.json 生成链） */
+  verification?: 'live' | 'static';
 }
 
 const cache = new Map<string, ToolAnnotations | undefined>();
@@ -217,8 +220,10 @@ export function getToolAnnotations(toolName: string): ToolAnnotations | undefine
 
   const extra = EXTRA_ANNOTATIONS[name];
   if (extra) {
-    cache.set(name, extra);
-    return extra;
+    // 手写注解同样带 verification 标签（D3：复制一份，不改模块常量）
+    const ann = { ...extra, verification: (isLiveVerified(name) ? 'live' : 'static') as 'live' | 'static' };
+    cache.set(name, ann);
+    return ann;
   }
 
   const actions = TOOL_ACTIONS[name];
@@ -238,6 +243,8 @@ export function getToolAnnotations(toolName: string): ToolAnnotations | undefine
     idempotentHint: actions.every(isIdempotentAction),
     // 本 MCP 的全部副作用都在本机 WPS，不访问外部系统
     openWorldHint: false,
+    // 验证状态标签（host wps 优先卡 D3）：live/static 随 tools/list 下发，模型能看见工具真机验证过没有
+    verification: (isLiveVerified(name) ? 'live' : 'static') as 'live' | 'static',
   };
 
   cache.set(name, ann);

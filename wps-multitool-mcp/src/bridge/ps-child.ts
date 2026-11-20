@@ -51,6 +51,13 @@ function resolvePowerShellHost(): { exe: string; sta: boolean; label: string } {
 }
 
 const PS_HOST = resolvePowerShellHost();
+
+// 会话级 host 切换（变更二）：桥收到 POST /host 后写进来；此后新 spawn 的子进程
+// 带上 WPS_OFFICE 显式锁定（on=office / off=wps）——已有子进程由桥标 stale 惰性重建。
+let spawnHostEnv: Record<string, string> | null = null;
+export function setSpawnHostEnv(host: 'wps' | 'office' | null): void {
+  spawnHostEnv = host ? { WPS_OFFICE: host === 'office' ? 'on' : 'off' } : null;
+}
 console.error(`[ps-child] PowerShell 宿主: ${PS_HOST.label}`);
 
 /** 起进程 + 握手就绪的上限。冷启动实测约 5 秒，给足余量 */
@@ -680,7 +687,11 @@ export class PsChildDaemon {
             '-App',
             this.appKey,
           ],
-          { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] }
+          {
+            windowsHide: true,
+            stdio: ['pipe', 'pipe', 'pipe'],
+            env: { ...process.env, ...(spawnHostEnv ?? {}) },
+          }
         );
       } catch (err) {
         reject(new ChildUnavailableError(`无法启动 PowerShell（${this.appKey}）: ${(err as Error).message}`));

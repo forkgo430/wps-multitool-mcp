@@ -3,7 +3,7 @@
 **简体中文** | [English](README.en.md)
 
 <!-- AUTO:badges:start -->
-[![CI](https://github.com/forkgo430/wps-multitool-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/forkgo430/wps-multitool-mcp/actions/workflows/ci.yml) [![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE) [![npm](https://img.shields.io/npm/v/wps-multitool-mcp)](https://www.npmjs.com/package/wps-multitool-mcp) [![release](https://img.shields.io/github/v/release/forkgo430/wps-multitool-mcp)](https://github.com/forkgo430/wps-multitool-mcp/releases) [![tools](https://img.shields.io/badge/tools-287-brightgreen.svg)](#能力一览) [![platform](https://img.shields.io/badge/platform-Windows%20only-lightgrey.svg)](#安装)
+[![CI](https://github.com/forkgo430/wps-multitool-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/forkgo430/wps-multitool-mcp/actions/workflows/ci.yml) [![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE) [![npm](https://img.shields.io/npm/v/wps-multitool-mcp)](https://www.npmjs.com/package/wps-multitool-mcp) [![release](https://img.shields.io/github/v/release/forkgo430/wps-multitool-mcp)](https://github.com/forkgo430/wps-multitool-mcp/releases) [![tools](https://img.shields.io/badge/tools-284-brightgreen.svg)](#能力一览) [![platform](https://img.shields.io/badge/platform-Windows%20only-lightgrey.svg)](#安装)
 <!-- AUTO:badges:end -->
 
 > 让 AI 直接操控你正开着的办公套件——WPS 文字、表格、演示，以及 Microsoft Office 365。
@@ -19,7 +19,7 @@
 | WPS 演示 | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Microsoft Office 365 | ✓ | ✓ | ✓ | ✓ | ✓ |
 
-<sub>Microsoft Office 365 与 WPS 共用上面同一套工具、同一批参数；驱动哪套由 host 自动探测（可用 `WPS_OFFICE` 显式指定）。</sub>
+<sub>Microsoft Office 365 与 WPS 共用上面同一套工具、同一批参数；驱动哪套由 host 自动探测（双装缺省 WPS；`WPS_HOST_PREFERENCE=office` 改偏好，`WPS_OFFICE` 显式指定优先级最高）。</sub>
 
 <sub>作者 / 维护者：**赢容** · [npm](https://www.npmjs.com/package/wps-multitool-mcp) · [Release](https://github.com/forkgo430/wps-multitool-mcp/releases)</sub>
 
@@ -86,7 +86,7 @@ irm https://cdn.jsdelivr.net/gh/forkgo430/wps-multitool-mcp@main/scripts/install
 |------|--------|---------|
 | Excel | 91 | 公式/数据/图表/透视表/工作表/格式/工作簿/行列/批注保护/图片导出 |
 | Word | 69 | 格式/内容/文档管理/页眉页脚/批注/书签/表格/模板填写/学术排版/修订/索引/交叉引用 |
-| PPT | 99 | 幻灯片/形状/图片/表格/美化/动画/图表/3D/数据可视化/图片导出 |
+| PPT | 96 | 幻灯片/形状/图片/表格/美化/动画/图表/3D/数据可视化/图片导出 |
 | 通用 | 28 | 保存/连接检测/文本选取/格式转换/工具组管理/意图路由/批量执行 |
 | 内置 | 7（已计入上方各组） | 连接检查/万能方法调用/数据缓存 |
 <!-- AUTO:tool-table:end -->
@@ -98,9 +98,9 @@ irm https://cdn.jsdelivr.net/gh/forkgo430/wps-multitool-mcp@main/scripts/install
 <summary><b>规模（由注册表实测生成）</b></summary>
 
 <!-- AUTO:tool-stats:start -->
-- **287 个工具**（7 个内置 + 280 个专业/组工具）；**默认只列 40 个**（基础档 ∩ 真机验证，按需加载 —— 口径与校验见 `scripts/manual/basic-tier-verify.js`）
-- 分布（按工具组，内置计入对应组）：通用 28（含 core）/ Word 69 / Excel 91 / PPT 99
-- 注解（实测）：只读 51 / 破坏性 36 / 非幂等 115，覆盖 287/287
+- **284 个工具**（7 个内置 + 277 个专业/组工具）；**默认只列 40 个**（基础档 ∩ 真机验证，按需加载 —— 口径与校验见 `scripts/manual/basic-tier-verify.js`）
+- 分布（按工具组，内置计入对应组）：通用 28（含 core）/ Word 69 / Excel 91 / PPT 96
+- 注解（实测）：只读 51 / 破坏性 36 / 非幂等 114，覆盖 284/284
 <!-- AUTO:tool-stats:end -->
 
 </details>
@@ -214,7 +214,7 @@ dsh plugin --profile <你的profile> add dsh-multitool
 
 ## 设计边界（每一条都是选择，也是承诺）
 
-- **Windows 原生深度集成**：直接驱动你正开着的办公套件——AI 操作的就是你眼前的活文档，所见即所得；文件没打开会明确提示你开，绝不在后台偷偷弹窗。同时支持 WPS Office 与 Microsoft Office 365 双套件：同一套工具面，host 自动探测（装了 Office 就驱动 Office，也可用 `WPS_OFFICE` 显式指定）；已验证的能力覆盖见对账表。Linux 支持在建（路线见下）。
+- **Windows 原生深度集成**：直接驱动你正开着的办公套件——AI 操作的就是你眼前的活文档，所见即所得；文件没打开会明确提示你开，绝不在后台偷偷弹窗。同时支持 WPS Office 与 Microsoft Office 365 双套件：同一套工具面，host 自动探测（双装缺省驱动 WPS——`WPS_HOST_PREFERENCE=office` 可改偏好，`WPS_OFFICE` 显式指定优先级最高）；已验证的能力覆盖见对账表。Linux 支持在建（路线见下）。
 - **云端文档同样可操作**：在 WPS 里打开的云文档就是活文档——AI 操作的是 WPS 里打开的文档，与存在本地还是云端无关；专注点始终是你眼前开着的这份。
 - **多步骤任务一次跑完**：任务引擎在服务端顺序执行整个流程（带进度通知），AI 只看最终结果，不用盯着每一步。
 - **可撤销、可恢复**：逐步撤销（`wps_word_undo`，UndoRecord 级）+ 破坏性操作前自动建快照、一键恢复（`snapshot_restore`）——每一笔改动都有明确的退路。

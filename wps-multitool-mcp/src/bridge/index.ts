@@ -21,8 +21,9 @@ import * as net from 'net';
 import * as os from 'os';
 import * as path from 'path';
 import * as fs from 'fs';
-import { PsChildDaemon, queueMax, queueTimeoutMs, exclusiveSet } from './ps-child';
+import { PsChildDaemon, queueMax, queueTimeoutMs, exclusiveSet, setSpawnHostEnv } from './ps-child';
 import { RUNTIME_ID } from '../runtime-identity';
+import { detectHost, probeHostLive, setHostOverride } from '../server/backend-selector';
 
 /** 默认管道名：按用户区分，避免多用户/多会话互相串。前缀用 RUNTIME_ID（跨进程契约，见该文件） */
 function defaultPipeName(): string {
@@ -100,6 +101,16 @@ function childKey(app: AppKey, instance: string): string {
 }
 
 function getChild(app: AppKey, instance: string = 'user'): PsChildDaemon {
+  const staleKey = childKey(app, instance);
+  if (staleChildren.has(staleKey)) {
+    // host 切换后的惰性重建：老子进程按旧 env 还活着，下次调用才按新 host 重开
+    staleChildren.delete(staleKey);
+    const old = children.get(staleKey);
+    if (old) {
+      old.dispose();
+      children.delete(staleKey);
+    }
+  }
   const key = childKey(app, instance);
   let c = children.get(key);
   if (!c) {
@@ -238,6 +249,11 @@ const HTTP_PORT = parseInt(process.env.WPS_BRIDGE_HTTP_PORT || '27731', 10);
 // 不丢请求；MCP 客户端自身的超时（120 秒）是硬上限，暂停超过它按客户端超时算。
 let hold = false;
 
+// 会话级 host 切换（变更二 · 2026-11-17）：控制面写，子进程池惰性重建。
+// env 显式锁定（WPS_OFFICE=on/off）时 POST /host 拒绝——显式锁定 > 会话切换。
+let hostOverride: 'wps' | 'office' | null = null;
+const staleChildren = new Set<string>();
+
 function waitWhileHold(): Promise<void> {
   return new Promise((resolve) => {
     const tick = () => (hold ? setTimeout(tick, 150) : resolve());
@@ -264,6 +280,9 @@ function bridgeStatusPayload(): Record<string, unknown> {
     queueMax: queueMax(),
     queueTimeoutMs: queueTimeoutMs(),
     hold,
+    hostOverride,
+    hostProbed: probeHostLive(),
+    hostActive: hostOverride ?? detectHost().host,
     appsRunning: running,
     children: childrenList,
     recent: LOG.slice(-50).reverse(),
@@ -289,6 +308,54 @@ function startHttpEndpoint(): void {
           'Cache-Control': 'no-store',
         });
         res.end(JSON.stringify({ ok: true, hold }));
+      });
+      return;
+    }
+    if (req.method === 'POST' && url === '/host') {
+      // 会话级 host 切换（变更二）。localhost 专属（server.listen 只绑 127.0.0.1）+
+      // 影响面仅 host 覆盖标记；env 显式锁定 WPS_OFFICE 时拒绝并说明。
+      let body = '';
+      req.on('data', (c) => (body += c));
+      req.on('end', () => {
+        const explicit = (process.env.WPS_OFFICE ?? '').trim().toLowerCase();
+        if (explicit === 'on' || explicit === 'off') {
+          res.writeHead(409, {
+            'Content-Type': 'application/json; charset=utf-8',
+            'Access-Control-Allow-Origin': 'null',
+            'Cache-Control': 'no-store',
+          });
+          res.end(JSON.stringify({
+            ok: false,
+            error: `WPS_OFFICE=\${explicit} 显式锁定（显式锁定 > 会话切换），切换被拒；请改环境变量后重启`,
+          }));
+          return;
+        }
+        let host: string | undefined;
+        try { host = JSON.parse(body || '{}').host; } catch { /* 非法体按缺参 */ }
+        if (host !== 'wps' && host !== 'office') {
+          res.writeHead(400, {
+            'Content-Type': 'application/json; charset=utf-8',
+            'Access-Control-Allow-Origin': 'null',
+            'Cache-Control': 'no-store',
+          });
+          res.end(JSON.stringify({ ok: false, error: "host 必须是 'wps' 或 'office'" }));
+          return;
+        }
+        hostOverride = host;
+        setHostOverride(host);
+        setSpawnHostEnv(host);
+        for (const k of children.keys()) staleChildren.add(k);
+        res.writeHead(200, {
+          'Content-Type': 'application/json; charset=utf-8',
+          'Access-Control-Allow-Origin': 'null',
+          'Cache-Control': 'no-store',
+        });
+        res.end(JSON.stringify({
+          ok: true,
+          hostOverride,
+          rebuilt: 'lazy',
+          note: 'host 已切换；word/excel/ppt 各目标记忆将在下次调用时随子进程重建（附着制，用户文档零影响）',
+        }));
       });
       return;
     }
@@ -348,6 +415,9 @@ async function handleRequest(
           exclusiveActions: [...exclusiveSet()],
         },
         children: childStats(),
+        hostOverride,
+        hostProbed: probeHostLive(),
+        hostActive: hostOverride ?? detectHost().host,
       },
     });
     return;

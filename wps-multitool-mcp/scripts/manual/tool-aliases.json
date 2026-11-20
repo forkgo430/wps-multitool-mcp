@@ -62,6 +62,10 @@
     "  wps_ppt_auto_beautify_slide / wps_ppt_beautify_all_slides → wps_ppt_beautify（op 三分支",
     "  quick/auto/style），set 固定 op 分支；旧调用文本在对应分支里逐字保留。"
   ],
+"wps_ppt_set_3d_rotation": { "to": "wps_ppt_3d", "set": { "op": "rotation" } },
+"wps_ppt_set_3d_depth": { "to": "wps_ppt_3d", "set": { "op": "depth" } },
+"wps_ppt_set_3d_material": { "to": "wps_ppt_3d", "set": { "op": "material" } },
+"wps_ppt_create_3d_text": { "to": "wps_ppt_3d", "set": { "op": "text" } },
   "aliases": {
     "wps_common_ping": "wps_check_connection",
     "wps_common_wire_check": "wps_check_connection",

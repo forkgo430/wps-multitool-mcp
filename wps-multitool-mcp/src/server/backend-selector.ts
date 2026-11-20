@@ -7,13 +7,15 @@
  *      （不特判的话 WSL 用户会被错误甩去 addon 通道，平白多一层延迟且原因不可见）
  *   4. Linux/macOS 能力探测（端口上有加载项握手吗）——加载项通道未实现前到不了这层
  *   5. 兜底：明确抛错 + 说清该等什么/设什么，绝不静默降级
- * host 维度（Office 支持一期 · 与 WPS_BACKEND 正交）：
+ * host 维度（Office 支持一期 · 与 WPS_BACKEND 正交；host wps 优先 = 2026-11-17 所有者裁决）：
  *   WPS_OFFICE=on | off | auto（缺省 auto）。
- *   - on/off：强制指定 host，用户显式选择不探测。
- *   - auto：解析 ProgID 链到【实际服务器二进制】再归类——
+ *   - on/off：强制指定 host，用户显式选择不探测（显式锁定优先于一切，控制面切换也被拒）。
+ *   - auto：双链探测——Office 链（Word/Excel/PowerPoint.Application）与 WPS 链
+ *     （Kwps/Ket/Kwpp.Application）各自解析 ProgID 到【实际服务器二进制】真身：
  *     ProgID 存在性、CoCreate 成败、Application.Name/Version 自报统统不可信：
  *     COM 激活会被 WPS 动态类工厂顶名应答（Name 自报 'Microsoft Word'、Version 12.0）。
  *     唯一可靠判据 = LocalServer32 指向的 exe 真身（wps.exe → wps；WINWORD.EXE → office）。
+ *     两链都成立 → WPS_HOST_PREFERENCE（缺省 wps）取舍；单链成立 → 该链。
  *   - 探测不可用 / 结论不一致 → 保守按 wps（现任主通道），不猜、不静默假装 office 可用。
  *   - backend=off 时 host 维度不适用，固定 'wps'（不探测）。
  * （Windows 延迟不变）：识别结果模块内缓存一次；Windows 上每次调用只是读缓存，
@@ -137,10 +139,65 @@ function runRegQuery(key: string): string | null {
 
 let hostProbeCache: Host | null | undefined;
 
+/** Office 家族 ProgID（Office 链：三件全部解析到 office 二进制才算成立） */
+export const OFFICE_PROGIDS = ['Word.Application', 'Excel.Application', 'PowerPoint.Application'];
+/** WPS 家族 ProgID（WPS 链：与 Office 三链对称，Kwps/Ket/Kwpp） */
+export const WPS_PROGIDS = ['Kwps.Application', 'Ket.Application', 'Kwpp.Application'];
+
+export interface ChainResult {
+  /** 链结论（null = 链不成立：断链/残缺/不一致/被顶名） */
+  host: Host | null;
+  /** Office ProgID 被解析到 WPS 二进制 = 顶名劫持实锤（WPS 独装机的典型形态） */
+  hijacked: boolean;
+}
+
 /**
- * 真机 host 探测（结果缓存）。三件 ProgID 全部解析成功且结论一致才下结论；
- * 任一环节断了 / 结论不一致（如 Word=office 而 Excel=wps 的残缺安装）→ null，
- * 由 detectHost 保守回落 wps。探测失败不是错误——是"不知道"，绝不猜成 office。
+ * 单链解析：一条链的三件 ProgID 全部解析成功且结论一致才成立；
+ * 结论必须是期望 host（Office 链全部解析到 wps 二进制 = WPS 顶名劫持，链不成立而非结论）。
+ * 纯逻辑，注入 reg 读取器可单测。
+ */
+export function resolveChain(progids: string[], expected: Host, runReg: RegRunner): ChainResult {
+  const results: Host[] = [];
+  let hijacked = false;
+  for (const pid of progids) {
+    const h = resolveProgidHost(pid, runReg);
+    if (h) {
+      results.push(h);
+      if (h !== expected) hijacked = true;
+    }
+  }
+  if (results.length !== progids.length) return { host: null, hijacked };
+  if (!results.every((h) => h === results[0])) return { host: null, hijacked };
+  if (results[0] !== expected) return { host: null, hijacked: true };
+  return { host: expected, hijacked: false };
+}
+
+/**
+ * 双链取舍（纯函数）：两链都成立 → preference 取舍；单链 → 该链；双链都不成立 → null
+ * （detectHost 保守 wps）。host wps 优先 = 缺省 preference 'wps'（所有者 11-17 裁决）。
+ */
+export function decideDualChainHost(
+  officeChain: Host | null,
+  wpsChain: Host | null,
+  preference: 'wps' | 'office'
+): Host | null {
+  if (officeChain && wpsChain) return preference;
+  if (wpsChain) return 'wps';
+  if (officeChain) return 'office';
+  return null;
+}
+
+/** 优先策略读值：WPS_HOST_PREFERENCE=wps|office（缺省 wps；非法值按 wps，不抛） */
+export function hostPreference(env: Record<string, string | undefined> = process.env): 'wps' | 'office' {
+  return (env.WPS_HOST_PREFERENCE ?? '').trim().toLowerCase() === 'office' ? 'office' : 'wps';
+}
+
+/**
+ * 真机 host 探测 v2（双链，结果缓存）：
+ *   Office 链 = Word/Excel/PowerPoint.Application → 期望 office
+ *   WPS 链   = Kwps/Ket/Kwpp.Application → 期望 wps
+ * 两链都成立 → WPS_HOST_PREFERENCE（缺省 wps）取舍；单链成立 → 该链；都不成立 → null
+ * （detectHost 保守 wps）。探测失败不是错误——是"不知道"，绝不猜。
  */
 export function probeHostLive(): Host | null {
   if (hostProbeCache !== undefined) return hostProbeCache;
@@ -148,18 +205,25 @@ export function probeHostLive(): Host | null {
     hostProbeCache = null;
     return null;
   }
-  const progids = ['Word.Application', 'Excel.Application', 'PowerPoint.Application'];
-  const results: Host[] = [];
-  for (const pid of progids) {
-    const h = resolveProgidHost(pid, runRegQuery);
-    if (h) results.push(h);
-  }
-  if (results.length === 3 && results.every((h) => h === results[0])) {
-    hostProbeCache = results[0];
-  } else {
-    hostProbeCache = null;
-  }
+  const office = resolveChain(OFFICE_PROGIDS, 'office', runRegQuery);
+  const wps = resolveChain(WPS_PROGIDS, 'wps', runRegQuery);
+  hostProbeCache = decideDualChainHost(office.host, wps.host, hostPreference());
   return hostProbeCache;
+}
+
+// ==================== 会话级 host 切换（控制面 override 层 · 变更二）====================
+// POST /host 把切换写进桥进程的这里；优先级：env 显式锁定 > override > auto 探测。
+// 探测缓存不被 override 污染——auto 的结论仍是基准，override 只盖最终结果。
+
+let hostOverrideState: Host | null = null;
+
+/** 控制面写入口：null = 清除切换（回到 env/探测语义） */
+export function setHostOverride(h: Host | null): void {
+  hostOverrideState = h;
+}
+
+export function getHostOverride(): Host | null {
+  return hostOverrideState;
 }
 
 // ==================== host 维度识别（与 backend 正交）====================
@@ -174,10 +238,19 @@ export function detectHost(input?: DetectHostInput): { host: Host; hostBasis: st
   const officeEnv = (env.WPS_OFFICE ?? '').trim().toLowerCase();
   if (officeEnv === 'on') return { host: 'office', hostBasis: 'WPS_OFFICE=on 强制指定（Office host，不探测）' };
   if (officeEnv === 'off') return { host: 'wps', hostBasis: 'WPS_OFFICE=off 强制指定（WPS host，不探测）' };
+  const override = getHostOverride();
+  if (override) {
+    return { host: override, hostBasis: '控制面 hostOverride：会话级切换生效（env 未显式锁定；auto 探测结论仍可作为基准对照）' };
+  }
   if (officeEnv === '' || officeEnv === 'auto') {
     const probed = input?.probe ? input.probe() : null;
     if (probed) {
-      return { host: probed, hostBasis: `WPS_OFFICE=auto（缺省）：ProgID→LocalServer32 二进制解析探测 → ${probed}` };
+      const pref = hostPreference(env);
+      const dualNote =
+        pref === 'wps'
+          ? '双链探测（Office+Kwps/Ket/Kwpp），双装缺省 wps 优先（WPS_HOST_PREFERENCE 可改）'
+          : '双链探测（Office+Kwps/Ket/Kwpp），WPS_HOST_PREFERENCE=office';
+      return { host: probed, hostBasis: `WPS_OFFICE=auto（缺省）：${dualNote} → ${probed}` };
     }
     return {
       host: 'wps',

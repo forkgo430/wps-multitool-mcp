@@ -7,7 +7,8 @@
 const path = require('path');
 const ROOT = path.resolve(__dirname, '..', '..');
 const { detectBackend, detectHost, BackendUnavailableError, WSL_MARKER,
-        parseLocalServerBinary, resolveProgidHost } = require(
+        parseLocalServerBinary, resolveProgidHost,
+        resolveChain, decideDualChainHost, OFFICE_PROGIDS, WPS_PROGIDS, hostPreference } = require(
   path.join(ROOT, 'dist', 'server', 'backend-selector.js')
 );
 
@@ -172,6 +173,58 @@ const regUnknownExe = (key) => {
   if (key === 'HKCU\\SOFTWARE\\Classes\\CLSID\\{X}\\LocalServer32') return 'C:\\Whatever\\LibreOffice.exe /x';
   return null;
 };
+
+console.log('\n=== K. 双链探测取舍（host wps 优先 · 2026-11-17 翻转）：resolveChain + decideDualChainHost（注入 reg，不碰真机）===');
+// 双装注册表：Office 三链真身 + WPS 三链真身都在（双装机器的注册形态）
+const regDual = (key) => {
+  const officeClsids = {
+    'HKLM\\SOFTWARE\\Classes\\Word.Application\\CLSID': '{000209FF-0000-0000-C000-000000000046}',
+    'HKLM\\SOFTWARE\\Classes\\Excel.Application\\CLSID': '{00020820-0000-0000-C000-000000000046}',
+    'HKLM\\SOFTWARE\\Classes\\PowerPoint.Application\\CLSID': '{91493441-5A91-11CF-8705-0020AFDDDCE4}',
+  };
+  const officeSrv = {
+    '{000209FF-0000-0000-C000-000000000046}': 'C:\\Program Files\\Microsoft Office\\Root\\Office16\\WINWORD.EXE /Automation',
+    '{00020820-0000-0000-C000-000000000046}': 'C:\\Program Files\\Microsoft Office\\Root\\Office16\\EXCEL.EXE /Automation',
+    '{91493441-5A91-11CF-8705-0020AFDDDCE4}': 'C:\\Program Files\\Microsoft Office\\Root\\Office16\\POWERPNT.EXE /Automation',
+  };
+  if (officeClsids[key]) return officeClsids[key];
+  const oc = Object.keys(officeSrv).find((c) => key.includes(c));
+  if (oc && key.includes('LocalServer32')) return officeSrv[oc];
+  const wpsMap = {
+    'HKLM\\SOFTWARE\\Classes\\Kwps.Application\\CLSID': '{KWPS-CLSID}',
+    'HKLM\\SOFTWARE\\Classes\\Ket.Application\\CLSID': '{KET-CLSID}',
+    'HKLM\\SOFTWARE\\Classes\\Kwpp.Application\\CLSID': '{KWPP-CLSID}',
+  };
+  if (wpsMap[key]) return wpsMap[key];
+  const wpsSrv = {
+    '{KWPS-CLSID}': 'D:\\APPdate\\WPS Office\\12.1.0.29680\\office6\\wps.exe /Automation',
+    '{KET-CLSID}': 'D:\\APPdate\\WPS Office\\12.1.0.29680\\office6\\et.exe /Automation',
+    '{KWPP-CLSID}': 'D:\\APPdate\\WPS Office\\12.1.0.29680\\office6\\wpp.exe /Automation',
+  };
+  const wc = Object.keys(wpsSrv).find((c) => key.includes(c));
+  if (wc && key.includes('LocalServer32')) return wpsSrv[wc];
+  return null;
+};
+eq('K1 Office 链成立（双装）', resolveChain(OFFICE_PROGIDS, 'office', regDual).host, 'office');
+eq('K2 WPS 链成立（双装）', resolveChain(WPS_PROGIDS, 'wps', regDual).host, 'wps');
+eq('K3 双链都在 + 缺省偏好 → wps（翻转点）', decideDualChainHost('office', 'wps', hostPreference({})), 'wps');
+eq('K4 双链都在 + PREFERENCE=office → office', decideDualChainHost('office', 'wps', 'office'), 'office');
+eq('K5 仅 WPS 链（独装/劫持）→ wps（偏好不影响单链）', decideDualChainHost(null, 'wps', 'office'), 'wps');
+eq('K6 仅 Office 链 → office', decideDualChainHost('office', null, 'wps'), 'office');
+eq('K7 双链都不成立 → null（保守回落）', decideDualChainHost(null, null, 'wps'), null);
+// 顶名劫持：Office ProgID 全部解析到 wps 二进制 → Office 链不成立（不是结论 office=wps）
+const regHijackAll = (key) => {
+  if (/\\(Word|Excel|PowerPoint)\.Application\\CLSID$/.test(key)) return '{HIJACKED}';
+  if (key.includes('LocalServer32')) return 'D:\\APPdate\\WPS Office\\12.1.0.29680\\office6\\wps.exe /Automation';
+  return null;
+};
+const hij = resolveChain(OFFICE_PROGIDS, 'office', regHijackAll);
+eq('K8 顶名劫持 → Office 链不成立', hij.host, null);
+eq('K9 顶名劫持 → hijacked 实锤', hij.hijacked, true);
+eq('K10 劫持 + WPS 链成立 → wps（独装形态，偏好不翻）', decideDualChainHost(hij.host, 'wps', 'office'), 'wps');
+eq('K11 断链残缺 → Office 链不成立', resolveChain(OFFICE_PROGIDS, 'office', () => null).host, null);
+eq('K12 非法偏好值按 wps（不抛）', hostPreference({ WPS_HOST_PREFERENCE: 'bogus' }), 'wps');
+
 eq('未知二进制 → null（绝不猜）', resolveProgidHost('Word.Application', regUnknownExe), null);
 
 console.log(`\n汇总：${pass} 通过 / ${fail} 失败`);

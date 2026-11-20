@@ -8,7 +8,7 @@
  */
 export type ToolVerification = 'live' | 'static';
 
-/** 每个注册工具的验证状态（覆盖 287/287） */
+/** 每个注册工具的验证状态（覆盖 284/284） */
 export const TOOL_VERIFICATION: Readonly<Record<string, ToolVerification>> = {
   "wps_cache_data": "live",
   "wps_check_connection": "live",
@@ -126,6 +126,7 @@ export const TOOL_VERIFICATION: Readonly<Record<string, ToolVerification>> = {
   "wps_list_cache": "live",
   "wps_list_tool_groups": "live",
   "wps_load_tool_group": "live",
+  "wps_ppt_3d": "static",
   "wps_ppt_add_master_element": "live",
   "wps_ppt_add_page_indicator": "live",
   "wps_ppt_add_ppt_hyperlink": "static",
@@ -142,7 +143,6 @@ export const TOOL_VERIFICATION: Readonly<Record<string, ToolVerification>> = {
   "wps_ppt_build_deck": "static",
   "wps_ppt_close_presentation": "live",
   "wps_ppt_copy_slide": "live",
-  "wps_ppt_create_3d_text": "static",
   "wps_ppt_create_donut_chart": "live",
   "wps_ppt_create_flow_chart": "live",
   "wps_ppt_create_gauge": "live",
@@ -184,9 +184,6 @@ export const TOOL_VERIFICATION: Readonly<Record<string, ToolVerification>> = {
   "wps_ppt_remove_ppt_hyperlink": "static",
   "wps_ppt_replace_ppt_image": "live",
   "wps_ppt_replace_ppt_text": "live",
-  "wps_ppt_set_3d_depth": "static",
-  "wps_ppt_set_3d_material": "static",
-  "wps_ppt_set_3d_rotation": "static",
   "wps_ppt_set_active_target": "live",
   "wps_ppt_set_animation": "live",
   "wps_ppt_set_background": "live",
@@ -300,4 +297,4 @@ export const TOOL_VERIFICATION: Readonly<Record<string, ToolVerification>> = {
 };
 
 /** 生成时的总量，供自检/文档使用（别手写这些数字） */
-export const VERIFICATION_TOTALS = { live: 270, static: 17, total: 287 } as const;
+export const VERIFICATION_TOTALS = { live: 270, static: 14, total: 284 } as const;

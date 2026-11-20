@@ -110,7 +110,7 @@ const check = (name, cond, info = '') => {
         if (!known.includes(p.type)) badTypes.push(`${definition.name}.${k}(${p.type})`);
       }
     }
-    check(`全工具 schema 可校验性扫描（${tools} 工具 ${params} 参数无未知 type）`, tools === 287 && badTypes.length === 0, badTypes.join(', ').slice(0, 80));
+    check(`全工具 schema 可校验性扫描（${tools} 工具 ${params} 参数无未知 type）`, tools === 284 && badTypes.length === 0, badTypes.join(', ').slice(0, 80));
   }
 
   // ---- 10. 注册表集成：校验失败不进 handler（零 COM 路径）

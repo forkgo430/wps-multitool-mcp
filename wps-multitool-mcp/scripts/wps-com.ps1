@@ -320,17 +320,51 @@ function Test-ServerBinaryHost([string]$serverValue) {
 # ProgID → CLSID（HKCU 优先于 HKLM，模拟合并视图）→ LocalServer32
 # （64 位视图 HKCU→HKLM，再扫 WOW6432Node——WPS 32 位劫持的历史注册位）。
 # 返回 'office' / 'wps' / ''（断链或认不出，不猜）。
+# 底层读取用 [Microsoft.Win32.Registry] .NET API 直读——不走 PSDrive/Get-ItemProperty
+# （返工卡 2026-11-20：PSDrive 读取层在本机 10/11 会话判 office，.NET 直读 3/3 稳定 wps；
+#   注册表数据完好，坏在 Get-ItemProperty 读取层——宿主返回的 (default) 值在部分会话为空）。
+function Read-RegDefaultValue([string]$hive, [string]$subKey) {
+    # hive: 'HKCU' → CurrentUser / 'HKLM' → LocalMachine（其余返回 $null 不猜）
+    # 主路径：.NET Registry API 直读（不走 PSDrive/Get-ItemProperty——返工卡 2026-11-20）
+    $base = $null
+    if ($hive -eq 'HKCU') { $base = [Microsoft.Win32.Registry]::CurrentUser }
+    elseif ($hive -eq 'HKLM') { $base = [Microsoft.Win32.Registry]::LocalMachine }
+    if ($base) {
+        try {
+            $key = $base.OpenSubKey($subKey)
+            if ($null -ne $key) {
+                $val = $key.GetValue('')
+                $key.Close()
+                if ($null -ne $val -and [string]$val) { return [string]$val }
+            }
+        } catch {}
+    }
+    # reg.exe 兜底（TS probeHostLive 同款路径，真机已证可靠；.NET 直读因宿主状态可能失效）
+    try {
+        $fullPath = "${hive}\${subKey}"
+        $out = & reg.exe query $fullPath /ve 2>$null
+        if ($out -match 'REG_SZ\s+(.*)') { return $Matches[1].Trim() }
+    } catch {}
+    return $null
+}
+
 function Resolve-ProgidHost([string]$progId) {
     $clsid = $null
-    foreach ($root in @('HKCU:\SOFTWARE\Classes', 'HKLM:\SOFTWARE\Classes')) {
-        $v = (Get-ItemProperty -Path ($root + '\' + $progId + '\CLSID') -ErrorAction SilentlyContinue).'(default)'
+    foreach ($root in @(@('HKCU', 'SOFTWARE\Classes'), @('HKLM', 'SOFTWARE\Classes'))) {
+        $v = Read-RegDefaultValue $root[0] ($root[1] + '\' + $progId + '\CLSID')
         if ($v) { $clsid = [string]$v; break }
     }
     if (-not $clsid) { return '' }
-    foreach ($root in @('HKCU:\SOFTWARE\Classes\CLSID', 'HKLM:\SOFTWARE\Classes\CLSID',
-                        'HKLM:\SOFTWARE\Classes\WOW6432Node\CLSID', 'HKCU:\SOFTWARE\Classes\WOW6432Node\CLSID')) {
-        $v = (Get-ItemProperty -Path ($root + '\' + $clsid + '\LocalServer32') -ErrorAction SilentlyContinue).'(default)'
-        if ($v) { return (Test-ServerBinaryHost [string]$v) }
+    foreach ($root in @(
+            @('HKCU', 'SOFTWARE\Classes\CLSID'),
+            @('HKLM', 'SOFTWARE\Classes\CLSID'),
+            @('HKLM', 'SOFTWARE\Classes\WOW6432Node\CLSID'),
+            @('HKCU', 'SOFTWARE\Classes\WOW6432Node\CLSID'))) {
+        $v = Read-RegDefaultValue $root[0] ($root[1] + '\' + $clsid + '\LocalServer32')
+        # 注意：实参必须加括号——参数模式下 `Test-ServerBinaryHost [string]$v` 的 [string]
+        # 是【字面量 token】不是转型，会拼成 "[string] <值>" 传入；带引号的 LocalServer32
+        # 因此切出 `wps.exe"`（尾引号）判不出 → WPS 链 3/3 全空 → 双链退化判 office（2026-11-20 真机实锤）
+        if ($v) { return (Test-ServerBinaryHost ([string]$v)) }
     }
     return ''
 }
@@ -342,9 +376,27 @@ function Get-HostKind {
     if ($envKind -eq 'on') { $script:HostKind = 'office' }
     elseif ($envKind -eq 'off') { $script:HostKind = 'wps' }
     else {
-        # 未设 / auto（缺省）→ 二进制解析探测；探测不可用 → 保守 wps（现任主通道）
-        $k = Resolve-ProgidHost 'Word.Application'
-        $script:HostKind = if ($k) { $k } else { 'wps' }
+        # 未设 / auto（缺省）→ 双链二进制探测：Office 三链与 WPS 链（Kwps/Ket/Kwpp）各自解析真身；
+        # 两链都成立 → WPS_HOST_PREFERENCE（缺省 wps）取舍；单链 → 该链；不可用 → 保守 wps（现任主通道）
+        $officeResults = @()
+        $wpsResults = @()
+        foreach ($p in @('Word.Application', 'Excel.Application', 'PowerPoint.Application')) {
+            $k = Resolve-ProgidHost $p
+            if ($k) { $officeResults += $k }
+        }
+        foreach ($p in @('Kwps.Application', 'Ket.Application', 'Kwpp.Application')) {
+            $k = Resolve-ProgidHost $p
+            if ($k) { $wpsResults += $k }
+        }
+        $officeChain = ($officeResults.Count -eq 3) -and (@($officeResults | Select-Object -Unique).Count -eq 1) -and ($officeResults[0] -eq 'office')
+        $wpsChain = ($wpsResults.Count -eq 3) -and (@($wpsResults | Select-Object -Unique).Count -eq 1) -and ($wpsResults[0] -eq 'wps')
+        if ($officeChain -and $wpsChain) {
+            $pref = if ($env:WPS_HOST_PREFERENCE) { $env:WPS_HOST_PREFERENCE.Trim().ToLower() } else { 'wps' }
+            $script:HostKind = if ($pref -eq 'office') { 'office' } else { 'wps' }
+        }
+        elseif ($wpsChain) { $script:HostKind = 'wps' }
+        elseif ($officeChain) { $script:HostKind = 'office' }
+        else { $script:HostKind = 'wps' }
     }
     return $script:HostKind
 }
@@ -1007,6 +1059,217 @@ function Resolve-Book($app, $p) {
         }
     } catch {}
     return $null
+}
+
+# ==================== 统一文档定位层 L2（地址 → Range · 设计方案变更三 2026-11-17）====================
+# 输入：$loc 地址对象（L1 地址 DSL 归一化的形状；TS 侧 parseAddress 已做语法/组合校验，此处对
+#       结构性越界兜底）。输出：@{ ok=$true; range=Range; loc=溯源哈希 } 或 @{ ok=$false; error=... }
+# 章：OutlineLevel=1 段落枚举（用内建语义属性，免疫"标题 1/章标题"样式命名漂移）；
+#     index 或标题文本含糊匹配。章范围 = 本章标题段起 → 下一章标题段前（末章到文档尾）。
+# 段：范围内正文段计数——过滤空段与标题（OutlineLevel!=10）；表格单元格段默认不计序
+#     （includeTables 开关；口径随 __loc.tablesFiltered 回包注明）。
+# 句：Sentences 集合优先（COM 原生，免疫正则切句在引号/缩写/英文句号上的灾难）；
+#     调用失败走 。！？… 切分兜底 + via='fallback-split' 如实标注，不静默。
+# 边界：Collapse(edge)（start=1 / end=0）。回包 __loc 逐级溯源，照 __target/__pres 同款纪律。
+function Resolve-TargetRange {
+    param($doc, $loc)
+    # 全身 fail-closed：内部任何异常都转成 ok=false + 明确错误（不裸逃，不静默）
+    try {
+    if ($null -eq $loc) { return @{ ok = $false; error = '缺少地址对象（locate）' } }
+    $edge = if ($loc.edge) { [string]$loc.edge } else { 'start' }
+    if ($edge -ne 'start' -and $edge -ne 'end') { return @{ ok = $false; error = "edge 只能是 'start' 或 'end'，收到 $edge" } }
+    $includeTables = if ($null -ne $loc.includeTables) { [bool]$loc.includeTables } else { $false }
+
+    # ---- 文本寻址：start/end 字符偏移 ----
+    if ($null -ne $loc.start -and $null -ne $loc.end) {
+        $start = [int]$loc.start; $end = [int]$loc.end
+        $total = [int]$doc.Content.End
+        if ($start -lt 0 -or $end -gt $total) { return @{ ok = $false; error = "字符偏移越界：文档共 $total 字符，收到 $start..$end" } }
+        if ($start -ge $end) { return @{ ok = $false; error = "start（$start）必须小于 end（$end）" } }
+        $rng = $doc.Range($start, $end)
+        return @{ ok = $true; range = $rng; loc = @{ via = 'char-offset'; start = $start; end = $end; edge = $edge } }
+    }
+
+    # ---- 文本寻址：text + occurrence（Content.Find，wdFindStop 不回卷）----
+    if ($loc.text) {
+        $needle = [string]$loc.text
+        $occ = if ($loc.occurrence) { [int]$loc.occurrence } else { 1 }
+        $search = $doc.Content
+        $finder = $search.Find
+        $finder.ClearFormatting()
+        $finder.Forward = $true
+        $finder.Wrap = 0
+        $n = 0
+        $hit = $finder.Execute($needle)
+        while ($hit) {
+            $n++
+            if ($n -eq $occ) {
+                return @{ ok = $true; range = $search.Duplicate; loc = @{ via = 'text-find'; text = $needle; occurrence = $n; edge = $edge } }
+            }
+            $null = $search.Collapse(0)
+            $hit = $finder.Execute($needle)
+        }
+        return @{ ok = $false; error = "文本未找到（$needle，第 $occ 次出现；全文共命中 $n 次）" }
+    }
+
+    # ---- 结构寻址：章（OutlineLevel=1）----
+    # 快照纪律：枚举时立即取整数坐标与文本（COM 包装器延迟读会拿到陈旧 Range 坐标）
+    $chapters = @()
+    foreach ($para in $doc.Paragraphs) {
+        $lv = 10
+        try { $lv = [int]$para.OutlineLevel } catch { $lv = 10 }
+        if ($lv -ne 1) { continue }
+        $r = $para.Range
+        $chapters += @{ start = [int]$r.Start; text = ([string]$r.Text).Trim() }
+    }
+    $scopeStart = $null; $scopeEnd = $null; $chapterTitle = ''; $chapterOrdinal = 0
+    if ($null -ne $loc.chapterIndex -or $loc.chapterText) {
+        if ($chapters.Count -eq 0) { return @{ ok = $false; error = '文档里没有章级标题（OutlineLevel=1 的段落）——章寻址不可用；可先用 setOutlineLevel 或 addHeading 建章' } }
+        $ci = -1
+        if ($loc.chapterText) {
+            $needle = [string]$loc.chapterText
+            for ($x = 0; $x -lt $chapters.Count; $x++) {
+                if ($chapters[$x].text.Contains($needle)) { $ci = $x; break }
+            }
+            if ($ci -lt 0) { return @{ ok = $false; error = "未找到章标题（含 '$needle' 的 OutlineLevel=1 段；模糊匹配=包含）——共 $($chapters.Count) 章" } }
+        } else {
+            $ci = [int]$loc.chapterIndex - 1
+            if ($ci -lt 0 -or $ci -ge $chapters.Count) { return @{ ok = $false; error = "章越界：文档共 $($chapters.Count) 章（OutlineLevel=1），收到 chapter $($loc.chapterIndex)" } }
+        }
+        $chapterTitle = [string]$chapters[$ci].text
+        $chapterOrdinal = $ci + 1
+        $scopeStart = [int]$chapters[$ci].start
+        $scopeEnd = if ($ci -lt $chapters.Count - 1) { [int]$chapters[$ci + 1].start - 1 } else { [int]$doc.Content.End }
+    }
+
+    # ---- 段：范围内正文段计数（过滤空/标题/表格段——includeTables 开关）----
+    $bodyParas = @()
+    $sStart = if ($null -ne $scopeStart) { $scopeStart } else { [int]$doc.Content.Start }
+    $sEnd = if ($null -ne $scopeEnd) { $scopeEnd } else { [int]$doc.Content.End }
+    # 过滤诊断计数（空段错误带口径，模型能看见"为什么没有正文段"）
+    $diag = @{ total = 0; heading = 0; empty = 0; inTable = 0 }
+    foreach ($para in $doc.Range($sStart, $sEnd).Paragraphs) {
+        $diag.total++
+        $lv = 10
+        try { $lv = [int]$para.OutlineLevel } catch { $lv = 10 }
+        if ($lv -ne 10) { $diag.heading++; continue }
+        $t = ''
+        try { $t = [string]$para.Range.Text } catch { $t = '' }
+        if ([string]::IsNullOrWhiteSpace($t)) { $diag.empty++; continue }
+        if (-not $includeTables) {
+            $inTable = $false
+            try { $inTable = [bool]$para.Range.Information(12) } catch { $inTable = $false }   # 12 = wdWithInTable
+            if ($inTable) { $diag.inTable++; continue }
+        }
+        $pr = $para.Range
+        $bodyParas += @{ start = [int]$pr.Start; end = [int]$pr.End; text = $t }
+    }
+
+    # ---- 只到段/句锚没有章：全文档域直接用 bodyParas ----
+    $paraIndex = $null
+    if ($null -ne $loc.paragraph) {
+        if ($bodyParas.Count -eq 0) {
+            $scopeNote = if ($null -ne $scopeStart) { "第 $chapterOrdinal 章（$chapterTitle）" } else { '全文档' }
+            $docName = try { [string]$doc.Name } catch { "?" }
+            # 全文档段落普查（前 14 段：lv+文本前缀）——终极地面真值，定位造场/过滤的真差异
+            $census = @()
+            $ci2 = 0
+            foreach ($para in $doc.Paragraphs) {
+                $ci2++
+                if ($ci2 -gt 14) { $census += '...'; break }
+                $lv2 = try { [int]$para.OutlineLevel } catch { -1 }
+                $t2 = ''
+                try { $t2 = ([string]$para.Range.Text).Trim() } catch { $t2 = '?' }
+                if ($t2.Length -gt 14) { $t2 = $t2.Substring(0, 14) }
+                $census += "[$ci2]lv=$lv2 '$t2'"
+            }
+            return @{ ok = $false; error = "$scopeNote 范围内没有可定位的正文段（文档=$docName 段落总数 $ci2）——范围内共 $($diag.total) 段（标题 $($diag.heading)/空 $($diag.empty)/表格 $($diag.inTable) 被过滤）；普查: " + ($census -join ' ') }
+        }
+        $pi = [int]$loc.paragraph - 1
+        if ($pi -lt 0 -or $pi -ge $bodyParas.Count) {
+            $scopeNote = if ($null -ne $scopeStart) { "第 $chapterOrdinal 章内" } else { '全文档' }
+            return @{ ok = $false; error = "段越界：$scopeNote 共 $($bodyParas.Count) 个正文段（表格段默认不计序，includeTables 可开），收到 paragraph $($loc.paragraph)" }
+        }
+        $paraIndex = $pi + 1
+    }
+
+    # ---- 句：Sentences 集合优先；失败 → 。！？… 切分兜底 + via 如实 ----
+    $targetRange = $null
+    $via = ''
+    $sentenceText = ''
+    if ($null -ne $paraIndex) {
+        $bp = $bodyParas[$paraIndex - 1]
+        $paraRange = $doc.Range([int]$bp.start, [int]$bp.end)
+        $paraText = [string]$bp.text
+        $paraTextClean = $paraText.TrimEnd("`r", "`a", [char]7)
+        $si = [int]$loc.sentence
+        if ($null -ne $loc.sentence) {
+            try {
+                $sents = $paraRange.Sentences
+                $cnt = [int]$sents.Count
+                if ($si -lt 1 -or $si -gt $cnt) { return @{ ok = $false; error = "句越界：该段共 $cnt 句（Sentences 集合），收到 sentence $si" } }
+                $targetRange = $sents.Item($si)
+                try { $sentenceText = ([string]$targetRange.Text).Trim() } catch { $sentenceText = '' }
+                $via = 'sentences-native'
+            } catch {
+                # Sentences 集合不可用 → 切分兜底（。！？… 英文句号），via 如实标注
+                $via = 'fallback-split'
+            }
+            if ($via -eq 'fallback-split') {
+                $parts = @()
+                $cur = ''
+                foreach ($ch in $paraTextClean.ToCharArray()) {
+                    $cur += $ch
+                    if ($ch -eq [char]0x3002 -or $ch -eq [char]0xFF01 -or $ch -eq [char]0xFF1F -or $ch -eq [char]0x2026 -or $ch -eq '.') {
+                        if ($cur.Trim().Length -gt 0) { $parts += $cur }
+                        $cur = ''
+                    }
+                }
+                if ($cur.Trim().Length -gt 0) { $parts += $cur }
+                if ($si -lt 1 -or $si -gt $parts.Count) { return @{ ok = $false; error = "句越界：该段共 $($parts.Count) 句（切分兜底口径），收到 sentence $si" } }
+                $offset = 0
+                for ($x = 0; $x -lt $si - 1; $x++) { $offset += $parts[$x].Length }
+                $sentStart = $paraRange.Start + $offset
+                $sentEnd = $sentStart + $parts[$si - 1].Length
+                $targetRange = $doc.Range($sentStart, $sentEnd)
+                $sentenceText = ([string]$parts[$si - 1]).Trim()
+            }
+        } else {
+            $targetRange = $paraRange
+            $via = 'paragraph'
+        }
+    } elseif ($null -ne $scopeStart) {
+        # 只有章锚：落点=章标题段收尾（edge 决定本章开头/末尾）
+        $targetRange = $doc.Range($scopeStart, $scopeEnd)
+        $via = 'chapter-range'
+    } else {
+        return @{ ok = $false; error = '地址缺少可定位的锚（chapter/paragraph/text/start 至少一个）' }
+    }
+
+    $collapseTo = if ($edge -eq 'start') { 1 } else { 0 }
+    $null = $targetRange.Collapse($collapseTo)
+    $locTrace = @{
+        via = $via
+        edge = $edge
+        tablesFiltered = (-not $includeTables)
+    }
+    if ($chapterOrdinal -gt 0) { $locTrace.chapterIndex = $chapterOrdinal; $locTrace.chapterTitle = $chapterTitle }
+    if ($null -ne $paraIndex) {
+        $locTrace.paragraphIndex = $paraIndex
+        $pt = [string]$bodyParas[$paraIndex - 1].text
+        $locTrace.paragraphText = if ($pt.Length -gt 80) { $pt.Substring(0, 80) + '…' } else { $pt.TrimEnd("`r", "`a", [char]7) }
+    }
+    if ($null -ne $loc.sentence) {
+        $locTrace.sentenceIndex = [int]$loc.sentence
+        $locTrace.sentenceText = if ($sentenceText.Length -gt 80) { $sentenceText.Substring(0, 80) + '…' } else { $sentenceText }
+    }
+    return @{ ok = $true; range = $targetRange; loc = $locTrace }
+    } catch {
+        $m = $_.Message
+        if ([string]::IsNullOrWhiteSpace($m)) { $m = $_.ToString() }
+        if ([string]::IsNullOrWhiteSpace($m)) { $m = '定位层内部异常（无消息）' }
+        return @{ ok = $false; error = "定位失败: $m" }
+    }
 }
 
 # 第 3 轮加：把 $p.sheet 解析成工作表对象，没传就退回活动表。
@@ -4017,6 +4280,11 @@ switch ($Action) {
         } catch { }
 
         # ---- 能力探测接口（表格/图表/透视表/页面设置）----
+        $caps["word.sentences"] = { $first = $null
+                                          foreach ($pp in $doc2.Paragraphs) { $first = $pp; break }
+                                          if ($null -eq $first) { throw "文档无段落，探针无意义" }
+                                          $sc = [int]$first.Range.Sentences.Count
+                                          if ($sc -lt 1) { throw "Sentences.Count=0，集合不可用" } }
         $caps["sheet.usedRange"]    = { $u = $wb.Worksheets.Item(1).UsedRange
                                           if ($u.Rows.Count -lt 1) { throw "UsedRange 为空，探测无意义" } }
         $caps["sheet.autoFitColumn"] = { $col = $wb.Worksheets.Item(1).Columns.Item(1); $w0 = $col.ColumnWidth
@@ -5218,10 +5486,18 @@ switch ($Action) {
                     $range = $doc.Range($doc.Content.End - 1, $doc.Content.End - 1)
                     $range.InsertAfter([string]$p.text)
                 } else {
-                    $word.Selection.TypeText([string]$p.text)
+                    # new_paragraph（wordkit 落位修复）：打字 → 设正文级 → TypeParagraph——
+                    # 级别必须打在【正文段自身】上（先 TypeParagraph 再设级会落在后面的空段）；
+                    # WPS/Word 的 TypeText 对 \r 不产生段落标记（实测与标题并段），所以 CR 不进 text、
+                    # 由 TypeParagraph 显式补；"继承前段 Heading 样式"用 OutlineLevel=10 直接压回正文级
+                    $bodyText = ([string]$p.text) -replace '(\r|\n)+$'
+                    $word.Selection.TypeText($bodyText)
+                    try { $word.Selection.ParagraphFormat.OutlineLevel = 10 } catch {}
+                    $word.Selection.TypeParagraph()
                 }
             }
         }
+
         if ($p.style) {
             try {
                 if ($pinned -and $null -ne $range) { $range.Style = $p.style }
@@ -8341,107 +8617,55 @@ switch ($Action) {
         Output-Json @{ success = $true; data = @{ name = $shape.Name; type = $type } }
     }
 
-    "set3DRotation" {
+    "ppt3d" {
+        # op-merge（3D 四件 → 一工具四操作；旧工具名走 TOOL_ALIASES 注入 op）
         $ppt = Get-WpsPpt
         if ($null -eq $ppt) { Output-Json @{ success = $false; error = "WPS PPT not running" }; return }
-        $pres = Get-TargetPres $ppt $p
-        $slideIndex = if ($p.slideIndex) { $p.slideIndex } else { 1 }
-        $slide = $pres.Slides.Item([int]$slideIndex)
-        $shape = $slide.Shapes.Item($(if ($p.shapeName) { $p.shapeName } else { $p.shapeIndex }))
-
-        # 工具传的是 rotation:{x,y,z} 对象，而这里读的是扁平 rotationX/Y/Z ——
-        # 三种形状都认，否则整包 psobject 会被塞进 float 属性（实测报"无法将 psobject 转换为类型 float"）。
-        $rot = $p.rotation
-        $rx = if ($null -ne $p.rotationX) { $p.rotationX } elseif ($null -ne $rot -and $null -ne $rot.x) { $rot.x } else { 0 }
-        $ry = if ($null -ne $p.rotationY) { $p.rotationY } elseif ($null -ne $rot -and $null -ne $rot.y) { $rot.y } else { 0 }
-        $rz = if ($null -ne $p.rotationZ) { $p.rotationZ } elseif ($null -ne $rot -and $null -ne $rot.z) { $rot.z } else { 0 }
-        $shape.ThreeD.RotationX = [float]$rx
-        $shape.ThreeD.RotationY = [float]$ry
-        $shape.ThreeD.RotationZ = [float]$rz
-
-        if ($p.preset) {
-            $presets = @{ isometric = @{ x = 45; y = 45; z = 0 }; perspective = @{ x = 30; y = 30; z = 0 }; oblique = @{ x = 20; y = 60; z = 0 }; tiltLeft = @{ x = 0; y = -30; z = 0 }; tiltRight = @{ x = 0; y = 30; z = 0 } }
-            $preset = $presets[$p.preset]
-            if ($preset) {
-                $shape.ThreeD.RotationX = $preset.x
-                $shape.ThreeD.RotationY = $preset.y
-                $shape.ThreeD.RotationZ = $preset.z
+        try {
+            $op = if ($p.op) { [string]$p.op } else { '' }
+            if ($op -eq 'rotation') {
+                $rng0 = $null
+                $slide = $ppt.Slides.Item([int]$p.slideIndex)
+                $shape = $slide.Shapes.Item([int]$p.shapeIndex)
+                $null = $shape.ThreeD
+                $rot = $p.rotation
+                if ($null -eq $rot) { Output-Json @{ success = $false; error = "op=rotation 需要 rotation 参数（如 {rotX:30,rotY:45,rotZ:0,perspective:50}）" }; return }
+                if ($null -ne $rot.rotX) { $shape.RotationX = [float]$rot.rotX }
+                if ($null -ne $rot.rotY) { $shape.RotationY = [float]$rot.rotY }
+                if ($null -ne $rot.rotZ) { $shape.RotationZ = [float]$rot.rotZ }
+                Output-Json @{ success = $true; data = @{ op = 'rotation'; slideIndex = [int]$p.slideIndex; shapeIndex = [int]$p.shapeIndex; rotation = $rot } }
             }
+            elseif ($op -eq 'depth') {
+                $slide = $ppt.Slides.Item([int]$p.slideIndex)
+                $shape = $slide.Shapes.Item([int]$p.shapeIndex)
+                if ($null -eq $p.depth) { Output-Json @{ success = $false; error = "op=depth 需要 depth 参数（磅）" }; return }
+                $shape.ThreeD.Depth = [float]$p.depth
+                Output-Json @{ success = $true; data = @{ op = 'depth'; slideIndex = [int]$p.slideIndex; shapeIndex = [int]$p.shapeIndex; depth = [float]$p.depth } }
+            }
+            elseif ($op -eq 'material') {
+                $slide = $ppt.Slides.Item([int]$p.slideIndex)
+                $shape = $slide.Shapes.Item([int]$p.shapeIndex)
+                if (-not $p.material) { Output-Json @{ success = $false; error = "op=material 需要 material 参数" }; return }
+                $shape.ThreeD.Material = [string]$p.material
+                Output-Json @{ success = $true; data = @{ op = 'material'; slideIndex = [int]$p.slideIndex; shapeIndex = [int]$p.shapeIndex; material = [string]$p.material } }
+            }
+            elseif ($op -eq 'text') {
+                if (-not $p.text) { Output-Json @{ success = $false; error = "op=text 需要 text 参数" }; return }
+                $slide = $ppt.Slides.Item([int]$p.slideIndex)
+                $tb = $slide.Shapes.AddTextbox(1, 100, 100, 400, 80)
+                $tb.TextFrame.TextRange.Text = [string]$p.text
+                $style = $p.style
+                if ($null -ne $style -and $null -ne $style.fontSize) { $tb.TextFrame.TextRange.Font.Size = [float]$style.fontSize }
+                if ($null -ne $style -and $null -ne $style.depth) { $tb.ThreeD.Depth = [float]$style.depth }
+                if ($null -ne $style -and $null -ne $style.material) { $tb.ThreeD.Material = [string]$style.material }
+                Output-Json @{ success = $true; data = @{ op = 'text'; slideIndex = [int]$p.slideIndex; text = [string]$p.text } }
+            }
+            else {
+                Output-Json @{ success = $false; error = "op 只能是 rotation / depth / material / text，收到 '$op'" }
+            }
+        } catch {
+            Output-Json @{ success = $false; error = "3D 操作失败: $(Get-CallError $_)" }
         }
-
-        Output-Json @{ success = $true; data = @{ shape = $shape.Name; rotationX = $shape.ThreeD.RotationX; rotationY = $shape.ThreeD.RotationY } }
-    }
-
-    "set3DDepth" {
-        $ppt = Get-WpsPpt
-        if ($null -eq $ppt) { Output-Json @{ success = $false; error = "WPS PPT not running" }; return }
-        $pres = Get-TargetPres $ppt $p
-        $slideIndex = if ($p.slideIndex) { $p.slideIndex } else { 1 }
-        $slide = $pres.Slides.Item([int]$slideIndex)
-        $shape = $slide.Shapes.Item($(if ($p.shapeName) { $p.shapeName } else { $p.shapeIndex }))
-
-        $depth = if ($p.depth) { $p.depth } else { 20 }
-        $shape.ThreeD.Depth = $depth
-        if ($p.depthColor) {
-            $colorValue = Convert-HexColorToRgbInt([string]$p.depthColor)
-            if ($null -ne $colorValue) { $shape.ThreeD.ExtrusionColor.RGB = $colorValue }
-        }
-        if ($p.lighting) {
-            $lightingMap = @{ bright = 1; normal = 2; dim = 3; flat = 4 }
-            $lightingValue = if ($lightingMap[$p.lighting]) { $lightingMap[$p.lighting] } else { 2 }
-            $shape.ThreeD.PresetLighting = $lightingValue
-        }
-
-        Output-Json @{ success = $true; data = @{ shape = $shape.Name; depth = $depth } }
-    }
-
-    "set3DMaterial" {
-        $ppt = Get-WpsPpt
-        if ($null -eq $ppt) { Output-Json @{ success = $false; error = "WPS PPT not running" }; return }
-        $pres = Get-TargetPres $ppt $p
-        $slideIndex = if ($p.slideIndex) { $p.slideIndex } else { 1 }
-        $slide = $pres.Slides.Item([int]$slideIndex)
-        $shape = $slide.Shapes.Item($(if ($p.shapeName) { $p.shapeName } else { $p.shapeIndex }))
-
-        $material = if ($p.material) { $p.material } else { "plastic" }
-        $materialMap = @{ matte = 1; plastic = 2; metal = 3; wireFrame = 4; glass = 5 }
-        $materialValue = if ($materialMap[$material]) { $materialMap[$material] } else { 2 }
-        $shape.ThreeD.PresetMaterial = $materialValue
-
-        Output-Json @{ success = $true; data = @{ shape = $shape.Name; material = $material } }
-    }
-
-    "create3DText" {
-        $ppt = Get-WpsPpt
-        if ($null -eq $ppt) { Output-Json @{ success = $false; error = "WPS PPT not running" }; return }
-        $pres = Get-TargetPres $ppt $p
-        $slideIndex = if ($p.slideIndex) { $p.slideIndex } else { 1 }
-        $slide = $pres.Slides.Item([int]$slideIndex)
-
-        $text = if ($p.text) { $p.text } else { "3D文字" }
-        $left = if ($p.left) { $p.left } else { 200 }
-        $top = if ($p.top) { $p.top } else { 200 }
-        $width = if ($p.width) { $p.width } else { 300 }
-        $height = if ($p.height) { $p.height } else { 100 }
-        $textBox = $slide.Shapes.AddTextbox(1, $left, $top, $width, $height)
-        $textBox.TextFrame.TextRange.Text = $text
-        $textBox.TextFrame.TextRange.Font.Size = if ($p.fontSize) { $p.fontSize } else { 48 }
-        $textBox.TextFrame.TextRange.Font.Bold = $true
-        $colorValue = Convert-HexColorToRgbInt([string]$(if ($p.color) { $p.color } else { "#1a365d" }))
-        if ($null -ne $colorValue) { $textBox.TextFrame.TextRange.Font.Color.RGB = $colorValue }
-        $textBox.TextFrame.TextRange.ParagraphFormat.Alignment = 2
-
-        $textBox.ThreeD.RotationX = if ($p.rotationX -ne $null) { $p.rotationX } else { 15 }
-        $textBox.ThreeD.RotationY = if ($p.rotationY -ne $null) { $p.rotationY } else { 30 }
-        $textBox.ThreeD.Depth = if ($p.depth) { $p.depth } else { 10 }
-
-        $textBox.Shadow.Visible = $true
-        $textBox.Shadow.Blur = 8
-        $textBox.Shadow.OffsetX = 5
-        $textBox.Shadow.OffsetY = 5
-        $textBox.Shadow.Transparency = 0.5
-
-        Output-Json @{ success = $true; data = @{ name = $textBox.Name; text = $text } }
     }
 
     "setPptChartData" {
@@ -10121,6 +10345,95 @@ switch ($Action) {
         if ($null -eq $word) { Output-Json @{ success = $false; error = "WPS Word not running" }; return }
         $doc = Resolve-Doc $word $p
         if ($null -eq $doc) { Output-Json @{ success = $false; error = "No active document" }; return }
+        # ---- 批量路径：anchors[]（地址 DSL · dryRun 先看后写 · 插后自检闭环 · 上限 50）----
+        # 旧签名（refType/itemIndex 无 anchors）走下方原路径，逐字节不变。
+        if ($p.anchors) {
+            $anchors = @($p.anchors)
+            if ($anchors.Count -eq 0) { Output-Json @{ success = $false; error = "anchors 是空数组：每项 = { locate: {chapter/paragraph/sentence/edge}, refType?, itemIndex? }" }; return }
+            if ($anchors.Count -gt 50) { Output-Json @{ success = $false; error = "anchors 超限：收到 $($anchors.Count) 项，上限 50（batchUpsertShapes 同款纪律）" }; return }
+            $dryRun = if ($null -ne $p.dryRun) { [bool]$p.dryRun } else { $false }
+            $filled = @(); $failed = @(); $recorded = @()
+            $i = 0
+            foreach ($a in $anchors) {
+                $i++
+                $item = @{ index = $i }
+                try {
+                    $loc = $a.locate
+                    if ($null -eq $loc -and ($null -ne $a.chapterIndex -or $null -ne $a.paragraph -or $a.text -or $null -ne $a.start -or $a.chapterText)) { $loc = $a }
+                    if ($null -eq $loc) { throw "anchor 缺地址（locate: {chapter/paragraph/sentence/edge}）" }
+                    $resolved = Resolve-TargetRange $doc $loc
+                    if (-not $resolved.ok) { throw $resolved.error }
+                    $item.loc = $resolved.loc
+                    $rtMap = @{ heading = 1; bookmark = 2; numberedItem = 3; footnote = 4 }
+                    $k = if ($a.refType) { [string]$a.refType } elseif ($p.refType) { [string]$p.refType } else { 'heading' }
+                    if (-not $rtMap.ContainsKey($k)) { throw "refType 只能是 heading/bookmark/numberedItem/footnote，收到 $k" }
+                    $items = @($doc.GetCrossReferenceItems($rtMap[$k]))
+                    $idx = if ($null -ne $a.itemIndex) { [int]$a.itemIndex } elseif ($null -ne $p.itemIndex) { [int]$p.itemIndex } else { 1 }
+                    if ($idx -lt 1 -or $idx -gt $items.Count) { throw "itemIndex 越界：共 $($items.Count) 个可引用项，收到 $idx" }
+                    $target = [string]$items[$idx - 1]
+                    $item.target = $target
+                    # 引用机制（确定性）：heading → 找到标题段 + 自动书签 → REF 书签
+                    # （REF 按标题文本不是合法引用——Word/WPS 的 REF 只认书签名，
+                    #   实战坑"错误!未找到引用源"的根因）；bookmark → 书签名直引；
+                    # numberedItem/footnote 的 REF 需各自书签体系 → 明确报错不静默（观察项）
+                    if ($k -eq 'heading') {
+                        $headingPara = $null
+                        foreach ($para in $doc.Paragraphs) {
+                            $lv = 10
+                            try { $lv = [int]$para.OutlineLevel } catch { $lv = 10 }
+                            if ($lv -ne 1) { continue }
+                            $t = ''
+                            try { $t = [string]$para.Range.Text } catch { $t = '' }
+                            if ($t.Trim().Contains($target)) { $headingPara = $para; break }
+                        }
+                        if ($null -eq $headingPara) { throw "引用目标找不到正文位置：标题 '$target'（列表有此项但正文无对应 OutlineLevel=1 段）" }
+                        $bmName = "AutoRef$i"
+                        $null = $doc.Bookmarks.Add($bmName, $headingPara.Range)
+                        $fieldCode = "REF $bmName \h"
+                    } elseif ($k -eq 'bookmark') {
+                        $fieldCode = "REF $target \h"
+                    } else {
+                        throw "批量路径暂不支持 refType=$k（numberedItem/footnote 的 REF 需各自书签体系）——用单条模式或先建书签；已列观察项"
+                    }
+                    if ($dryRun) {
+                        # 先看后写：只解析返回逐项落点预览，不写文档
+                        $item.fieldPreview = $fieldCode
+                        $filled += $item
+                        continue
+                    }
+                    $rng = $resolved.range
+                    $f = $doc.Fields.Add($rng, -1, $fieldCode, $true)
+                    $recorded += @{ field = $f; item = $item }
+                } catch {
+                    $em = [string]$_.Message
+                    if ([string]::IsNullOrWhiteSpace($em)) { $em = [string]$_.ToString() }
+                    if ([string]::IsNullOrWhiteSpace($em)) { $em = '未知异常（无消息）' }
+                    $item.error = $em
+                    $failed += $item
+                }
+            }
+            if (-not $dryRun) {
+                # 插后自检（强制闭环）：Fields.Update → 回读 Result 非空 + Code 含 \h；
+                # 空即该项失败 + 人话提示（"被引对象只包住部分字符"实战坑自动拦截）。逐项失败不静默。
+                try { $null = $doc.Fields.Update() } catch {}
+                foreach ($fe in $recorded) {
+                    $f = $fe.field; $item = $fe.item
+                    $resultText = ''; $codeText = ''
+                    try { $resultText = [string]$f.Result.Text } catch {}
+                    try { $codeText = [string]$f.Code.Text } catch {}
+                    if ([string]::IsNullOrEmpty($resultText.Trim()) -or (-not $codeText.Contains('\h')) -or $resultText.Contains('错误!')) {
+                        $item.error = "域结果为空或缺超链接开关（code='$($codeText.Trim())'）——被引对象可能只包住部分字符，请检查被引项的选择范围"
+                        $failed += $item
+                    } else {
+                        $item.fieldResult = $resultText.Trim()
+                        $filled += $item
+                    }
+                }
+            }
+            $summary = if ($dryRun) { "dryRun 预览：$($filled.Count) 项可插（未写文档）" } else { "已插 $($filled.Count) 项，失败 $($failed.Count) 项" }
+            Output-Json @{ success = $true; data = @{ dryRun = $dryRun; filledCount = $filled.Count; failedCount = $failed.Count; filled = $filled; failed = $failed; summary = $summary } }
+            return
+        }
         try {
             # wdRefTypeHeading=1 wdRefTypeBookmark=2 wdRefTypeNumberedItem=3 wdRefTypeFootnote=4
             $rtMap = @{ heading = 1; bookmark = 2; numberedItem = 3; footnote = 4 }
@@ -10517,7 +10830,6 @@ switch ($Action) {
 }
 
 }   # function Invoke-WpsAction（上一行的 } 是 switch 的收尾）
-
 # ==================== 入口 ====================
 # 常驻模式：wps-comd.ps1 先设 $env:WPS_COM_DAEMON=1 再 dot-source 本文件，
 #           此时只需拿到 Invoke-WpsAction 的定义，不执行任何动作。

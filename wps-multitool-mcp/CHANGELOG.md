@@ -1,5 +1,14 @@
 # wps-multitool-mcp
 
+## 未发布 · 迁移说明（host wps 优先 · 2026-11-17）
+
+- **行为变更**：`WPS_OFFICE=auto`（缺省）在 **WPS 与 Office 双装机器上现在缺省驱动 WPS**（此前为 Office）。
+  探测升级为双链（Office 三链 + Kwps/Ket/Kwpp 三链各自解析服务器二进制真身），两链都在时按
+  `WPS_HOST_PREFERENCE`（`wps` | `office`，缺省 `wps`）取舍；单链装机的结论不变。
+- **迁移**：依赖旧"auto → Office"行为的用户改用 **`WPS_OFFICE=on`**（显式锁定 Office，优先级最高）；
+  或设 `WPS_HOST_PREFERENCE=office` 保留双装偏好。
+- **新能力**：控制面 `POST /host`（localhost）+ 面板切换按钮，会话级切换 host 不重启（详见面板与 SECURITY 说明）。
+
 ## 1.1.0
 
 ### Minor Changes

@@ -3,7 +3,7 @@
 > 本文件由 `wps-multitool-mcp/scripts/manual/gen-tools-doc.js` 从**运行时注册表**生成，请勿手改。
 > 改完工具跑一次 `node scripts/manual/gen-tools-doc.js`；CI 会重跑并 `git diff --exit-code`，对不上就红。
 
-**287 个工具**（7 内置 + 280 专业/组工具）· 默认列出 40 个 · 注解覆盖 287/287 · 真机验证 270/287
+**284 个工具**（7 内置 + 277 专业/组工具）· 默认列出 40 个 · 注解覆盖 284/284 · 真机验证 270/284
 
 | 标记 | 含义 |
 |---|---|
@@ -17,8 +17,8 @@
 |---|---|---|---|---|
 | `wps_list_tool_groups` | 是 | R | live | 列出所有工具组及当前是否已在列。<br><sub>别名：列出工具工具组 / 列举工具工具组 / 工具</sub> |
 | `wps_load_tool_group` | 是 | — | live | 加载一个工具组，加载后该组工具才会出现在工具列表里。<br><sub>别名：加载组 / 拉起组 / 把PPT工具弄出来</sub> |
-| `wps_route_intent` | 是 | R | live | 意图路由（三层）：一句话进来，返回【能直接行动】的结果，而不是只给一个组名。<br><sub>别名：意图识别 / 该用哪个组 / 这句话是干嘛</sub> |
-| `wps_search_tools` | 是 | R | live | 在所有工具里搜索（包括未加载组的工具），返回名字 + 所属组 + 是否已列出 + 中文别名 + 验证状态。<br><sub>别名：找工具 / 搜工具 / 有没有什么工具</sub> |
+| `wps_route_intent` | 是 | R | live | 任何能力不确定，先调我——意图路由（三层）：一句话进来，返回【能直接行动】的结果，而不是只给一个组名。<br><sub>别名：意图识别 / 该用哪个组 / 这句话是干嘛</sub> |
+| `wps_search_tools` | 是 | R | live | 任何能力不确定，也可以先调我——在所有工具里搜索（包括未加载组的工具），返回名字 + 所属组 + 是否已列出 + 中文别名 +…<br><sub>别名：找工具 / 搜工具 / 有没有什么工具</sub> |
 | `wps_unload_tool_group` | 是 | — | live | 卸载一个工具组，卸载后该组工具不再出现在工具列表里（仍可直接调用，但不推荐）。<br><sub>别名：卸载工具组合 / 工具 / 组合</sub> |
 
 ## 通用（23）
@@ -219,7 +219,7 @@
 | `wps_excel_update_pivot_table` |  | — | live | 更新已有透视表的配置，包括添加/移除字段、修改聚合方式等。<br><sub>别名：更新数据透视表表格 / 刷新数据透视表表格 / 数据透视表</sub> |
 | `wps_get_active_workbook` |  | R | live | 获取当前打开的WPS表格工作簿信息<br><sub>别名：当前工作簿 / 活动工作簿 / 打开的是哪个表格</sub> |
 
-## PPT（99）
+## PPT（96）
 
 | 工具 | 默认档 | 注解 | 验证 | 说明 |
 |---|---|---|---|---|
@@ -232,6 +232,7 @@
 | `wps_ppt_insert_image` | 是 | N | live | 在幻灯片中插入图片。<br><sub>别名：插入图片 / 加图片 / 按页插图片</sub> |
 | `wps_ppt_set_slide_title` | 是 | — | live | 设置幻灯片的标题文本。<br><sub>别名：设置标题 / 改标题 / 设置幻灯片标题</sub> |
 | `wps_get_active_presentation` |  | R | live | 获取当前打开的WPS演示文稿信息<br><sub>别名：当前演示文稿 / 活动演示 / 打开的是哪个PPT</sub> |
+| `wps_ppt_3d` |  | — | static | PPT 3D 效果一站式工具——op 四选一：rotation=旋转 / depth=深度 / material=材质 / t… |
 | `wps_ppt_add_master_element` |  | N | live | 向母版中添加新元素。<br><sub>别名：添加母版element / 新增母版element / 加母版element</sub> |
 | `wps_ppt_add_page_indicator` |  | N | live | 为演示文稿添加页码指示器。<br><sub>别名：添加页面指示器 / 新增页面指示器 / 加页面指示器</sub> |
 | `wps_ppt_add_ppt_hyperlink` |  | N | static | 为幻灯片中的形状添加超链接。<br><sub>别名：添加超链接 / 新增超链接 / 加超链接</sub> |
@@ -246,7 +247,6 @@
 | `wps_ppt_build_deck` |  | N | static | 按 JSON 页面描述一次性生成整套演示文稿（deckkit 引擎）。<br><sub>别名：生成整套PPT / 套模板生成 / 一键做PPT</sub> |
 | `wps_ppt_close_presentation` |  | DN | live | 关闭演示文稿。可指定文稿名称，不指定则关闭当前活动文稿。<br><sub>别名：关闭演示文稿 / 演示文稿 / PPT</sub> |
 | `wps_ppt_copy_slide` |  | N | live | 复制幻灯片到指定位置。<br><sub>别名：复制幻灯片 / 拷贝幻灯片 / 幻灯片</sub> |
-| `wps_ppt_create_3d_text` |  | N | static | 在幻灯片中创建带有3D效果的文字。<br><sub>别名：创建3d文本 / 新建3d文本 / 生成3d文本</sub> |
 | `wps_ppt_create_donut_chart` |  | N | live | 在幻灯片中创建环形图。<br><sub>别名：创建环形图图表 / 新建环形图图表 / 生成环形图图表</sub> |
 | `wps_ppt_create_flow_chart` |  | N | live | 在幻灯片中创建流程图。<br><sub>别名：创建流程图表 / 新建流程图表 / 生成流程图表</sub> |
 | `wps_ppt_create_gauge` |  | N | live | 在幻灯片中创建仪表盘图表。<br><sub>别名：创建仪表盘 / 新建仪表盘 / 生成仪表盘</sub> |
@@ -283,9 +283,6 @@
 | `wps_ppt_remove_ppt_hyperlink` |  | DN | static | 移除幻灯片中形状的超链接。<br><sub>别名：删除超链接 / 移除超链接 / 去掉超链接</sub> |
 | `wps_ppt_replace_ppt_image` |  | DN | live | 原位替换幻灯片中的某张图片：保留原图的位置、尺寸、旋转角度，删除旧图后在同一矩形内插入新图。用于在保持版式不变的前提下把模板里…<br><sub>别名：替换图片 / 换图 / 图片</sub> |
 | `wps_ppt_replace_ppt_text` |  | DN | live | 在演示文稿中查找并替换文本。<br><sub>别名：替换文本 / 文本 / 文字</sub> |
-| `wps_ppt_set_3d_depth` |  | — | static | 设置幻灯片中形状的3D挤出深度。<br><sub>别名：设置3d深度 / 设定3d深度 / 深度</sub> |
-| `wps_ppt_set_3d_material` |  | — | static | 设置幻灯片中形状的3D材质效果。<br><sub>别名：设置3d材质 / 设定3d材质 / 材质</sub> |
-| `wps_ppt_set_3d_rotation` |  | — | static | 设置幻灯片中形状的3D旋转效果。<br><sub>别名：设置3d旋转 / 设定3d旋转 / 旋转</sub> |
 | `wps_ppt_set_active_target` |  | — | live | 锁定后续所有 PPT 操作的【目标演示文稿】（按文件名）。锁定后，本服务器会给所有演示类调用自动注入该文稿名，底层精确定位，彻…<br><sub>别名：设置当前目标 / 设定当前目标 / 当前</sub> |
 | `wps_ppt_set_animation` |  | N | live | 给形状加动画，或调整已有动画的播放顺序（第 8 轮合并了动画族 5 个工具）。<br><sub>别名：设置动画 / 添加动画 / 加动画</sub> |
 | `wps_ppt_set_background` |  | — | live | 设置背景：某一页、整份文稿、或幻灯片母版。<br><sub>别名：设置背景 / 换背景 / 背景色</sub> |

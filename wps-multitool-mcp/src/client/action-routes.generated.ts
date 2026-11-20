@@ -3,8 +3,8 @@
  * 源：scripts/wps-com.ps1 的【顶层】switch ($Action) 分支（嵌套 switch 的分支标签不算动作）。
  * 重新生成：node scripts/gen-action-routes.js
  *
- * 统计：common=20  word=77  ppt=114  excel=106  合计 317
- * 口径：可分发动作 317 个（含 __ 内部探针 12 个）→ 面向用户 305 个
+ * 统计：common=20  word=77  ppt=111  excel=106  合计 314
+ * 口径：可分发动作 314 个（含 __ 内部探针 12 个）→ 面向用户 302 个
  */
 
 import type { AppKey } from './action-routes';
@@ -74,7 +74,6 @@ export const ACTION_ROUTES: Record<string, AppKey> = {
   "copyFormat": 'excel',
   "copyRange": 'excel',
   "copySheet": 'excel',
-  "create3DText": 'ppt',
   "createChart": 'excel',
   "createDocument": 'word',
   "createDonutChart": 'ppt',
@@ -210,6 +209,7 @@ export const ACTION_ROUTES: Record<string, AppKey> = {
   "openWorkbook": 'excel',
   "pasteRange": 'excel',
   "ping": 'common',
+  "ppt3d": 'ppt',
   "protectSheet": 'excel',
   "protectWorkbook": 'excel',
   "quitWps": 'common',
@@ -233,9 +233,6 @@ export const ACTION_ROUTES: Record<string, AppKey> = {
   "reviewMode": 'word',
   "save": 'common',
   "saveAs": 'common',
-  "set3DDepth": 'ppt',
-  "set3DMaterial": 'ppt',
-  "set3DRotation": 'ppt',
   "setAnimationOrder": 'ppt',
   "setArrayFormula": 'excel',
   "setBackgroundColor": 'ppt',

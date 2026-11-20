@@ -22,6 +22,7 @@ import {
 import { wpsClient } from '../../client/wps-client';
 import { WpsAppType } from '../../types/wps';
 import { WORD_TARGET_PROPERTY } from './target';
+import { parseAddress } from '../../server/address-dsl';
 
 type Args = Record<string, unknown>;
 
@@ -496,9 +497,13 @@ export const crossRefDefinition: ToolDefinition = {
 - "在结论这段开头插一个对'第二章'的引用"
 - 先用 op=listTargets 看有哪些能引的，再 itemIndex 选中
 
+- anchors: 批量插入（≤50）——每项自带地址对象 {locate:{chapter,paragraph,sentence,edge}, refType?, itemIndex?}，
+  落点由统一文档定位层解析（章=OutlineLevel 1 / 段=正文段计数 / 句=Sentences 集合），
+  **dryRun:true 先看落点预览再真插**（先看后写）；逐项失败不静默、插后自检域结果
+
 注意：
-- 引用插在【光标处】，所以先 wps_word_insert_text 定位好光标再调用
-- 插完建议调 wps_word_update_fields 让引用显示正确`,
+- 单条模式引用插在【光标处】（旧签名不变）；批量模式按 anchors 逐项定位插入，不依赖光标
+- 插完建议调 wps_word_update_fields 让引用显示正确（批量路径已内置插后自检）`,
   category: ToolCategory.DOCUMENT,
   inputSchema: {
     type: 'object',
@@ -507,6 +512,20 @@ export const crossRefDefinition: ToolDefinition = {
       op: { type: 'string', enum: ['insert', 'listTargets'], description: '插入引用还是列出可引用项' },
       refType: { type: 'string', enum: ['heading', 'bookmark', 'numberedItem', 'footnote'], description: '引用类型，默认 heading' },
       itemIndex: { type: 'number', description: '第几个可引用项（从 1 开始），默认 1' },
+      anchors: {
+        type: 'array',
+        maxItems: 50,
+        description: '批量插入（≤50）：每项 = { locate: {chapter, paragraph, sentence, edge}, refType?, itemIndex? }。地址语法：sentence 必须带 paragraph；text 与 start/end 互斥。给 anchors 走批量路径——先 dryRun 看落点再真插',
+        items: {
+          type: 'object',
+          properties: {
+            locate: { type: 'object', description: '地址对象：{chapter: 数字或{text}, paragraph, sentence, edge: start|end}' },
+            refType: { type: 'string', enum: ['heading', 'bookmark', 'numberedItem', 'footnote'], description: '引用类型，缺省继承顶层 refType（再缺省 heading）' },
+            itemIndex: { type: 'number', description: '第几个可引用项（从 1 开始），缺省继承顶层（再缺省 1）' },
+          },
+        },
+      },
+      dryRun: { type: 'boolean', description: 'true 只解析全部 anchors 返回逐项落点预览（章标题/段全文/句全文/via），不写文档——先看后写' },
     },
     required: ['op'],
   },
@@ -523,6 +542,52 @@ export const crossRefHandler: ToolHandler = async (args: Args): Promise<ToolCall
       const total = Object.values(t).reduce((a, b) => a + b.length, 0);
       if (!total) return ok('文档里没有可引用的目标。\n提示：heading 类型需要先有标题样式的段落。');
       return ok(`可引用项：\n${lines.join('\n')}\n用 itemIndex 选中其中一个再 op=insert。`);
+    }
+    if (Array.isArray(args.anchors)) {
+      // 批量路径：L1 地址 DSL 前置校验（解析/执行分离——语法错、组合错在进 COM 前就死）
+      const anchors = (args.anchors as Array<Record<string, unknown>>).map((a) => {
+        const item: Record<string, unknown> = { ...a };
+        if (item.locate) {
+          const parsed = parseAddress(item.locate);
+          if (!parsed.ok) return fail('[勿重试·先改参数] ' + parsed.error);
+          item.locate = parsed.address;
+        }
+        return item;
+      });
+      if (anchors.some((a) => a && typeof a === 'object' && 'success' in (a as object))) {
+        // 上面的 map 里已经出了失败回包（parseAddress 报错），直接返回第一个失败项
+        const firstFail = anchors.find((a) => a && typeof a === 'object' && 'success' in (a as object));
+        return firstFail as unknown as ToolCallResult;
+      }
+      const dryRun = args.dryRun === true;
+      const r = await call<{
+        dryRun: boolean; filledCount: number; failedCount: number;
+        filled: Array<Record<string, unknown>>; failed: Array<Record<string, unknown>>; summary: string;
+      }>('insertCrossReference', {
+        anchors, dryRun, refType: args.refType, itemIndex: args.itemIndex,
+      });
+      if (!r.ok) return fail(errText('批量交叉引用失败', r), r.error);
+      const d = r.data;
+      const lines: string[] = [String(d?.summary ?? '')];
+      for (const f of d?.filled ?? []) {
+        const loc = (f.loc ?? {}) as Record<string, unknown>;
+        const parts: string[] = [];
+        if (loc.chapterIndex) parts.push('第' + loc.chapterIndex + '章' + (loc.chapterTitle ? '（' + loc.chapterTitle + '）' : ''));
+        if (loc.paragraphIndex) parts.push('段' + loc.paragraphIndex);
+        if (loc.sentenceIndex) parts.push('句' + loc.sentenceIndex);
+        const at = parts.length ? parts.join('·') : '(落点见 loc)';
+        const via = loc.via ? ' [via=' + loc.via + ']' : '';
+        const fr = f.fieldResult ? ' 域结果：' + String(f.fieldResult) : '';
+        const sent = loc.sentenceText ? ' 句全文："' + loc.sentenceText + '"' : '';
+        lines.push('  ✓ 第' + f.index + ' 项 → ' + at + via + ' ← 「' + f.target + '」' + fr + sent);
+      }
+      for (const f of d?.failed ?? []) {
+        lines.push('  ✗ 第' + f.index + ' 项失败：' + String(f.error));
+      }
+      const tail = dryRun
+        ? '（dryRun 预览，未写文档——确认落点后去掉 dryRun 再调一次）'
+        : '建议接着调 wps_word_update_fields 让引用显示正确';
+      return ok(lines.join('\n') + '\n' + tail, r.warnings);
     }
     const r = await call<{ target: string; total: number; itemIndex: number }>('insertCrossReference', {
       refType: args.refType, itemIndex: args.itemIndex,

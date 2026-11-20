@@ -19,6 +19,7 @@ import {
 import { psDaemon } from '../../client/ps-daemon';
 import { versionLine, MCP_VERSION, MCP_AUTHOR } from '../../version';
 import { call } from './helpers';
+import { toolRegistry } from '../../server/tool-registry';
 
 /** PowerShell 侧 wpsStatus 动作返回的数据形状 */
 interface AppState {
@@ -84,6 +85,18 @@ export const statusHandler: ToolHandler = async (): Promise<ToolCallResult> => {
 
   const bridge = { ...client, internal: bridgeInternal, internalError: bridgeInternalError };
 
+  // host 自报（变更二）：override ?? 探测（桥内字段优先——控制面切换后这里立刻如实反映）
+  const bi = (bridgeInternal ?? {}) as { hostOverride?: string; hostProbed?: string | null; hostActive?: string };
+  const hostInfo = {
+    current: bi.hostActive ?? null,
+    override: bi.hostOverride ?? null,
+    probed: bi.hostProbed ?? null,
+    note:
+      bi.hostOverride
+        ? 'host 已由控制面切换；word/excel/ppt 各目标记忆将在下次调用时随子进程重建（附着制，用户文档零影响）'
+        : '切换走面板按钮或控制端点 POST /host（env 显式 WPS_OFFICE 时控制面拒绝）',
+  };
+
   // WPS 这一层：拿不到就如实标注，不要把失败伪装成"没运行"
   let wps: WpsStatusData | null = null;
   let wpsError: string | null = null;
@@ -115,6 +128,18 @@ export const statusHandler: ToolHandler = async (): Promise<ToolCallResult> => {
   }
 
   const payload = {
+    selfIntro: {
+      defaultTier: toolRegistry.listTools().tools.length,
+      total: toolRegistry.listAllTools().length,
+      host: hostInfo.current,
+      switch: '面板按钮或控制端点 POST /host',
+      moreTools: ['wps_list_tool_groups', 'wps_search_tools', 'wps_route_intent'],
+      line:
+        '默认档 ' + toolRegistry.listTools().tools.length + ' / 全量 ' + toolRegistry.listAllTools().length +
+        '；当前 host=' + (hostInfo.current ?? '未知') + '；切换：面板按钮；' +
+        '更多工具：wps_list_tool_groups · wps_search_tools · wps_route_intent',
+    },
+    host: hostInfo,
     version: {
       line: versionLine(),
       version: MCP_VERSION,

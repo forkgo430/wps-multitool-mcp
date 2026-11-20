@@ -74,6 +74,7 @@ const FAST = [
   ['install-verify.js', 'install 子命令（合并/备份/幂等）'],
   ['skill-verify.js', 'skill 包规范'],
   ['dsh-config-verify.js', 'dsh 适配约束（命名/超时）'],
+  ['host-chain-probe.js', 'host 链真机探针（返工卡 · HEAVY）：.NET Registry 直读结构 + 真机 Get-HostKind/wps + status 层间一致', true],
   ['windows-path-frozen.js', 'Windows 链路冻结门禁（C1）'],
   ['backend-selector-test.js', '平台识别决策链（Linux B0）+ Office host 维度（WPS_OFFICE 矩阵/二进制解析）'],
   ['addon-channel-test.js', '加载项通道骨架（Linux B2：握手三态/端口绑定/路由/失败语义/轮询闭环）'],
@@ -83,6 +84,7 @@ const FAST = [
   ['task-engine-test.js', '任务引擎（意图一期：服务端执行/参数模板跨步引用/confirm 闸门/fail-fast，mock 注入）'],
   ['schema-strict-verify.js', '入参真校验（代码技法卡 A 段）：类型/枚举/required/范围/数组元素/非隐式转换/合法透传/287 扫描/集成（全 mock）'],
   ['registration-order-verify.js', '注册顺序对账（代码技法卡 D 段）：ppt·excel 拆分块原序/总量 287/professional 完整（全 mock）'],
+  ['locator-verify.js', '定位层（host wps 优先卡 C 段）：L1 地址 DSL 全测/L2 结构/dryRun/插后自检/上限/旧签名兼容/探针在 caps（全 mock）'],
 ];
 
 /** 要起子进程 / 真跑 PowerShell 的重测。第三列 = 仅 Windows 能跑（Linux 上跳过不判失败，B8） */

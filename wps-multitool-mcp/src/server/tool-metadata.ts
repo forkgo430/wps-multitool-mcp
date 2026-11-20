@@ -416,6 +416,7 @@ const CURATED: Record<
   // set_master_background 下线（target:'master' 取代）。
   wps_ppt_set_background: {
     aliases: ['设置背景', '换背景', '背景色', '背景颜色', '纯色背景', '背景图', '背景图片', '渐变背景', '母版背景'],
+    examples: ['把第 3 页背景改成渐变', '整份文稿背景换纯色', '母版背景加上公司 logo 底图'],
     notFor: [
       '背景颜色/背景图/渐变/母版背景 都归这一个工具管：用 type 与 target 区分，别再找 _color/_image/_gradient/_master 那些旧名',
       '给【形状】上色用 wps_ppt_set_shape_style（不是背景）',

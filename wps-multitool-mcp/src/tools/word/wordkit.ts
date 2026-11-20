@@ -95,10 +95,12 @@ export function expandDoc(spec: DocSpec): DocStep[][] {
       }
       case 'para':
         if (!s.content?.trim()) throw new Error(`${at} para 缺 content`);
-        return [{ tool: 'wps_word_insert_text', args: { text: s.content, position: 'end', new_paragraph: true }, paraKind: 'para' }];
+        // 落位用光标语义（ps1 insertText 的 new_paragraph → TypeParagraph）：与 add_heading 的
+        // 光标链一致，章/段交错；原先 position:'end' 把正文全部追加到文档尾——标题聚簇缺陷
+        return [{ tool: 'wps_word_insert_text', args: { text: s.content, new_paragraph: true }, paraKind: 'para' }];
       case 'quote':
         if (!s.content?.trim()) throw new Error(`${at} quote 缺 content`);
-        return [{ tool: 'wps_word_insert_text', args: { text: quoteWrap(s.content), position: 'end', new_paragraph: true }, paraKind: 'quote' }];
+        return [{ tool: 'wps_word_insert_text', args: { text: quoteWrap(s.content), new_paragraph: true }, paraKind: 'quote' }];
       case 'table': {
         if (!s.rows?.length) throw new Error(`${at} table 缺 rows（数据行，首行可为表头）`);
         const cols = s.rows[0]?.length || 0;

@@ -46,6 +46,13 @@ for (const fn of ['function Get-HostKind', 'function Get-ProgidForApp', 'functio
   'function Test-AppIdentity', 'function Resolve-ProgidHost', 'function Test-ServerBinaryHost']) {
   ok(`host 函数在位：${fn.replace('function ', '')}`, ps1.includes(fn));
 }
+// host wps 优先（2026-11-17 翻转）：Get-HostKind 双链探测结构断言
+{
+  const ghk = ps1.slice(ps1.indexOf('function Get-HostKind'), ps1.indexOf('function Get-ProgidForApp'));
+  ok('Get-HostKind 双链：Office 三链在位', ['Word.Application', 'Excel.Application', 'PowerPoint.Application'].every((x) => ghk.includes(x)));
+  ok('Get-HostKind 双链：WPS 三链在位', ['Kwps.Application', 'Ket.Application', 'Kwpp.Application'].every((x) => ghk.includes(x)));
+  ok('Get-HostKind 双链：WPS_HOST_PREFERENCE 取舍在位', ghk.includes('WPS_HOST_PREFERENCE'));
+}
 // B2 三 getter 接线（host 感知 ProgID + office 身份校验）
 ok('Get-WpsExcel 走 Get-ProgidForApp', /function Get-WpsExcel[\s\S]{0,900}Get-ProgidForApp 'excel'/.test(ps1));
 ok('Get-WpsWord 走 Get-ProgidForApp', /function Get-WpsWord[\s\S]{0,2400}Get-ProgidForApp 'word'/.test(ps1));
@@ -148,21 +155,21 @@ ok('WPS 专用 11 office host 守卫（明确报错文案）',
 ok('findInSheet office 分支走 5.1 子进程（E11 收口版）',
   /office host 的查找交由 PowerShell 5.1 子进程/.test(ps1) && /wps-find51.ps1/.test(ps1));
 
-console.log('\n=== F. 对账表一致性门禁（分母 315 不变）===');
+console.log('\n=== F. 对账表一致性门禁（分母 314 不变（3D op-merge 后））===');
 const matrixPath = path.join(ROOT, '..', 'docs', 'agents', 'office-compat-matrix.md');
 if (fs.existsSync(matrixPath)) {
   const matrix = fs.readFileSync(matrixPath, 'utf8');
   const rowMatches = matrix.match(/^\| `[A-Za-z0-9_]+` \|/gm) || [];
-  ok('对账表行数 = 315（与 gen-action-routes 分母一致）', rowMatches.length === 317, `rows=${rowMatches.length}`);
+  ok('对账表行数 = 314（与 gen-action-routes 分母一致）', rowMatches.length === 314, `rows=${rowMatches.length}`);
   ok('对账表四类统计行齐备（直通/已落地/未落地/WPS 专用）',
     matrix.includes('需 quirk 分支(已落地)') && matrix.includes('需 quirk 分支(未落地)') &&
-    matrix.includes('WPS 专用') && matrix.includes('| **合计** | **317** |'));
+    matrix.includes('WPS 专用') && matrix.includes('| **合计** | **314** |'));
   // 表内 case 与路由表一一对应（不许漂）
   const matrixCases = new Set((matrix.match(/^\| `([A-Za-z0-9_]+)` \|/gm) || []).map((r) => r.match(/`([A-Za-z0-9_]+)`/)[1]));
   const routeCases = [...routesSrc.matchAll(/"([A-Za-z0-9_]+)":\s*'(\w+)'/g)].map((m) => m[1]);
   const missingInMatrix = routeCases.filter((c) => !matrixCases.has(c));
-  ok('路由表 315 case 全部在对账表（无漂移）', missingInMatrix.length === 0 && routeCases.length === 317,
-    missingInMatrix.length ? '缺: ' + missingInMatrix.slice(0, 5).join(',') : `317/317`);
+  ok('路由表 314 case 全部在对账表（无漂移）', missingInMatrix.length === 0 && routeCases.length === 314,
+    missingInMatrix.length ? '缺: ' + missingInMatrix.slice(0, 5).join(',') : `314/314`);
 } else {
   ok('对账表存在', false, matrixPath + ' 不存在');
 }

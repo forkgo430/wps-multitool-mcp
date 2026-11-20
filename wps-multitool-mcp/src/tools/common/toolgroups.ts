@@ -160,24 +160,11 @@ export const unloadToolGroupHandler: ToolHandler = async (args) => {
 
 export const searchToolsDefinition: ToolDefinition = {
   name: 'wps_search_tools',
-  description: `在所有工具里搜索（**包括未加载组的工具**），返回名字 + 所属组 + 是否已列出 + 中文别名 + 验证状态。
+  description: `任何能力不确定，也可以先调我——在所有工具里搜索（**包括未加载组的工具**），返回名字 + 所属组 + 是否已列出 + 中文别名 + verification（live=真机跑通过 / static=只有静态校验，static 不是不能用，做完事如实告知即可）。
 
-关键词可以直接用中文（工具名是英文，描述和别名是中文）。
-**重点看 notFor**：本仓有一批近名工具（6 个 background、5 个 animation、4 个 transition、
-3 个插入图片、2 个 generate_*_toc、2 个 zoom），名字和描述几乎一样，光看名字分不出来。
-靠前的命中会带上 examples（什么诉求用它）和 notFor（它不干什么、该用谁），
-遇到一搜出来好几个同族工具时，务必按 notFor 挑，别瞎猜。
+关键词直接用中文。**重点看 notFor**：本仓近名工具多（6 background、5 animation、4 transition、3 插入图片、2 zoom），名字几乎一样；靠前的命中带 examples 和 notFor（它不干什么、该用谁），同族工具务必按 notFor 挑，别瞎猜。
 
-**verified 字段**：live = 真机跑通过；static = 只有静态校验（目前整组 ppt 都是）。
-static 不是"不能用"，是"没人在这台机器上验证过" —— 用它做完事，要如实告诉用户结果未经真机验证。
-
-用途：组没加载时工具不在列表里，先搜出来，再 wps_load_tool_group 把它所在的组拉起来。
-
-使用场景：
-- "有没有导出图片的工具"
-- "找一下和批注有关的工具"
-- "PPT 相关的工具都有哪些"（搜 ppt）
-- "改背景色用哪个"（搜"背景"，看 notFor 分辨 6 个 background）`,
+用途：组没加载时工具不在列表里，先搜出来，再 wps_load_tool_group 把它所在的组拉起来。`,
   category: ToolCategory.COMMON,
   group: 'core',
   inputSchema: {

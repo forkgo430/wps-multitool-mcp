@@ -89,21 +89,21 @@ eq("isDestructiveAction('handleRevisions')", isDestructiveAction('handleRevision
 
 console.log('\n=== C. 抽查工具注解 ===');
 const cases = [
-  ['wps_word_get_cell_text', { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }],
-  ['wps_excel_get_cell_value', { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }],
-  ['wps_common_status', { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }],
-  ['wps_excel_write_range', { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false }],
+  ['wps_word_get_cell_text', { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false, verification: 'live' }],
+  ['wps_excel_get_cell_value', { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false, verification: 'live' }],
+  ['wps_common_status', { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false, verification: 'live' }],
+  ['wps_excel_write_range', { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false, verification: 'live' }],
   // 旧名 wps_excel_insert_row 已于第 2 轮降为别名，这里改盯规范名（同一个 insertRows 动作）
-  ['wps_excel_insert_rows', { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false }],
-  ['wps_common_save_as', { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false }],
-  ['wps_convert_to_pdf', { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false }],
+  ['wps_excel_insert_rows', { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false, verification: 'live' }],
+  ['wps_common_save_as', { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false, verification: 'live' }],
+  ['wps_convert_to_pdf', { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false, verification: 'live' }],
   // 2026-10-24：revisions 曾只登记 listRevisions 被标成只读（"接受所有修订"不建快照不弹确认）；
   // quit 曾 destructive=false（影响用户全部 WPS 窗口的工具没有破坏性提示）。
   // revisions 非幂等是推导出来的：isIdempotentAction 第一层就是"破坏性动作一律非幂等"，
   // 且语义上 acceptOne(n) 之后再 acceptOne(n) 处理的是另一条修订（index 会位移）。
   // 第一版判据这里写的是 idempotent=true，被本门禁自己抓出来 —— 判据错，不是代码错。
-  ['wps_word_revisions', { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false }],
-  ['wps_common_quit', { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false }],
+  ['wps_word_revisions', { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false, verification: 'live' }],
+  ['wps_common_quit', { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false, verification: 'live' }],
 ];
 for (const [name, want] of cases) {
   if (!names.includes(name)) {
@@ -149,5 +149,25 @@ console.log(`  总数 ${s.total} / 已注解 ${s.annotated}`);
 console.log(`  只读 ${s.readOnly} | 破坏性 ${s.destructive} | 非幂等 ${s.nonIdempotent}`);
 console.log(`  写入类 ${s.total - s.readOnly}`);
 
+// verification 标注（host wps 优先卡 D3）：注解带 live/static 标签且与台账一致
+{
+  const { toolRegistry } = require(path.join(ROOT, 'dist', 'server', 'tool-registry.js'));
+  const { WpsMcpServer } = require(path.join(ROOT, 'dist', 'server', 'mcp-server.js'));
+  new WpsMcpServer();
+  const names = toolRegistry.listAllTools().map((t) => t.name);
+  const get = require(path.join(ROOT, 'dist', 'server', 'tool-annotations.js')).getToolAnnotations;
+  let withVer = 0, bad = 0, liveCount = 0;
+  for (const n of names) {
+    const a = get(n);
+    if (!a) continue;
+    if (a.verification === undefined) { bad++; continue; }
+    if (a.verification !== 'live' && a.verification !== 'static') bad++;
+    else { withVer++; if (a.verification === 'live') liveCount++; }
+  }
+  ok('verification 标注全覆盖（' + withVer + ' 工具，live ' + liveCount + '）', withVer === names.length && bad === 0, 'bad=' + bad);
+  const { isLiveVerified } = require(path.join(ROOT, 'dist', 'server', 'tool-verification.js'));
+  const liveNames = names.filter((n) => isLiveVerified(n));
+  ok('verification=live 与台账同源（isLiveVerified 数量一致）', liveNames.length === liveCount, liveNames.length + ' vs ' + liveCount);
+}
 console.log(`\n汇总：${pass} 通过 / ${fail} 失败`);
 process.exit(fail === 0 ? 0 : 1);

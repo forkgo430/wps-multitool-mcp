@@ -15,6 +15,10 @@
   - AI 活动指示：队列 > 0 时标题区显示"AI 执行中"脉冲动画
   - 卡片间距/分组微调
 
+  v3.5（2026-11-17 host wps 优先轮 · 第八任）：
+  - 新增"切换 host"按钮：走桥的 POST /host（会话级切换，子进程池惰性重建；
+    env 显式锁定 WPS_OFFICE 时桥拒绝并说明）。当前 host 显示在按钮上（/status 自报）。
+
   v3.4（2026-11-04 第七任 · 面板诚实化）：
   - 桥是懒加载：无任何 MCP 工具调用时不运行——此前一直显示"未连接"是如实汇报但没说清原因。
     未连接/连不上文案改为说明"等待 MCP 调用拉起，几秒内自动连上"
@@ -210,6 +214,7 @@
     <button onclick="act('snap',this)">快照</button>
     <button class="w" onclick="act('unstick',this)">解除卡死</button>
     <button class="w" id="btnHold" onclick="toggleHold()">暂停 AI</button>
+    <button class="w" id="btnHost" onclick="switchHost()">切换 host</button>
   </div>
   <div class="hint">更多能力用 MCP 工具调用，默认列 40 个基础工具。</div>
 </div>
@@ -226,7 +231,7 @@
     <div class="kv"><span class="k">作者</span><span>赢容</span></div>
     <div class="kv"><span class="k">许可</span><span>MIT</span></div>
     <ul>
-      <li>287 个 MCP 工具，默认只列 40 个基础工具</li>
+      <li>284 个 MCP 工具，默认只列 40 个基础工具</li>
       <li>常驻桥进程，冷启动后 2~3ms/次</li>
       <li>快照 / 撤销 / 导出 / 诊断</li>
     </ul>
@@ -367,6 +372,8 @@ function renderImpl(d) {
 
 function poll() {
   fetch(ENDPOINT).then(function (r) { return r.json(); }).then(function (d) {
+    if (d.hostActive) { window.__hostActive__ = d.hostActive; }
+    if (d.hostOverride !== undefined) { hostOverride = d.hostOverride || null; renderHost(); }
     render(d);
     listDocs();
   }).catch(function () {
@@ -441,6 +448,28 @@ function renderHold() {
   var b = document.getElementById('btnHold');
   if (b) { b.textContent = heldState ? '继续执行' : '暂停 AI'; b.className = heldState ? 'p' : 'w'; }
 }
+var hostOverride = null;
+function renderHost() {
+  var b = document.getElementById('btnHost');
+  if (b) { b.textContent = hostOverride ? 'host: ' + hostOverride + '（切回）' : '切换 host'; b.className = hostOverride ? 'p' : 'w'; }
+}
+function switchHost() {
+  // 目标 = 当前生效 host 的反面（wps↔office 互切）；env 显式锁定时桥会 409 拒绝并说明
+  var cur = (window.__hostActive__ === 'office') ? 'wps' : 'office';
+  fetch('http://127.0.0.1:' + (window.__PORT__ || 27731) + '/host', { method: 'POST', body: JSON.stringify({ host: cur }) })
+    .then(function (r) { return r.json().then(function (d) { return { status: r.status, d: d }; }); })
+    .then(function (x) {
+      if (x.d && x.d.ok) {
+        hostOverride = x.d.hostOverride;
+        renderHost();
+        tip('host 已切到 ' + x.d.hostOverride + '：各应用目标记忆将在下次调用时重建（用户文档零影响）');
+      } else {
+        tip('切换被拒：' + ((x.d && x.d.error) || ('HTTP ' + x.status)));
+      }
+    })
+    .catch(function () { tip('桥未连接，host 切换不可用'); });
+}
+
 function toggleHold() {
   fetch('http://127.0.0.1:' + (window.__PORT__ || 27731) + '/hold', { method: 'POST', body: JSON.stringify({ on: !heldState }) })
     .then(function (r) { return r.json(); })
