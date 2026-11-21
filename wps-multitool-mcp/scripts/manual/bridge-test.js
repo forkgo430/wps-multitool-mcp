@@ -76,6 +76,11 @@ const appPid = async (app) => {
   return c ? c.pid : null;
 };
 
+// 守护拓扑合并（2026-11-21）：common 动作由桥转投 word 通道——children 里不再有 common:*。
+// 通道 PID = 按【路由后】的通道查（common → word）；断言语义不变（"common 请求所在通道"）。
+const CHANNEL_OF = { common: 'word', excel: 'excel', word: 'word', ppt: 'ppt' };
+const channelPid = async (app) => appPid(CHANNEL_OF[app] || app);
+
 (async () => {
   if (MODE === 'clean') {
     console.log('=== 清场（测试桥 + 全部 wps-comd 子进程）===');
@@ -105,7 +110,7 @@ const appPid = async (app) => {
     console.log('=== 按应用隔离测试：外部干掉 excel 那一路，看 common 是否受影响 ===');
     await psDaemon.call('ping', {}, 'common');
     await psDaemon.call('getOpenWorkbooks', {}, 'excel');
-    const commonBefore = await appPid('common');
+    const commonBefore = await appPid(CHANNEL_OF['common']);
     const excelBefore = await appPid('excel');
     console.log(`  初始：common PID=${commonBefore}  excel PID=${excelBefore}`);
 
@@ -120,7 +125,7 @@ const appPid = async (app) => {
       .call('ping', {}, 'common')
       .then((r) => r.success === true)
       .catch(() => false);
-    const commonAfter = await appPid('common');
+    const commonAfter = await appPid(CHANNEL_OF['common']);
     console.log(`  common 仍可用: ${pingOk ? '✅ 是' : '❌ 否'}`);
     console.log(
       `  common PID: ${commonBefore} -> ${commonAfter} ` +
@@ -146,7 +151,7 @@ const appPid = async (app) => {
   if (MODE === 'clienttimeout') {
     console.log('=== 客户端超时与重连测试 ===');
     await psDaemon.call('ping', {}, 'common');
-    const pidBefore = await appPid('common');
+    const pidBefore = await appPid(CHANNEL_OF['common']);
 
     // 把 common 那一路干掉，让下一次调用必须冷启动新子进程（约 4 秒）——
     // 这样 1ms 超时必然先触发，避免"1ms vs 2ms 往返"的竞态（上一版就是这么 flake 的）
@@ -169,7 +174,7 @@ const appPid = async (app) => {
       .then((r) => r.success === true)
       .catch(() => false);
     console.log(`  断开后自动重连恢复: ${recovered ? '✅ 是' : '❌ 否'}`);
-    const pidAfter = await appPid('common');
+    const pidAfter = await appPid(CHANNEL_OF['common']);
     console.log(`  common 子进程: ${pidBefore} -> ${pidAfter}（被我们杀过，应换新）`);
     process.exit(recovered && /超时/.test(msg) ? 0 : 1);
   }
@@ -203,9 +208,9 @@ const appPid = async (app) => {
     JSON.stringify(st.data.children.map((c) => ({ app: c.app, pid: c.pid, ready: c.ready })))
   );
 
-  const pidA = await appPid('common');
+  const pidA = await appPid(CHANNEL_OF['common']);
   await psDaemon.call('ping', {}, 'common');
-  const pidB = await appPid('common');
+  const pidB = await appPid(CHANNEL_OF['common']);
   console.log(`  common 子进程复用: ${pidA} -> ${pidB} ${pidA === pidB ? '✅ 同一进程' : '❌ 被重建'}`);
 
   const pids = st.data.children.map((c) => c.pid);
@@ -213,6 +218,18 @@ const appPid = async (app) => {
     `  按应用拆子进程：apps=${JSON.stringify(st.data.children.map((c) => c.app))} 各 PID 互不相同=` +
       (new Set(pids).size === pids.length ? '✅' : '❌')
   );
+
+  // 守护拓扑合并（2026-11-21）：common 并入 word 通道——children 无 common，common 请求与
+  // word 动作同通道同会话（同 PID 即同进程同队列）。
+  const hasCommonChild = st.data.children.some((c) => c.app === 'common');
+  const commonChan = await channelPid('common');
+  const wordChan = await appPid('word');
+  console.log(
+    `  拓扑合并：children 无 common=${!hasCommonChild ? '✅' : '❌'}  common 落 word 通道（PID 一致）=` +
+      (commonChan && commonChan === wordChan ? '✅' : '❌')
+  );
+  const topoOk = !hasCommonChild && !!commonChan && commonChan === wordChan;
+  if (!topoOk) process.exitCode = 1;
 
   console.log('  当前：桥 =', countBridges(), ' 常驻 powershell =', countPsChildrenCount());
   process.exit(0);

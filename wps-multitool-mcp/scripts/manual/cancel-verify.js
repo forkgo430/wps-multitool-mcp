@@ -35,7 +35,9 @@ function ok(label, cond, extra) {
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 (async () => {
-  const d = new PsChildDaemon('common');
+  // 守护拓扑合并（2026-11-21）：生产拓扑里 common 并入 word 通道——本测直构 word 守护
+  // 对齐新拓扑（取消机制与 app 无关，断言语义不变）。
+  const d = new PsChildDaemon('word');
 
   console.log('=== A. 只读判定（纯函数，先过一遍真动作名）===');
   const RO = ['getCellValue', 'getOpenDocuments', 'getDocumentText', 'listStyles', 'readRange',

@@ -33,10 +33,13 @@ function check(name, ok, detail = '') {
   console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? '  → ' + detail : ''}`);
 }
 
+// 守护拓扑合并（2026-11-21）：common 动作由桥转投 word 通道——children 里不再有 common:*。
+// 通道统计按【路由后】通道查（common → word）；断言语义不变（"common 请求所在通道"）。
+const CHANNEL_OF = { common: 'word', excel: 'excel', word: 'word', ppt: 'ppt' };
 const appPid = async (app) => {
   const r = await psDaemon.call('__bridgeStatus', {}, 'common').catch(() => null);
   if (!r || !r.success) return null;
-  const c = (r.data.children || []).find((x) => x.app === app);
+  const c = (r.data.children || []).find((x) => x.app === (CHANNEL_OF[app] || app));
   return c ? c.pid : null;
 };
 
@@ -94,7 +97,8 @@ const settled = await Promise.allSettled(
   check('BUSY 标为可安全重试', isRetryableWpsError(t) === true);
 
   // 反向：动作超时【不能】被误判成可重试（可能已执行一半）
-  const timeoutMsg = 'WPS 动作超时（60000ms）: save（应用=common）。该应用的常驻进程已重建';
+  // 文案按合并后拓扑：common 动作落 word 通道，超时消息里的应用=word
+  const timeoutMsg = 'WPS 动作超时（60000ms）: save（应用=word）。该应用的常驻进程已重建';
   const t2 = classifyWpsError(timeoutMsg);
   check('动作超时仍归 TIMEOUT（没被 busy 规则抢走）', t2 === WpsErrorType.TIMEOUT, `实际 ${t2}`);
   check('TIMEOUT 不标可重试（避免重复执行）', isRetryableWpsError(t2) === false);
@@ -111,9 +115,9 @@ const settled = await Promise.allSettled(
   // ---------- 5) 桥状态里能看到队列 ----------
   const st = await psDaemon.call('__bridgeStatus', {}, 'common');
   const q = st?.data?.queue;
-  const childStats = (st?.data?.children || []).find((x) => x.app === 'common');
+  const childStats = (st?.data?.children || []).find((x) => x.app === CHANNEL_OF['common']);
   console.log('  桥队列配置：', JSON.stringify(q));
-  console.log('  common 子进程统计：', JSON.stringify(childStats));
+  console.log('  common 请求所在通道（word）统计：', JSON.stringify(childStats));
   check('桥状态暴露 queue 配置', !!(q && q.max === 4 && q.timeoutMs === 10000), JSON.stringify(q));
   check(
     '子进程统计含 queued/queueMax/rejected/inFlight',

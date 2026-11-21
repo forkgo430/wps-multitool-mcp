@@ -52,6 +52,25 @@ function normalizeApp(v: unknown): AppKey {
   return 'common';
 }
 
+/**
+ * 通道解析（守护拓扑合并卡 2026-11-21 · 所有者裁决）：common 动作并入 word 守护通道。
+ *
+ * 病灶（快照跨守护附着卡实证包 + 决策者三组真机实验）：word 守护与 common 守护操作的是
+ * 同一个 wps.exe——两进程"并行"是幻觉，拆分却制造岛间抽签：word 岛建的文档 common 岛
+ * 看不见（wps.exe 文字实例的 ROT 登记一次性，跨进程唯一可见通道就是 ROT 附着）。
+ * 多文档顺序场景（真实 AI 会话常态）下 save_as/snapshot 恒在抽签——非确定行为比
+ * 确定性失败更糟。合并后同进程同会话，整类问题消失。
+ *
+ * excel/ppt 是不同 exe（et/wpp）：自注册持久、有真实并行——保留独立通道（设计决定，
+ * 本卡不动）。host=office 同样适用：office 的 word 守护即 WINWORD 通道，ROT 本来就可靠。
+ *
+ * 线协议不变：客户端仍发 app='common'，桥在此内部转投 word 通道；hello 的 apps 清单
+ * 照旧含 common（旧客户端兼容）。children map 从此不再出现 common:* 子进程。
+ */
+function routeChannel(app: AppKey): 'excel' | 'word' | 'ppt' {
+  return app === 'common' ? 'word' : app;
+}
+
 /** 确保日志目录存在 —— 桥是 detached 进程，stdio 被忽略，只能落文件。
  *  目录名用 RUNTIME_ID：与 logger.ts、ps-daemon.ts 的管道名是同一套约定（见该文件）。 */
 try {
@@ -432,19 +451,20 @@ async function handleRequest(
   if (action === '__cancel') {
     const targetId = String(params.targetId ?? '');
     const app = normalizeApp(req.app);
+    const channel = routeChannel(app);
     if (!targetId) {
       writeLine(sock, { id, success: false, error: '__cancel 缺少 targetId' });
       return;
     }
-    // 取消也要按 instance 定位：同一个 app 的 user 与 sandbox-1 是两个独立队列，
+    // 取消也要按 instance 定位：同一个通道的 user 与 sandbox-1 是两个独立队列，
     // 撤错队列等于"以为取消了、其实还在跑"。
     let instance = 'user';
     try {
-      instance = resolveInstance(req.instance, app);
+      instance = resolveInstance(req.instance, channel);
     } catch {
       /* 实例名非法时按 user 处理：取消是尽力而为，不该因为名字错而整个失败 */
     }
-    const r = getChild(app, instance).cancelByExternalId(targetId);
+    const r = getChild(channel, instance).cancelByExternalId(targetId);
     writeLine(sock, { id, success: r.ok, data: { cancelled: r.ok, reason: r.reason } });
     return;
   }
@@ -453,9 +473,10 @@ async function handleRequest(
   await waitWhileHold();
 
   const app = normalizeApp(req.app);
+  const channel = routeChannel(app);
   try {
-    const instance = resolveInstance(req.instance, app);
-    const msg = await getChild(app, instance).call(action, params, { externalId: id });
+    const instance = resolveInstance(req.instance, channel);
+    const msg = await getChild(channel, instance).call(action, params, { externalId: id });
     recordLog(app, action, params, msg.success !== false);
     writeLine(sock, {
       id,
