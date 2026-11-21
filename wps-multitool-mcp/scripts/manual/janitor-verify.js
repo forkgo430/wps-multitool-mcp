@@ -63,7 +63,9 @@ $env:WPS_COM_DAEMON = '1'
   `, tmpHome);
   ok('① journal 落盘可见（写入 1 行）', r1.out.includes('WRITTEN=1'), '');
   ok('① journal 行格式 {pid,exe,startTime,spawnedBy,ts} 齐全', r1.out.includes('FIELDS=True'), '');
-  ok('① journal 路径在重定向 HOME 下（隔离测试）', r1.out.replace(/\r/g, '').includes(journal.replace(/\//g, '\\')), journal);
+  // 路径分隔符归一化后比对（2026-11-21 CI 实测：Linux pwsh 下 ps1 产正斜杠路径，写死反斜杠必红）
+  const normPath = (x) => x.replace(/\r/g, '').replace(/\\/g, '/');
+  ok('① journal 路径在重定向 HOME 下（隔离测试）', normPath(r1.out).includes(normPath(journal)), journal);
 
   // ②③④⑥ 决策函数注入（fake LiveProcs，零真进程）
   const iso = (d) => d.toISOString();
