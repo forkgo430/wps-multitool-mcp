@@ -5,7 +5,7 @@ license: MIT
 compatibility: Windows + WPS Office 12.x；需要 wps-multitool MCP 的常驻桥进程在运行
 metadata:
   author: 赢容
-  version: "1.1.0"
+  version: "1.1.1"
 ---
 
 # 操作 WPS 的正确链路
@@ -23,6 +23,30 @@ MCP 提供了近 300 个工具（以 `tools/list` 与 `wps_search_tools` 为准�
 - 通用 Office 问答（"Word 怎么插入页码"这种知识性问题，不需要碰 WPS）
 - 代码任务、Excel 公式语法解释
 - 非 WPS 的格式问题（pdf、md、docx 用别的工具）
+
+## 开头三件事（每次会话先做）
+
+1. **wps_common_status 探活**——桥通不通、套件在不在、有没有活动文档，三态分开处理；
+   回包里 selfIntro.line 有默认档/全量数字与当前 host。
+2. **认宿主**——status 回包 apps 的 app/progId 字段是权威（Ket/Kwps/Kwpp = WPS；
+   Word.Application/Excel.Application = Office host）。切换宿主走面板按钮（POST /host），不重启。
+3. **按需加载组**——默认列 40 个基础工具；能力在别的组就 wps_load_tool_group 拉进来。
+
+## 文档定位与批量写入（先看后写）
+
+**地址 DSL**（结构化对象，别传自然语言）：
+- 章：`chapter: 3` 或 `chapter: {text: "第三章 结论"}`（OutlineLevel=1 段，免疫样式名漂移）
+- 段：`paragraph: 3`（章内正文段计数；表格段默认不计序，`includeTables: true` 可开）
+- 句：`sentence: 3`（**必须与 paragraph 同给**——句的坐标系是段）
+- 收尾：`edge: "start" | "end"`（缺省 start）
+- 文本寻址：`text: "某句话", occurrence: 2`（与 start/end 互斥）；字符偏移 `start/end` 成对给
+
+**dryRun 先看后写**：批量写动作给 `dryRun: true` 先拿落点预览（章标题原文/段全文/句全文/via），
+确认落点再去掉 dryRun 真写。交叉引用批量用 `wps_word_cross_reference` 的 `anchors[]`（≤50），
+插后自检域结果非空——失败项会在 failed[] 里带人话原因。
+
+**两轨分工**：版式设计走模板（`wps_render_template`，人类设计师版式 + AI 填数据）；
+从零生成走 deckkit（`wps_ppt_build_deck` 或 `wps_run_task` 配方）。
 
 ## 五步主链路
 
@@ -47,7 +71,7 @@ MCP 提供了近 300 个工具（以 `tools/list` 与 `wps_search_tools` 为准�
 
 ### 3. 加载组
 
-默认只列出 40 个基础工具，其余组要显式加载：`wps_load_tool_group`。
+默认只列出 42 个基础工具，其余组要显式加载：`wps_load_tool_group`。
 
 **"工具不存在"通常不是没有这个能力，是组没加载。** 先搜再加载，别直接告诉用户做不到。
 
@@ -141,3 +165,9 @@ PPT 组的真值（照 `scripts/manual/tool-verification.json` 的 `ppt` 条目�
 | `references/errors.md` | 调用报错、或要决定能不能重试时 |
 | `references/recipes.md` | 任务跨多步（整篇论文排版、批量改格式、做演示）时 |
 | `references/dsh.md` | **在 DeepSeek Harness 里跑的时候**（挂载写法、DSH 特有的坑、平台限制） |
+
+## 模板两轨分工
+
+- **版式设计走数据模板**：`wps_render_template`（模板 docx 预置书签锚点 + {{key}} 占位，data JSON 填充；`wps_extract_template` 从现有文档提取带锚点模板）。
+- **固定场景走配方**：`wps_route_intent` / `wps_run_task` 的场景配方（周报/公文/合同等 task-packages）。
+- 模板两轨与配方双轨的关系：模板管"版式复用+数据填充"，配方管"固定流程编排"。

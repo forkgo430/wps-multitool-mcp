@@ -99,3 +99,9 @@ aliases     中文别名
 examples    什么诉求用它
 notFor      它不干什么、该用谁   ← 必读
 ```
+
+## 文档定位（地址 DSL）
+
+在文档内部精确落点（第几章第几段第几句）用地址对象：`{chapter, paragraph, sentence, edge}`。
+语法/组合错会在进 COM 前报清（L1 地址 DSL）；批量交叉引用走 `wps_word_cross_reference` 的 `anchors[]`，
+`dryRun: true` 先看落点预览再真写。详见 SKILL.md「文档定位与批量写入」段。

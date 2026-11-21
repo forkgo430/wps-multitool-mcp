@@ -46,7 +46,7 @@ MCP 提供了近 300 个工具（以 `tools/list` 与 `wps_search_tools` 为准�
 插后自检域结果非空——失败项会在 failed[] 里带人话原因。
 
 **两轨分工**：版式设计走模板（`wps_render_template`，人类设计师版式 + AI 填数据）；
-从零生成走 deckkit（`wps_ppt_build_ppt_deck` 或 `wps_run_task` 配方）。
+从零生成走 deckkit（`wps_ppt_build_deck` 或 `wps_run_task` 配方）。
 
 ## 五步主链路
 
