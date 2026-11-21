@@ -1,25 +1,33 @@
-# wps-multitool-mcp
+# WPS Office 多面手 MCP
 
-让 AI 直接操控你正开着的办公套件——WPS 文字、表格、演示，以及 Microsoft Office 365。
+**简体中文** | [English](README.en.md)
 
-同一套 MCP 工具面，host 自动探测选路；两个套件都装时默认驱动 WPS，随时可切换。
+<!-- AUTO:badges:start -->
+[![CI](https://github.com/forkgo430/wps-multitool-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/forkgo430/wps-multitool-mcp/actions/workflows/ci.yml) [![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE) [![npm](https://img.shields.io/npm/v/wps-multitool-mcp)](https://www.npmjs.com/package/wps-multitool-mcp) [![release](https://img.shields.io/github/v/release/forkgo430/wps-multitool-mcp)](https://github.com/forkgo430/wps-multitool-mcp/releases) [![tools](https://img.shields.io/badge/tools-284-brightgreen.svg)](#能力一览) [![platform](https://img.shields.io/badge/platform-Windows%20only-lightgrey.svg)](#安装)
+<!-- AUTO:badges:end -->
 
-## 能做什么
+> 让 AI 直接操控你正开着的办公套件——WPS 文字、表格、演示，以及 Microsoft Office 365。
+> 同一套工具面，host 自动探测选路，双装机器上开哪套驱动哪套。
+>
+> 它不只会改，也能从零生成。空白页起一份带目录和图表的文稿；把表格里的数字变成图表与透视表，
+> 再贴进演示；整篇换字体、套主题；导出成图片和 PDF。
 
-- **操控正开着的文档**：AI 操作的就是你眼前的活文档，所见即所得——不用关文档、不用上传
-- **从零生成**：空白页起一份带目录和图表的文稿；把表格里的数字变成图表与透视表，再贴进演示
-- **听懂位置**：支持"第 N 章 / 第 N 段 / 第 N 句 / 锚点文本"级别的落笔，交叉引用一次批量插完
-- **套模板**：docx、pptx、xlsx 三种格式都能套模板生成，也能从现有文档反提模板；三份现成模板随包附带
-- **改坏了能退**：破坏性操作前自动快照、支持逐步撤销、面板一键恢复
-- **省上下文**：默认 40 个工具按需加载，其余 244 个用搜索或按组调出
+| | 读 | 写 | 生成 | 排版 | 导出 |
+|---|:--:|:--:|:--:|:--:|:--:|
+| WPS 文字 | ✓ | ✓ | ✓ | ✓ | ✓ |
+| WPS 表格 | ✓ | ✓ | ✓ | ✓ | ✓ |
+| WPS 演示 | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Microsoft Office 365 | ✓ | ✓ | ✓ | ✓ | ✓ |
 
-## 快速开始
+<sub>Microsoft Office 365 与 WPS 共用上面同一套工具、同一批参数；驱动哪套由 host 自动探测（双装缺省 WPS；`WPS_HOST_PREFERENCE=office` 改偏好，`WPS_OFFICE` 显式指定优先级最高）。</sub>
+
+<sub>作者 / 维护者：**赢容** · [npm](https://www.npmjs.com/package/wps-multitool-mcp) · [Release](https://github.com/forkgo430/wps-multitool-mcp/releases)</sub>
+
+## 30 秒上手
 
 ```powershell
 npx -y wps-multitool-mcp
 ```
-
-或加入 MCP 客户端配置：
 
 ```json
 {
@@ -36,15 +44,211 @@ npx -y wps-multitool-mcp
 
 > 把这份合同的金额段落加粗，并在末尾补一段风险提示
 
-## 环境
+更多例子：
 
-- Windows + 已安装 WPS Office 或 Microsoft Office 365（两个都装时默认驱动 WPS，`WPS_OFFICE=on` 切 Office）
-- 支持 MCP 协议的客户端（Claude Code / Cursor / CodeBuddy / WorkBuddy 等）
+- "把这张表做成柱状图，导出成图片"
+- "整份 PPT 统一成思源黑体，每页加上页码"
+- "给这篇论文生成目录和交叉引用"
+- "Office 365 里打开的这份报表，冻结首行并给合计列求和"
 
-## 完整文档
+想要侧边面板（快照 / 撤销 / 暂停 AI / 状态），再装加载项：
 
-工具清单、配置项、双套件适配对账、故障排除：见 [GitHub 仓库 README](https://github.com/forkgo430/wps-multitool-mcp#readme)。
+```powershell
+irm https://cdn.jsdelivr.net/gh/forkgo430/wps-multitool-mcp@main/scripts/install.ps1 | iex
+```
 
-## License
+> 在意安全？先把脚本下载下来用 `Get-FileHash` 和 Release 页公布的 SHA256 比对，再运行；
+> 或把地址里的 `@main` 换成 `@v1.1.0` 锁定版本。
+
+## 它能干什么
+
+| 能做什么 | 怎么做到 |
+|---|---|
+| 从空白页做出一份成品 | 演示：新建/加页/套主题/动画/页码一条链；文档：标题、段落、表格、图片按声明直接生成 |
+| 把表格数字变成汇报材料 | 表算完直接建图表或透视表，导出成图，贴进演示。省掉你复制粘贴那一步 |
+| 演示里的结构件 | 时间轴、流程图、组织架构图、仪表盘、环形图、进度条、KPI 卡片、迷你图表、样式化表格，都有现成工具 |
+| 整篇统一外观 | `beautify_all_slides` 套同一套风格，`unify_font` 统一字体，`auto_layout` 自动排版，`smart_distribute` 按间距分布 |
+| 公文和论文的排版件 | 自动目录、书目索引、交叉引用、脚注、修订留痕、页眉页脚、按模板填字段 |
+| 公式不止能写 | 能生成公式，也能诊断公式为什么报错。数组公式、透视表的建刷改查清都有 |
+| 导出 | 演示单页出图，表格的图表和区域出图，格式转换，转 PDF |
+| 批量执行带快照 | `wps_common_batch` 一次跑多步，碰上破坏性动作先存快照，事后能退回磁盘那一版 |
+| 和 AI 共用一份文档不打架 | AI 动笔前会看文档是不是刚被你改过（改了就先提醒它重新看），你随时能从面板点"暂停 AI"先写自己的，AI 的写入还能套修订痕迹由你逐条审 |
+
+用起来省事的四个设计：
+
+- **一句话定方向**：`wps_route_intent` 把"帮我做个汇报"映射到演示组，认不出来它会明说
+- **用中文搜工具**：`wps_search_tools` 结果带 `notFor` 反例，近名工具靠它分
+- **工具自带安全标签**：全部工具都标明只读 / 会改动 / 可否重复执行（精确数字见下方统计）
+- **改名不砸旧调用**：旧名字自动解析到新工具，参数一并搬运
+
+<!-- AUTO:tool-table:start -->
+| 应用 | 工具数 | 主要能力 |
+|------|--------|---------|
+| Excel | 91 | 公式/数据/图表/透视表/工作表/格式/工作簿/行列/批注保护/图片导出 |
+| Word | 69 | 格式/内容/文档管理/页眉页脚/批注/书签/表格/模板填写/学术排版/修订/索引/交叉引用 |
+| PPT | 96 | 幻灯片/形状/图片/表格/美化/动画/图表/3D/数据可视化/图片导出 |
+| 通用 | 28 | 保存/连接检测/文本选取/格式转换/工具组管理/意图路由/批量执行 |
+| 内置 | 7（已计入上方各组） | 连接检查/万能方法调用/数据缓存 |
+<!-- AUTO:tool-table:end -->
+
+全部工具的完整清单（名称 / 是否需要确认 / 真机验证状态）见 **[TOOLS.md](TOOLS.md)**，
+由注册表自动生成。旧名字调用会自动解析到新工具，参数一并搬运。
+
+<details>
+<summary><b>规模（由注册表实测生成）</b></summary>
+
+<!-- AUTO:tool-stats:start -->
+- **284 个工具**（7 个内置 + 277 个专业/组工具）；**默认只列 40 个**（基础档 ∩ 真机验证，按需加载 —— 口径与校验见 `scripts/manual/basic-tier-verify.js`）
+- 分布（按工具组，内置计入对应组）：通用 28（含 core）/ Word 69 / Excel 91 / PPT 96
+- 注解（实测）：只读 51 / 破坏性 36 / 非幂等 114，覆盖 284/284
+<!-- AUTO:tool-stats:end -->
+
+</details>
+
+## 安装
+
+<details>
+<summary><b>环境要求</b></summary>
+
+| 要求 | 说明 |
+|------|------|
+| Windows 10 / 11 | 原生 COM 通道所在平台 |
+| WPS Office 2019+（实测 12.1）与/或 Microsoft Office 365 | 任一套件即可开工，双装自动探测选路 |
+| Node.js ≥ 18 | 构建与运行 MCP Server |
+| 一个 MCP 客户端 | Claude Code / Cursor / Codex CLI / CodeBuddy / WorkBuddy / DeepSeek Harness（dsh）等 |
+
+</details>
+
+<details>
+<summary><b>一键安装（MCP + 加载项 + skill）</b></summary>
+
+```powershell
+irm https://cdn.jsdelivr.net/gh/forkgo430/wps-multitool-mcp@main/scripts/install.ps1 | iex
+```
+
+自动完成：检查环境 → 拉取项目 → 装依赖并编译 → 部署 WPS 加载项 → 安装 skill → 打印 MCP 配置。
+装完重启 WPS 和客户端即可。需要能访问 GitHub；否则用下面的手动安装。
+
+</details>
+
+<details>
+<summary><b>手动安装</b></summary>
+
+```bash
+git clone https://github.com/forkgo430/wps-multitool-mcp.git
+cd wps-multitool-mcp
+powershell -ExecutionPolicy Bypass -File scripts/install.ps1
+```
+
+</details>
+
+<details>
+<summary><b>一键接入：自动写好 MCP 配置</b></summary>
+
+```powershell
+node wps-multitool-mcp/dist/index.js install
+```
+
+认这些客户端，各写各的原生格式：**CodeBuddy / WorkBuddy / Codex CLI / Claude Code / Cursor**，
+另有 **DeepSeek Harness** 专用支持。只认已经装过的客户端；写配置前自动备份、写后回读校验、
+失败自动还原。加 `--dry-run` 演练、`--print` 只打印不写盘。
+
+</details>
+
+## 它怎么工作
+
+```mermaid
+flowchart TB
+    S["Skills 层<br/>探活 → 定组 → 加载组 → 选型 → 写前确认"]
+    M["MCP Server<br/>stdio，默认 40 个基础工具"]
+    B["常驻桥（Node）<br/>按应用拆子进程"]
+    P["常驻 PowerShell<br/>excel / word / ppt / common"]
+    C["COM 动作"]
+    W["双套件对象模型<br/>Ket / Kwps / Kwpp 或 Word / Excel / PowerPoint（host 自动选路）"]
+
+    S -->|MCP 协议| M
+    M --> B --> P --> C --> W
+```
+
+冷启动约 5 秒；之后每次调用是桥转发的往返 2~3 毫秒（不含 WPS 实际执行的动作本身）。
+一个应用一个进程：文字那边卡死了，表格照样干活。
+
+## 写错也退得回去
+
+AI 会犯错，所以每一层都按"它一定会犯错"来设计：
+
+| 防线 | 你得到什么 |
+|---|---|
+| **写前自动快照** | 破坏性 / 非幂等的写入动手前先存快照，配合操作日志，可退回磁盘上那一版 |
+| **每个工具带安全标签** | 只读 / 会改动 / 可否重复执行，`tools/list` 里直接可读，客户端据此决定要不要先问你 |
+| **失败告诉你能不能重试** | `[可重试]` 直接重发；`[勿重试·可能已执行一半]` 先读回来再定，不会把同一段内容写两遍 |
+| **真机验证账本** | 每个工具都标真机验证状态（[TOOLS.md](TOOLS.md) 可查），默认档只收验证过的 |
+| **多目标钉住** | 多文档任务显式指定"改哪一份"，不跟着窗口焦点走 |
+
+## 侧边面板
+
+`wps-multitool-addon/` 是一个装进 WPS 的任务窗格：侧边栏实时显示桥的状态，
+外加 **保存 / 撤销 / 导出 PDF / 建快照 / 解除卡死** 五个动作按钮——按钮与 MCP 工具同源同权限，
+按下去就真实生效；状态栏保持只读。装不装面板都不影响 MCP，两者共用同一个桥。
+
+## 在 DeepSeek Harness（dsh）里用
+
+**一条命令，工具和技能一起装上**：
+
+```sh
+dsh plugin --profile <你的profile> add dsh-multitool
+```
+
+装上同时得到 40 个 WPS 工具和一份教 AI 正确使用顺序的技能，工具名前缀 `mcp__wpslocal__*`。
+
+> 与 npm 上的 `dsh-wps`（金山文档**云文档**集成）各管一摊、可同时装：本包操作的是
+> 你电脑上正开着的 WPS 窗口，全程本机直连、零 OAuth 配置。
+
+## 隐私
+
+- **文档内容不出本机**：没有遥测、没有崩溃上报、没有使用统计，`src/` 里没有任何出站请求
+- 唯一的本地网络端点是桥的只读状态接口（`127.0.0.1:27731/status`，只给 WPS 任务窗格轮询）
+- 快照按文档留在 `~/.wps-multitool-mcp/snapshots/`，等同文档副本；处理完敏感文档建议清空
+
+完整威胁模型见 [SECURITY.md](SECURITY.md)。
+
+## 设计边界（每一条都是选择，也是承诺）
+
+- **Windows 原生深度集成**：直接驱动你正开着的办公套件——AI 操作的就是你眼前的活文档，所见即所得；文件没打开会明确提示你开，绝不在后台偷偷弹窗。同时支持 WPS Office 与 Microsoft Office 365 双套件：同一套工具面，host 自动探测（双装缺省驱动 WPS——`WPS_HOST_PREFERENCE=office` 可改偏好，`WPS_OFFICE` 显式指定优先级最高）；已验证的能力覆盖见对账表。Linux 原生支持已上线（WPS 加载项通道，见下）。
+- **云端文档同样可操作**：在 WPS 里打开的云文档就是活文档——AI 操作的是 WPS 里打开的文档，与存在本地还是云端无关；专注点始终是你眼前开着的这份。
+- **多步骤任务一次跑完**：任务引擎在服务端顺序执行整个流程（带进度通知），AI 只看最终结果，不用盯着每一步。
+- **可撤销、可恢复**：逐步撤销（`wps_word_undo`，UndoRecord 级）+ 破坏性操作前自动建快照、一键恢复（`snapshot_restore`）——每一笔改动都有明确的退路。
+- **本机私有**：所有端点只绑 127.0.0.1 回环，文档数据不出你的电脑。
+- **低上下文**：默认 40 个工具按组按需加载，AI 的上下文留给你的任务。
+
+## 透明度承诺
+
+- 每个工具的验证状态公开标注：`live`=真机验证 / `static`=待真机验证——用到未验证的工具会如实告知用户。
+
+## 故障排除
+
+| 问题 | 解决方案 |
+|------|---------|
+| MCP 连接失败 | 确认 `dist/index.js` 存在，客户端路径正确 |
+| WPS 未响应 | 重启 WPS，确认 `%APPDATA%\kingsoft\wps\jsaddons\wps-claude-addon_` 存在 |
+| "arguments error" | 重跑 `scripts/install.ps1`，重启 WPS |
+| 一键安装卡住 | 访问不了 GitHub，改用「手动安装」 |
+| 其他问题 | [提 issue](https://github.com/forkgo430/wps-multitool-mcp/issues) |
+
+## Linux 支持
+
+Linux 上的 WPS 通过加载项通道接入同一套工具面（文字/表格/演示三型各一个加载项）：
+
+- **一键安装**：仓库自带 `install.sh`，装完加载项即可用
+- **能力**：123 项动作在云端真机两轮验证、全新机器复验全部通过（12.1.2.x 版本 WPS）
+- **启用**：装好 Linux 版 WPS 后，从菜单手动打开加载项（Linux 版没有自动加载）
+- **WSL**：Windows 里的 WSL 直接走 Windows 通道，无需额外安装
+
+## 路线
+
+- **文档质量体系**：PPT 生成引擎已上线（10 页型/三主题/溢出自检）；Word 引擎与模板层在路线图。
+- **多应用批量与自动化检查**持续加细；欢迎 [提 issue](https://github.com/forkgo430/wps-multitool-mcp/issues) 点名你最想要的场景。
+
+## 许可
 
 MIT

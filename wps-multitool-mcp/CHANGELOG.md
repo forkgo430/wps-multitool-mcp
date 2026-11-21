@@ -1,5 +1,12 @@
 # wps-multitool-mcp
 
+## 1.1.2
+
+### Patch Changes
+
+- 说明文档修正：npm 页 README 从建仓占位残留换为完整产品介绍，并随生成链自动同步（此前 1.0.5/1.1.0/1.1.1 的 npm 页一直显示占位残留）
+- README 的 Linux 措辞如实更新：Linux 原生支持已上线（WPS 加载项通道，一键安装），WSL 走 Windows 通道说明补齐。无代码变更
+
 ## 1.1.1
 
 ### Patch Changes

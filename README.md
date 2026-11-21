@@ -214,7 +214,7 @@ dsh plugin --profile <你的profile> add dsh-multitool
 
 ## 设计边界（每一条都是选择，也是承诺）
 
-- **Windows 原生深度集成**：直接驱动你正开着的办公套件——AI 操作的就是你眼前的活文档，所见即所得；文件没打开会明确提示你开，绝不在后台偷偷弹窗。同时支持 WPS Office 与 Microsoft Office 365 双套件：同一套工具面，host 自动探测（双装缺省驱动 WPS——`WPS_HOST_PREFERENCE=office` 可改偏好，`WPS_OFFICE` 显式指定优先级最高）；已验证的能力覆盖见对账表。Linux 支持在建（路线见下）。
+- **Windows 原生深度集成**：直接驱动你正开着的办公套件——AI 操作的就是你眼前的活文档，所见即所得；文件没打开会明确提示你开，绝不在后台偷偷弹窗。同时支持 WPS Office 与 Microsoft Office 365 双套件：同一套工具面，host 自动探测（双装缺省驱动 WPS——`WPS_HOST_PREFERENCE=office` 可改偏好，`WPS_OFFICE` 显式指定优先级最高）；已验证的能力覆盖见对账表。Linux 原生支持已上线（WPS 加载项通道，见下）。
 - **云端文档同样可操作**：在 WPS 里打开的云文档就是活文档——AI 操作的是 WPS 里打开的文档，与存在本地还是云端无关；专注点始终是你眼前开着的这份。
 - **多步骤任务一次跑完**：任务引擎在服务端顺序执行整个流程（带进度通知），AI 只看最终结果，不用盯着每一步。
 - **可撤销、可恢复**：逐步撤销（`wps_word_undo`，UndoRecord 级）+ 破坏性操作前自动建快照、一键恢复（`snapshot_restore`）——每一笔改动都有明确的退路。
@@ -235,11 +235,17 @@ dsh plugin --profile <你的profile> add dsh-multitool
 | 一键安装卡住 | 访问不了 GitHub，改用「手动安装」 |
 | 其他问题 | [提 issue](https://github.com/forkgo430/wps-multitool-mcp/issues) |
 
+## Linux 支持
+
+Linux 上的 WPS 通过加载项通道接入同一套工具面（文字/表格/演示三型各一个加载项）：
+
+- **一键安装**：仓库自带 `install.sh`，装完加载项即可用
+- **能力**：123 项动作在云端真机两轮验证、全新机器复验全部通过（12.1.2.x 版本 WPS）
+- **启用**：装好 Linux 版 WPS 后，从菜单手动打开加载项（Linux 版没有自动加载）
+- **WSL**：Windows 里的 WSL 直接走 Windows 通道，无需额外安装
+
 ## 路线
 
-- **Linux**：加载项动作层已全量实测——12.1.2.x 同步门面上 **123 动作全绿**（云端真机两轮、
-  全新机器复验通过），实现收进主仓随版本分发，11.x 异步兜底保留（双模型自动选路）；
-  下一步是把 Linux 端安装体验整合进发布流程。
 - **文档质量体系**：PPT 生成引擎已上线（10 页型/三主题/溢出自检）；Word 引擎与模板层在路线图。
 - **多应用批量与自动化检查**持续加细；欢迎 [提 issue](https://github.com/forkgo430/wps-multitool-mcp/issues) 点名你最想要的场景。
 

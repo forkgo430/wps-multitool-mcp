@@ -238,4 +238,15 @@ console.log(`  默认列出 ${listed} 个（基础档）`);
 console.log(
   `  注解: 只读 ${ann.readOnly} / 破坏性 ${ann.destructive} / 非幂等 ${ann.nonIdempotent} / 覆盖 ${ann.annotated}/${ann.total}`
 );
+// ---- 6. npm 包内 README 与仓库宣传页同步（2026-11-21）----
+// 此前包内 README.md 是建仓三行占位残留，1.0.5/1.1.0 的 npm 页一直显示它（1.1.1 才换精简版仍不全）。
+// npm 页 readme 只能随版本发布更新——让同步进生成链，宣传页更新后 npm 页随之跟上，永不漂移。
+const fsPkg = require('fs');
+const rootReadme = fsPkg.readFileSync(path.join(ROOT, '..', 'README.md'));
+if (rootReadme.length > 500 && !rootReadme.toString('utf8').includes('重新标记领地')) {
+  fsPkg.writeFileSync(path.join(ROOT, 'README.md'), rootReadme);
+  console.log('  npm README.md 已同步仓库宣传页（' + rootReadme.length + 'B）');
+} else {
+  console.log('  npm README.md 未同步：仓库宣传页缺失或异常');
+}
 process.exit(0);
