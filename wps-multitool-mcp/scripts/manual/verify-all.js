@@ -75,6 +75,7 @@ const FAST = [
   ['skill-verify.js', 'skill 包规范'],
   ['dsh-config-verify.js', 'dsh 适配约束（命名/超时）'],
   ['host-chain-probe.js', 'host 链真机探针（返工卡 · HEAVY）：.NET Registry 直读结构 + 真机 Get-HostKind/wps + status 层间一致', true],
+  ['cross-daemon-attach-probe.js', '跨守护附着态感知监测（快照修复卡）：行为保持面 + ROT 态诊断 + 跨守护主锚（受限态出诊断不误报）', true],
   ['windows-path-frozen.js', 'Windows 链路冻结门禁（C1）'],
   ['backend-selector-test.js', '平台识别决策链（Linux B0）+ Office host 维度（WPS_OFFICE 矩阵/二进制解析）'],
   ['addon-channel-test.js', '加载项通道骨架（Linux B2：握手三态/端口绑定/路由/失败语义/轮询闭环）'],
