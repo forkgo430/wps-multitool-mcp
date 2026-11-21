@@ -32,6 +32,18 @@ const { WpsMcpServer } = require(path.join(ROOT, 'dist', 'server', 'mcp-server.j
 const { toolRegistry } = require(path.join(ROOT, 'dist', 'server', 'tool-registry.js'));
 const { allTools } = require(path.join(ROOT, 'dist', 'tools', 'index.js'));
 
+// 套件在场守卫（2026-11-21 CI 实测）：本探针为真机专属校验——无 WPS/Office 套件的环境
+// （GitHub runner）上 CoCreate 必败，属常态而非回归。probeHostLive 为 null = 两套皆无 → 跳过。
+// WPS_FORCE_PROBE=1 可强制跑（本地诊断用）。
+{
+  let suite = null;
+  try { suite = require(path.join(ROOT, 'dist', 'server', 'backend-selector.js')).probeHostLive(); } catch { /* 探测失败按无套件 */ }
+  if (!suite && process.env.WPS_FORCE_PROBE !== '1') {
+    console.log('⊘ 本机未探测到 WPS/Office 套件（CI runner 常态）——跨守护附着为真机专属校验，跳过不计失败');
+    process.exit(0);
+  }
+}
+
 const s = new WpsMcpServer();
 s.registerBuiltinTools();
 toolRegistry.registerAll(allTools);

@@ -37,7 +37,9 @@ for (const [rel, sha] of Object.entries(FINGERPRINTS)) {
   ok(fs.existsSync(p), 'A 缺文件: ' + rel);
   if (!fs.existsSync(p)) continue;
   const buf = fs.readFileSync(p);
-  const real = crypto.createHash('sha256').update(buf).digest('hex');
+  // 行尾规范化后再哈希：Windows runner 检出 CRLF、Linux 检出 LF，钉值以仓内 LF 字节为基准
+  // （2026-11-21 CI 实测：同一份文件两平台哈希不同 = 对账假红家族复发）
+  const real = crypto.createHash('sha256').update(buf.toString('utf8').replace(/\r\n/g, '\n')).digest('hex');
   ok(real === sha, 'A 指纹不符: ' + rel + ' 现=' + real.slice(0, 12) + '… 期望=' + sha.slice(0, 12) + '…（落仓后被人改动？）');
   sources[rel] = buf.toString('utf8');
 }

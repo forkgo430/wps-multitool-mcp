@@ -171,7 +171,9 @@ if (fs.existsSync(matrixPath)) {
   ok('路由表 314 case 全部在对账表（无漂移）', missingInMatrix.length === 0 && routeCases.length === 314,
     missingInMatrix.length ? '缺: ' + missingInMatrix.slice(0, 5).join(',') : `314/314`);
 } else {
-  ok('对账表存在', false, matrixPath + ' 不存在');
+  // docs/ 不进 GitHub（本地真相源纪律）——CI runner 上没有这个文件是常态而非故障：
+  // 对账表一致性校验只在本地跑（文件在场时上面三段断言照常全跑），此处不计失败。
+  console.log('  ⊘ 对账表一致性：docs/agents/office-compat-matrix.md 不在本环境（CI runner 无 docs/，本地专属校验，跳过不计失败）');
 }
 // 台账 officeHost 维度
 const ledger = JSON.parse(fs.readFileSync(path.join(ROOT, 'scripts', 'manual', 'tool-verification.json'), 'utf8'));

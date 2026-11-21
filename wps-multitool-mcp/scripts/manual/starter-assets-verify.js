@@ -30,7 +30,32 @@ const ok = (label, cond, detail) => {
   const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
   ok('package.json files 含 templates/**', (pkg.files || []).some((f) => String(f).includes('templates')));
   // 锚点预置内容（zip 内文件名/内容字节搜索：OOXML zip 的 document.xml 是 deflate——直接搜压缩流不可靠，
-  // 改搜 zip 本地文件头里的锚点副产物不可行。退而求其次：用 PowerShell Expand-Archive 解包临时目录查 {{key}}
+  // 纯 Node 解包：中央目录解析 + zlib.inflateRawSync，不走 PowerShell）
+  // zip 成员读取器（EOCD → 中央目录 → 本地头定位 → inflateRaw），零依赖、跨平台确定性
+  function zipReadMember(buf, member) {
+    const eocd = buf.lastIndexOf(Buffer.from('PK\x05\x06'));
+    if (eocd < 0) return null;
+    const count = buf.readUInt16LE(eocd + 10);
+    let p = buf.readUInt32LE(eocd + 16);
+    for (let i = 0; i < count; i++) {
+      if (p + 46 > buf.length || buf.readUInt32LE(p) !== 0x02014b50) return null;
+      const method = buf.readUInt16LE(p + 10);
+      const csize = buf.readUInt32LE(p + 20);
+      const nameLen = buf.readUInt16LE(p + 28);
+      const extraLen = buf.readUInt16LE(p + 30);
+      const commentLen = buf.readUInt16LE(p + 32);
+      const lho = buf.readUInt32LE(p + 42);
+      const name = buf.toString('utf8', p + 46, p + 46 + nameLen);
+      if (name === member) {
+        const nlen2 = buf.readUInt16LE(lho + 26);
+        const elen2 = buf.readUInt16LE(lho + 28);
+        const data = buf.slice(lho + 30 + nlen2 + elen2, lho + 30 + nlen2 + elen2 + csize);
+        return method === 0 ? data : require('zlib').inflateRawSync(data);
+      }
+      p += 46 + nameLen + extraLen + commentLen;
+    }
+    return null;
+  }
   const tmp = fs.mkdtempSync(path.join(require('os').tmpdir(), 'starter-check-'));
   try {
     const zipChecks = [
@@ -39,21 +64,16 @@ const ok = (label, cond, detail) => {
       ['ledger.xlsx', 'xl/sharedStrings.xml', ['{{ledger_title}}', '{{ledger_item_1}}']],
     ];
     for (const [asset, member, anchors] of zipChecks) {
-      const dest = path.join(tmp, asset.replace(/\./g, '_'));
-      fs.mkdirSync(dest, { recursive: true });
       try {
-        // Expand-Archive 要求 .zip 后缀——OOXML 资产先复制为 zip 再解包
-        const zipCopy = path.join(tmp, asset + '.zip');
-        fs.copyFileSync(path.join(tdir, asset), zipCopy);
-        execFileSync('powershell', ['-NoProfile', '-Command',
-          `Expand-Archive -LiteralPath '${zipCopy}' -DestinationPath '${dest}' -Force`],
-          { timeout: 60000, stdio: 'ignore' });
-        const memberPath = path.join(dest, ...member.split('/'));
-        if (fs.existsSync(memberPath)) {
-          const content = fs.readFileSync(memberPath, 'utf8');
-          ok(`${asset} 锚点预置（${anchors.join('/')}）`, anchors.every((a) => content.includes(a)));
+        // 纯 Node 解包（2026-11-21）：Expand-Archive 在 CI runner 上解出成员缺失（假红），
+        // 改用 zip 中央目录解析 + zlib.inflateRawSync——零依赖、跨平台确定性
+        const buf = fs.readFileSync(path.join(tdir, asset));
+        const memberData = zipReadMember(buf, member);
+        if (memberData === null) {
+          ok(`${asset} 成员 ${member} 存在`, false, 'zip 内未见成员');
         } else {
-          ok(`${asset} 成员 ${member} 存在`, false, '解包后未见成员');
+          const content = memberData.toString('utf8');
+          ok(`${asset} 锚点预置（${anchors.join('/')}）`, anchors.every((a) => content.includes(a)));
         }
       } catch (e) {
         ok(`${asset} 解包`, false, (e.message || '').slice(0, 80));
