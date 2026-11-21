@@ -1,38 +1,44 @@
 # wps-multitool-mcp
 
-## 未发布 · 迁移说明（host wps 优先 · 2026-11-17）
-
-- **行为变更**：`WPS_OFFICE=auto`（缺省）在 **WPS 与 Office 双装机器上现在缺省驱动 WPS**（此前为 Office）。
-  探测升级为双链（Office 三链 + Kwps/Ket/Kwpp 三链各自解析服务器二进制真身），两链都在时按
-  `WPS_HOST_PREFERENCE`（`wps` | `office`，缺省 `wps`）取舍；单链装机的结论不变。
-- **迁移**：依赖旧"auto → Office"行为的用户改用 **`WPS_OFFICE=on`**（显式锁定 Office，优先级最高）；
-  或设 `WPS_HOST_PREFERENCE=office` 保留双装偏好。
-- **新能力**：控制面 `POST /host`（localhost）+ 面板切换按钮，会话级切换 host 不重启（详见面板与 SECURITY 说明）。
-
 ## 1.1.0
 
 ### Minor Changes
 
-- 1.1.0 —— 办公生态扩至双套件，Linux 加载项动作层收进主仓
-  
-  **Office 双套件（新）**
-  - 新增 host 维度：`WPS_OFFICE=on|off|auto`，同一套工具面驱动 WPS 或 Microsoft Office 365；
-    auto 探测解析 ProgID 链到服务器二进制真身（WPS 顶名劫持免疫），装了 Office 就自动选路
-  - 313 个动作逐条对账：直通 177 / 已适配 125 / WPS 专用 11（明确报错）/ 未落地 0；
-    Office 365 真机验证 75 工具
-  - Office 真机适配落地：集合 .Item()、Value2 写入、数字参数强转、边距单位、
-    DisplayAlerts 护栏、convertToPDF 可指定目标应用（app 参数）等
-  
-  **Linux 加载项（收进主仓）**
-  - 双模型架构：12.x 同步门面（window.Application）+ 11.x jsAsynCall 异步兜底，boot 时自动选路
-  - 同步动作层 123 动作（word 13 / ppt 15 / excel 95），云端全新机器复验 123/123 全绿、
-    与验证版逐字节等价（SHA-256 指纹钉进 FAST 门禁，改动即红）
-  
-  **任务引擎与提质**
-  - 服务端任务包执行（中间结果不出服务端）；wordkit 文档质量引擎、⑤批量形状原语
-  - structuredContent 2KB 闸门：大 JSON 回包不再双份，响应体约减半；tools/list 每会话约 -900 tokens
-  - 环境病根治：PPT 会话记账 + COM 消息过滤器 + 实例探活，反向验证 33/33
-  - 打包对账门禁：npm 包内容 + 版本五处一致性进 CI（"打包漏文件"家族根治）
+- 1.1.0 —— 双套件驱动、文档定位、守护拓扑合并，与四轮质量治理
+
+**双套件与 host 选择**
+- `WPS_OFFICE=on|off|auto`：同一套工具面驱动 WPS 或 Microsoft Office 365。auto 探测解析 ProgID 链到服务器二进制真身（WPS 顶名劫持免疫），双装机器缺省驱动 WPS（此前为 Office）；单链装机结论不变
+- 控制面 `POST /host`（localhost）+ 面板切换按钮：会话级切换 host，不用重启
+- 317 个动作逐条对账：直通 179 / 已适配 129 / WPS 专用 11（明确报错）/ 未落地 0；Office 365 真机验证 76 工具
+- Office 真机适配：集合 .Item()、Value2 写入、数字参数强转、边距单位、DisplayAlerts 护栏、convertToPDF 可指定目标应用（app 参数）
+
+**文档定位与交叉引用（新）**
+- 统一地址定位层：按"第 N 章 / 第 N 段 / 第 N 句 / 锚点文本 / 字符偏移"落笔（地址语法在进 COM 前纯函数解析，句级用 COM 原生 Sentences 集合）；`dryRun` 先看落点预览再写
+- 交叉引用批量插入：一次最多 50 处、逐项回报；插完自检域结果，引用渲染为空时如实报错并提示检查被引对象范围
+
+**守护拓扑合并（架构）**
+- common 动作并入 word 守护通道：此前两个进程靠 WPS 的登记表互通，文字实例的登记是一次性的（新实例拉起即失效），多文档连续作业时保存/快照/转换会随机失败。合并后同进程同会话，这类问题整类消失
+- 快照与协作检测的保护缺口随合并关闭（此前岛间场景静默缺位）
+
+**看门狗与模板层（新）**
+- janitor：COM 拉起实例的 PID 台账落盘 + 启动清扫，实例全生命周期看护，用户 UI 实例零误伤
+- `wps_render_template` / `wps_extract_template`：docx/pptx/xlsx 三格式模板渲染与提取，锚点双轨（书签优先 + {{key}} 占位），starter 三件随包，场景配方 19 包
+
+**任务引擎与提质**
+- 服务端任务包执行（中间结果不出服务端）；wordkit 文档质量引擎；批量形状原语（一次最多 50 个形状）
+- structuredContent 2KB 闸门：大 JSON 回包不再双份，tools/list 每会话约省 900 tokens
+- 参数真校验：类型/枚举/范围在进 COM 前拦截，错参数当场说明该传什么
+- 运行时依赖漏洞清零（MCP SDK 升至 1.32.2、uuid 升至 14，npm audit 0 项）
+- 工具 287→284：3D 四件套合并为一个 op 型工具（旧名别名兼容）
+- 环境病根治：PPT 会话记账 + COM 消息过滤器 + 实例探活，反向验证 33/33
+- 打包对账门禁进 CI：npm 包内容 + 版本五处一致性断言
+
+**Linux 加载项（收进主仓）**
+- 双模型架构：12.x 同步门面（window.Application）+ 11.x jsAsynCall 异步兜底，boot 时自动选路
+- 同步动作层 123 动作（word 13 / ppt 15 / excel 95），云端全新机器复验 123/123，与验证版逐字节等价（SHA-256 指纹钉进门禁，改动即红）
+
+**迁移**
+- 双装机器缺省 host 从 Office 改为 WPS：要继续用 Office，设 `WPS_OFFICE=on`（优先级最高）或 `WPS_HOST_PREFERENCE=office`
 
 ## 1.0.5
 
