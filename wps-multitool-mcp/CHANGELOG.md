@@ -1,5 +1,11 @@
 # wps-multitool-mcp
 
+## 1.1.1
+
+### Patch Changes
+
+- npm 页说明文档修正：包内 README 从建仓占位残留换为产品介绍；无代码变更
+
 ## 1.1.0
 
 ### Minor Changes

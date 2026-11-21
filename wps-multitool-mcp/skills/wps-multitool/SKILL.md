@@ -5,7 +5,7 @@ license: MIT
 compatibility: Windows + WPS Office 12.x；需要 wps-multitool MCP 的常驻桥进程在运行
 metadata:
   author: 赢容
-  version: "1.1.0"
+  version: "1.1.1"
 ---
 
 # 操作 WPS 的正确链路
