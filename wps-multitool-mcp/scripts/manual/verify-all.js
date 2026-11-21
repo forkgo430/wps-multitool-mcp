@@ -50,7 +50,7 @@ const FAST = [
   ['wordkit-verify.js', 'M2 wordkit 文档引擎（主线一 B 段）：8 kind 展开/生成后校验三路/降级两路（mock COM）'],
   ['readback-slim-verify.js', '回包瘦身（体验修复轮 B）：read_range maxRows/brief 摘要/inline 开关（mock COM）'],
   ['office-host-verify.js', 'Office host 维度（一期+二期+收口轮）：探测纯函数/ps1 结构 gate/对账表一致性/绑定一致性/find51/孤儿桥监测（全 mock）'],
-  ['orphan-bridge-verify.js', '孤儿桥生命周期：EPHEMERAL 父亡监测 10 连跑归零（不起 WPS COM，ping 全链）'],
+  ['orphan-bridge-verify.js', '孤儿桥生命周期：EPHEMERAL 父亡监测 10 连跑归零（不起 WPS COM，ping 全链）', true],
   ['response-gate-verify.js', '提质小卡 P0：structuredContent 体积闸门（≤2048 镜像/text 逐字节不变/大回包只留 text）'],
   ['toolslist-shape-verify.js', '提质小卡 P1：tools/list 无 examples + searchTools 仍有 examples + 注解回归'],
   ['shape-cleanup-verify.js', '提质小卡 P3：handleToolCall 孤儿 {} 块清理'],
